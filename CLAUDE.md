@@ -13,9 +13,10 @@ Dale: asistente de una agencia que recibe pedidos de cambios web por Telegram, l
 | `pnpm db:migrate` | Aplica `supabase/migrations/*.sql` con `SUPABASE_DB_URL` (registra en `_migrations`). `--status` lista |
 | `pnpm seed` | Seed idempotente: agencia, proyecto de la panadería, reglas v1, versión viva e invitaciones |
 | `pnpm demo:reset` | Deja el proyecto de la panadería como nuevo (no toca el repo del sitio) |
-| `pnpm dry-run "<pedido>"` | Pipeline sin Telegram (hoy: interpretar → gate → decidir sobre el fixture) |
+| `pnpm dry-run "<pedido>" [--approve] [--undo] [--project <id>]` | Pipeline real del worker sin Telegram, en consola, con tiempos. `--approve` aprueba y publica; `--undo` además vuelve atrás |
 | `pnpm eval` | Evaluación (`eval/`) |
-| `pnpm e2e` | Prueba punta a punta (la arma 90) |
+| `pnpm e2e [--strict]` | Punta a punta en el proceso: pedido → [Dale] → publicado → HTML del sitio → volver atrás → HTML. Dice qué partes fueron reales |
+| `scripts/run-worker.sh` | Worker con reinicio si se cae, log en `logs/worker.log` |
 | `pnpm start:worker` | Arranca el worker |
 | `pnpm dev:panel` | Panel en el puerto 3000 |
 

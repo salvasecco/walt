@@ -73,7 +73,7 @@ export async function buildApp(env: DaleEnv, opts: BuildOptions = {}): Promise<A
     agent: opts.agent ?? agentFromEnv(env),
     secrets: env.secrets,
     defaultSiteUrl: env.DEMO_SITE_URL ?? LOCAL_SITE_URL,
-    panelUrl: process.env.PANEL_URL || undefined,
+    panelUrl: env.PANEL_URL,
     canTranscribe: ai.name !== 'fake' && !!env.OPENAI_API_KEY,
     log,
     onEvent: opts.onEvent,

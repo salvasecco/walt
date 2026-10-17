@@ -46,6 +46,7 @@ export const EnvSchema = z.object({
   OPENAI_API_KEY: opt,
   SCREENSHOTS: z.enum(['on', 'off']).default('off'),
   PANEL_PASSWORD: opt,
+  PANEL_URL: opt,
   DEMO_AGENCY_NAME: z.string().default('Estudio Faro'),
   DEMO_REPO: z.string().regex(/^[\w.-]+\/[\w.-]+$/).default('salvasecco/dale-demo'),
   DEMO_SITE_URL: opt,
