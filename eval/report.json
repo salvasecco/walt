@@ -1,11 +1,11 @@
 {
   "meta": {
-    "date": "2026-10-17T18:01:00.239Z",
+    "date": "2026-10-17T18:05:56.250Z",
     "provider": "fake",
     "model": "fake (intérprete por reglas)",
     "rulesVersion": 1,
     "now": "2026-10-14T12:00:00-03:00",
-    "commit": "b19970f",
+    "commit": "b014105",
     "note": "Corrida con el proveedor FALSO (expresiones regulares, solo para probar el corredor). No mide la calidad del modelo real: la demo corre con el modelo real."
   },
   "suites": [
@@ -120,7 +120,7 @@
           "falsePermitido": false,
           "prohibitedApplied": [],
           "wentToAgency": false,
-          "ms": 20,
+          "ms": 19,
           "usage": [
             {
               "model": "fake",

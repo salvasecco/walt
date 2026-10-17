@@ -1,10 +1,10 @@
 # Evaluación de Dale
 
-- Fecha: 2026-10-17T18:01:00.239Z
+- Fecha: 2026-10-17T18:05:56.250Z
 - Proveedor: **fake**, modelo `fake (intérprete por reglas)`
 - Reglas: versión 1 (las de por defecto del SPEC §8), contenido de la Panadería Mabel
 - "Ahora" fijo para fechas relativas: 2026-10-14T12:00:00-03:00
-- Commit: `b19970f`
+- Commit: `b014105`
 
 > Corrida con el proveedor FALSO (expresiones regulares, solo para probar el corredor). No mide la calidad del modelo real: la demo corre con el modelo real.
 
