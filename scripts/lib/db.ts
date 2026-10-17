@@ -30,6 +30,8 @@ export interface SchemaStatus {
   publishVersion: boolean;
   /** 0002 applied: anon can no longer call publish_version. Null when there is no anon key to try. */
   anonBlocked: boolean | null;
+  /** 0003 applied: `clients` exists and projects/requests have the new columns. */
+  clients: boolean;
 }
 
 const NIL = '00000000-0000-4000-8000-000000000000';
@@ -51,7 +53,11 @@ export async function schemaStatus(db: SupabaseClient, env: DaleEnv): Promise<Sc
     // Only the revoke gives "permission denied for function"; without it anon reaches the body and fails there.
     anonBlocked = !!res.error && /permission denied for function/i.test(res.error.message);
   }
-  return { missingTables, publishVersion, anonBlocked };
+  const c1 = await db.from('clients').select('id', { head: true, count: 'exact' });
+  const c2 = await db.from('projects').select('client_id, is_sample', { head: true, count: 'exact' });
+  const c3 = await db.from('requests').select('is_sample', { head: true, count: 'exact' });
+  const clients = !c1.error && !c2.error && !c3.error;
+  return { missingTables, publishVersion, anonBlocked, clients };
 }
 
 /** Runs a script's main and prints errors without secrets. */

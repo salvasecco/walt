@@ -29,7 +29,9 @@ runMain('db:migrate', async () => {
   const revoke = s.anonBlocked === true;
   console.log(`${revoke ? '✅' : '⏳'} 0002_revoke_publish_version.sql${s.anonBlocked === null ? '  (sin clave anon para comprobarla)' : ''}`);
 
-  const pending = [...(init ? [] : ['0001']), ...(revoke ? [] : ['0002'])];
+  console.log(`${s.clients ? '✅' : '⏳'} 0003_clients.sql`);
+
+  const pending = [...(init ? [] : ['0001']), ...(revoke ? [] : ['0002']), ...(s.clients ? [] : ['0003'])];
   if (pending.length === 0) {
     console.log('La base está al día.');
     return;
