@@ -37,7 +37,6 @@ import type { Button, Channel, Incoming, OutMessage } from './channel/types.js';
 import { Queue, withTimeout } from './queue.js';
 import type { SiteRepo } from './site/repo.js';
 import type { Store } from './store/types.js';
-import { extra } from './texts.js';
 
 export const TIMEOUTS = { interpret: 45_000, commit: 20_000, agent: 300_000, ai: 45_000 } as const;
 export const LIMITS = { perChat: 5, windowMs: 10 * 60_000, queueMax: 20, maxText: 2_000 } as const;
@@ -226,7 +225,7 @@ export class Worker {
     const since = new Date(this.now().getTime() - LIMITS.windowMs).toISOString();
     if ((await this.d.store.countRequestsSince(contact.id, since)) >= LIMITS.perChat) {
       await this.d.store.addMessage({ contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
-      await this.say(contact, null, { text: extra.limitePedidos() });
+      await this.say(contact, null, { text: copy.limitePedidos() });
       return;
     }
     if (this.fast.size >= LIMITS.queueMax) {
@@ -337,7 +336,7 @@ export class Worker {
       if (target) {
         await this.handleCallback(contact, `${interpretation.kind === 'aprobacion' ? 'ok' : 'undo'}:${target.short_id}`, 'telegram');
       } else {
-        await this.say(contact, req.id, { text: interpretation.kind === 'aprobacion' ? extra.nadaPendiente() : extra.nadaParaVolver() });
+        await this.say(contact, req.id, { text: interpretation.kind === 'aprobacion' ? copy.nadaPendiente() : copy.nadaParaVolver() });
       }
       return;
     }
@@ -409,7 +408,7 @@ export class Worker {
         return this.flowBloqueado(req, contact, ctx, interpretation, decision.reasons);
       case 'charla':
         await store.updateRequest(req.id, { status: 'charla' });
-        await this.say(contact, req.id, { text: THANKS.test(normalizeReply(req.raw_text)) ? extra.charlaGracias() : extra.charla() });
+        await this.say(contact, req.id, { text: THANKS.test(normalizeReply(req.raw_text)) ? copy.charlaGracias() : copy.charla() });
         return;
       case 'derivado':
         return this.derive(req.id, new Error(decision.reasons.join('; ') || 'Derivado por las reglas'), { expected: true });
@@ -455,7 +454,7 @@ export class Worker {
   private async flowPermitido(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation, gate: GateResult): Promise<void> {
     await this.say(contact, req.id, { text: copy.entendido(it.summary) });
     const { photo, previewUrl } = await this.draftAndCapture(req, gate, ctx);
-    const text = photo ? copy.vistaPrevia(it.summary) : `${copy.vistaPrevia(it.summary)}\n${extra.linkVistaPrevia(previewUrl)}`;
+    const text = photo ? copy.vistaPrevia(it.summary) : `${copy.vistaPrevia(it.summary)}\n${copy.linkVistaPrevia(previewUrl)}`;
     await this.step(req, 'enviado', () =>
       this.say(contact, req.id, {
         text,
@@ -484,13 +483,13 @@ export class Worker {
       const label = o.label.slice(0, 30);
       await this.step(req, 'enviado', () =>
         this.say(contact, req.id, {
-          text: `${extra.opcion(i + 1, label)}${photo ? '' : `\n${extra.linkVistaPrevia(previewUrl)}`}`,
+          text: `${copy.opcion(i + 1, label)}${photo ? '' : `\n${copy.linkVistaPrevia(previewUrl)}`}`,
           photo,
           buttons: [[{ text: label, data: `opt:${req.short_id}:${i}` }]],
         }),
       );
     }
-    await this.say(contact, req.id, { text: extra.elegiUna(), buttons: [[{ text: B.noEraEso, data: `no:${req.short_id}` }]] });
+    await this.say(contact, req.id, { text: copy.elegiUna(), buttons: [[{ text: B.noEraEso, data: `no:${req.short_id}` }]] });
     await this.d.store.updateRequest(req.id, {
       status: 'esperando_cliente',
       draft_version_id: null,
@@ -535,7 +534,7 @@ export class Worker {
     const reason = asClause(decision.reasons[0] ?? 'necesita una revisión');
     const { photo, previewUrl } = await this.draftAndCapture(req, gate, ctx);
     await this.say(contact, req.id, { text: copy.esperaAgencia(ctx.agencyName, reason) });
-    const text = copy.agenciaAprobacion(ctx.project.client_name, it.summary, reason) + (photo ? '' : `\n${extra.linkVistaPrevia(previewUrl)}`);
+    const text = copy.agenciaAprobacion(ctx.project.client_name, it.summary, reason) + (photo ? '' : `\n${copy.linkVistaPrevia(previewUrl)}`);
     await this.step(req, 'enviado', () =>
       this.notifyAgency(ctx, req.id, {
         text,
@@ -552,7 +551,7 @@ export class Worker {
     const ficha = it.codeInstruction ?? it.summary;
     await this.step(req, 'enviado', () =>
       this.notifyAgency(ctx, req.id, {
-        text: extra.agenciaCodigo(ctx.project.client_name, it.summary, ficha, reason),
+        text: copy.agenciaCodigo(ctx.project.client_name, it.summary, ficha, reason),
         buttons: [[{ text: B.aprobarYHacer, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }], ...this.panelRow()],
       }),
     );
@@ -587,7 +586,7 @@ export class Worker {
     await this.d.store.updateRequest(req.id, { quote_id: row.id, status: 'cotizado' });
     await this.say(contact, req.id, { text: copy.fueraDeAlcance(ctx.agencyName) });
     await this.notifyAgency(ctx, req.id, {
-      text: extra.agenciaFueraDeAlcance(ctx.project.client_name, it.summary, quote.title, quote.amountUsd, quote.etaDays),
+      text: copy.agenciaFueraDeAlcance(ctx.project.client_name, it.summary, quote.title, quote.amountUsd, quote.etaDays),
       buttons: this.panelRow(),
     });
   }
@@ -608,7 +607,7 @@ export class Worker {
     await this.d.store.updateRequest(req.id, { status: 'bloqueado' });
     await this.say(contact, req.id, { text: copy.bloqueado(ctx.agencyName) });
     await this.notifyAgency(ctx, req.id, {
-      text: extra.agenciaBloqueado(ctx.project.client_name, it.summary, reasons.map(asClause).join('; ') || 'reglas'),
+      text: copy.agenciaBloqueado(ctx.project.client_name, it.summary, reasons.map(asClause).join('; ') || 'reglas'),
       buttons: this.panelRow(),
     });
   }
@@ -626,7 +625,7 @@ export class Worker {
       if (contact) await this.say(contact, req.id, { text: copy.derivado() });
       const ctx = await this.ctxFor(req.project_id);
       const summary = (req.interpretation as Interpretation | null)?.summary ?? req.raw_text.slice(0, 200);
-      await this.notifyAgency(ctx, req.id, { text: extra.agenciaDerivado(ctx.project.client_name, req.short_id, summary, msg), buttons: this.panelRow() });
+      await this.notifyAgency(ctx, req.id, { text: copy.agenciaDerivado(ctx.project.client_name, req.short_id, summary, msg), buttons: this.panelRow() });
     } catch (inner) {
       this.log(`[derivado] no pude avisar: ${this.redact(errMsg(inner))}`);
     }
@@ -646,7 +645,7 @@ export class Worker {
       switch (action) {
         case 'ok':
           if (req.status !== 'esperando_cliente') return;
-          if (((req.ops as Op[] | null) ?? []).length === 0) return await this.sayTo(req.contact_id, req.id, { text: extra.elegiUna() });
+          if (((req.ops as Op[] | null) ?? []).length === 0) return await this.sayTo(req.contact_id, req.id, { text: copy.elegiUna() });
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'aprobado', via });
           await this.event(req, 'aprobado_cliente', 'ok', 0, { via });
           return await this.publish(req.id, 'cliente', via);
@@ -679,7 +678,7 @@ export class Worker {
           await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'rechazado', via });
           await this.discardDraft(req);
           await this.d.store.updateRequest(req.id, { status: 'rechazado' });
-          return await this.sayTo(req.contact_id, req.id, { text: extra.rechazadoAgencia((await this.ctxFor(req.project_id)).agencyName) });
+          return await this.sayTo(req.contact_id, req.id, { text: copy.rechazadoAgencia((await this.ctxFor(req.project_id)).agencyName) });
         case 'pub':
           if (!isAgency) return;
           if (req.lane === 'codigo' && req.status === 'agente_listo') return await this.publishCode(req.id, via);
@@ -716,8 +715,8 @@ export class Worker {
     if (!quote || quote.status !== 'enviado') return;
     await this.d.store.updateQuote(quote.id, { status: accepted ? 'aceptado' : 'rechazado' });
     const ctx = await this.ctxFor(req.project_id);
-    await this.sayTo(req.contact_id, req.id, { text: accepted ? extra.presupuestoAceptado(ctx.agencyName) : extra.presupuestoAhoraNo() });
-    await this.notifyAgency(ctx, req.id, { text: extra.agenciaPresupuesto(ctx.project.client_name, quote.title, accepted) });
+    await this.sayTo(req.contact_id, req.id, { text: accepted ? copy.presupuestoAceptado(ctx.agencyName) : copy.presupuestoAhoraNo() });
+    await this.notifyAgency(ctx, req.id, { text: copy.agenciaPresupuesto(ctx.project.client_name, quote.title, accepted) });
   }
 
   // ───────────────────────── publicar y revertir ─────────────────────────
@@ -785,7 +784,7 @@ export class Worker {
     const summary = (req.interpretation as Interpretation | null)?.summary ?? req.raw_text;
     const undo = [[{ text: B.volver, data: `undo:${req.short_id}` }]];
     await this.sayTo(req.contact_id, req.id, { text: actor === 'agencia' ? copy.aprobadoAgencia(ctx.agencyName) : copy.publicado(), buttons: undo });
-    if (actor === 'agencia' && via === 'telegram') await this.notifyAgency(ctx, req.id, { text: extra.agenciaPublicado(req.short_id) });
+    if (actor === 'agencia' && via === 'telegram') await this.notifyAgency(ctx, req.id, { text: copy.agenciaPublicado(req.short_id) });
 
     await this.commit(req, ctx.project, versionId, `dale: ${summary} (#${req.short_id})`);
   }
@@ -838,8 +837,8 @@ export class Worker {
     const r = revertChanges(live.content, changes);
     if ('conflict' in r) {
       await this.event(req, 'revertido', 'falla', Math.round(performance.now() - t0), { conflicto: r.conflict });
-      await this.sayTo(req.contact_id, req.id, { text: extra.conflictoRevertir(ctx.agencyName) });
-      await this.notifyAgency(ctx, req.id, { text: extra.agenciaConflicto(req.short_id, r.conflict.join(', ')), buttons: this.panelRow() });
+      await this.sayTo(req.contact_id, req.id, { text: copy.conflictoRevertir(ctx.agencyName) });
+      await this.notifyAgency(ctx, req.id, { text: copy.agenciaConflicto(req.short_id, r.conflict.join(', ')), buttons: this.panelRow() });
       return;
     }
     // Gate over the reverted content (schema, security): no operations, only validation.
@@ -881,7 +880,7 @@ export class Worker {
       if (res.previewUrl) links.push({ text: B.verPreview, url: res.previewUrl });
       links.push({ text: B.verPr, url: res.prUrl });
       await this.notifyAgency(ctx, req.id, {
-        text: extra.agenciaAgenteListo(req.short_id, it?.summary ?? req.raw_text),
+        text: copy.agenciaAgenteListo(req.short_id, it?.summary ?? req.raw_text),
         buttons: [links, [{ text: B.publicar, data: `pub:${req.short_id}` }, { text: B.descartar, data: `gno:${req.short_id}` }]],
       });
     } catch (err) {
