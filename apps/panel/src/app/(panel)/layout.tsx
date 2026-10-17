@@ -32,34 +32,36 @@ export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const badges = { "/aprobaciones": pending };
   const canLogout = authMode() === "password";
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[236px_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-dvh flex-col gap-8 border-r border-white/[0.06] bg-black/30 px-4 py-6 backdrop-blur-xl lg:flex">
-        <Logo className="px-2" />
-        <Nav variant="side" badges={badges} />
-        <div className="mt-auto flex flex-col gap-3 px-2">
-          {mode === "ejemplo" && <SampleBadge className="self-start" />}
-          <div className="text-xs text-muted-foreground">
-            Agencia
-            <div className="mt-0.5 text-sm font-medium text-foreground">{env.agencyName}</div>
+    <div className="min-h-dvh lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
+      <div className="hidden border-r border-line bg-sidebar lg:block">
+        <aside className="sticky top-0 flex h-dvh flex-col gap-7 px-3 py-5">
+          <Logo className="px-2" />
+          <Nav variant="side" badges={badges} />
+          <div className="mt-auto flex flex-col gap-3 border-t border-line px-2 pt-4">
+            {mode === "ejemplo" && <SampleBadge className="self-start" />}
+            <div className="text-[11px] text-muted-foreground">
+              Agencia
+              <div className="mt-0.5 truncate text-sm font-medium text-foreground">{env.agencyName}</div>
+            </div>
+            {canLogout && (
+              <form action={logout}>
+                <button className="flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
+                  <LogOut className="size-3.5" /> Salir
+                </button>
+              </form>
+            )}
           </div>
-          {canLogout && (
-            <form action={logout}>
-              <button className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
-                <LogOut className="size-3.5" /> Salir
-              </button>
-            </form>
-          )}
-        </div>
-      </aside>
+        </aside>
+      </div>
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex flex-col gap-3 border-b border-white/[0.06] bg-[#05060A]/80 px-4 pt-4 pb-3 backdrop-blur-xl lg:hidden">
+        <header className="sticky top-0 z-30 flex flex-col gap-3 border-b border-line bg-background px-4 pt-3 pb-2 lg:hidden">
           <div className="flex items-center justify-between">
             <Logo />
             {mode === "ejemplo" && <SampleBadge />}
           </div>
           <Nav variant="top" badges={badges} />
         </header>
-        <main className="mx-auto w-full max-w-[1680px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto w-full max-w-[1680px] px-4 py-6 sm:px-6 lg:px-8 lg:py-7">{children}</main>
       </div>
     </div>
   );

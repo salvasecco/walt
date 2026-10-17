@@ -17,8 +17,8 @@ export function CountUp({ value, format = (n) => String(Math.round(n)) }: { valu
       return;
     }
     const controls = animate(prev.current, value, {
-      duration: 1.1,
-      ease: [0.16, 1, 0.3, 1],
+      duration: 0.5,
+      ease: "easeOut",
       onUpdate: (v) => {
         el.textContent = format(v);
       },

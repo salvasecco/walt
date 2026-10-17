@@ -20,7 +20,7 @@ export function PreviewFrame({
 }) {
   return (
     <div className={className}>
-      <div className="relative mx-auto h-full w-full overflow-hidden rounded-[1.6rem] border border-white/10 bg-white">
+      <div className="relative mx-auto h-full w-full overflow-hidden rounded-lg border border-line bg-white">
         {screenshot ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={screenshot} alt="Captura de la vista previa" className="size-full object-cover object-top" />
@@ -29,7 +29,7 @@ export function PreviewFrame({
         ) : liveVersion?.content ? (
           <SiteMock content={applyChangesPreview(liveVersion.content, request.changes)} highlight={request.changes?.map((c) => c.pointer)} />
         ) : (
-          <div className="grid size-full place-items-center bg-[#0A0D15] p-4 text-center text-sm text-muted-foreground">Sin vista previa</div>
+          <div className="grid size-full place-items-center bg-surface-2 p-4 text-center text-sm text-muted-foreground">Sin vista previa</div>
         )}
       </div>
     </div>

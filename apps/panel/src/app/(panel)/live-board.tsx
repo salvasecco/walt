@@ -1,17 +1,19 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Brain, Clock3, DollarSign, ExternalLink, Gauge, Inbox, Pin, PinOff, Radio, RefreshCw, Sparkles } from "lucide-react";
+import { ExternalLink, Pin, PinOff, Radio, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CountUp } from "@/components/count-up";
+import { StatTile } from "@/components/stat-tile";
+import { Button } from "@/components/ui/button";
 import { Journey } from "@/components/journey";
 import { ChangesDiff, GateReasons, OpsList, Phone } from "@/components/request-parts";
 import { SiteMock } from "@/components/site-mock";
-import { CategoryChip, Chip, EmptyState, Glass, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
+import { CategoryChip, Chip, EmptyState, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
 import type { LiveSnapshot } from "@/lib/data";
 import { buildJourney, timeToPublish } from "@/lib/journey";
-import { CATEGORY_TONE, OPEN_STATUSES, TZ, clock, ms, relative, toneText } from "@/lib/labels";
+import { OPEN_STATUSES, TZ, clock, ms, relative, usd } from "@/lib/labels";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { SEED_PROJECT_ID, type ContentVersion, type DaleEvent, type DaleRequest, type Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -118,12 +120,29 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
     const decided = todays.filter((r) => r.category);
     const solo = decided.filter((r) => r.category === "permitido" || r.category === "consulta" || r.category === "charla");
     const times = todays.map((r) => timeToPublish(r, events)).filter((x): x is number => x != null);
+    const cost = todays.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
+    // Tendencias reales: pedidos y costo por hora en las últimas 24 h (el snapshot trae 36 h).
+    const hourly = Array.from({ length: 24 }, () => ({ n: 0, cost: 0 }));
+    for (const r of requests) {
+      const h = Math.floor((now - new Date(r.created_at).getTime()) / 3_600_000);
+      if (h < 0 || h > 23) continue;
+      hourly[23 - h].n += 1;
+      hourly[23 - h].cost += Number(r.cost_usd ?? 0);
+    }
     return {
       count: todays.length,
+      open: todays.filter((r) => OPEN_STATUSES.includes(r.status)).length,
+      decided: decided.length,
+      solo: solo.length,
       autoPct: decided.length ? (solo.length / decided.length) * 100 : 0,
       avgPublish: times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0,
-      cost: todays.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0),
+      published: times.length,
+      publishTrend: times,
+      cost,
+      costPer: todays.length ? cost / todays.length : 0,
       hasPublish: times.length > 0,
+      countTrend: hourly.map((x) => x.n),
+      costTrend: hourly.map((x) => x.cost),
     };
   }, [requests, events, now]);
 
@@ -145,38 +164,56 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
     <div className="flex flex-col gap-5">
       {/* Encabezado */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">En vivo</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">En vivo</h1>
           <ConnBadge conn={conn} />
           {sample && <SampleBadge />}
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           {pinned ? (
-            <button onClick={() => setPinned(null)} className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 hover:text-foreground">
-              <PinOff className="size-4" /> Seguir el último pedido
-            </button>
+            <Button variant="outline" size="lg" onClick={() => setPinned(null)}>
+              <PinOff /> Seguir el último pedido
+            </Button>
           ) : (
             <span className="flex items-center gap-1.5">
-              <Radio className="size-4 text-cyan-neon" /> Siguiendo el último pedido
+              <Radio className="size-4 text-faint" /> Siguiendo el último pedido
             </span>
           )}
         </div>
       </div>
 
       {/* Indicadores */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Kpi icon={<Inbox className="size-4" />} label="Pedidos hoy" tone="cyan">
-          <CountUp value={kpis.count} format={fmtInt} />
-        </Kpi>
-        <Kpi icon={<Gauge className="size-4" />} label="Resuelto sin la agencia" tone="emerald">
-          <CountUp value={kpis.autoPct} format={fmtPct} />
-        </Kpi>
-        <Kpi icon={<Clock3 className="size-4" />} label="Tiempo medio a publicado" tone="violet">
-          {kpis.hasPublish ? <CountUp value={kpis.avgPublish} format={fmtSec} /> : "—"}
-        </Kpi>
-        <Kpi icon={<DollarSign className="size-4" />} label="Costo de IA hoy (USD)" tone="amber">
-          <CountUp value={kpis.cost} format={fmtUsd} />
-        </Kpi>
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
+        <StatTile
+          label="Pedidos hoy"
+          help="Pedidos que llegaron hoy (hora de Montevideo)."
+          value={<CountUp value={kpis.count} format={fmtInt} />}
+          context={kpis.open ? `${kpis.open} ${kpis.open === 1 ? "abierto" : "abiertos"} ahora` : "Ninguno abierto ahora"}
+          trend={kpis.countTrend}
+          trendLabel="Pedidos por hora, últimas 24 h"
+        />
+        <StatTile
+          label="Resuelto sin la agencia"
+          help="Pedidos de hoy con categoría permitido, consulta o charla, sobre los que ya tienen categoría."
+          value={<CountUp value={kpis.autoPct} format={fmtPct} />}
+          context={kpis.decided ? `${kpis.solo} de ${kpis.decided} decididos hoy` : "Sin pedidos decididos hoy"}
+        />
+        <StatTile
+          label="Tiempo medio a publicado"
+          help="Desde que llega el pedido hasta el evento publicado."
+          value={kpis.hasPublish ? <CountUp value={kpis.avgPublish} format={fmtSec} /> : "—"}
+          context={kpis.published ? `${kpis.published} ${kpis.published === 1 ? "publicado" : "publicados"} hoy` : "Nada publicado hoy"}
+          trend={kpis.publishTrend}
+          trendLabel="Tiempo a publicado de cada pedido de hoy"
+        />
+        <StatTile
+          label="Costo de IA hoy (USD)"
+          help="Suma de cost_usd de los pedidos de hoy, en USD."
+          value={<CountUp value={kpis.cost} format={fmtUsd} />}
+          context={kpis.count ? `≈ ${usd(kpis.costPer, 3)} por pedido` : "Sin pedidos hoy"}
+          trend={kpis.costTrend}
+          trendLabel="Costo por hora, últimas 24 h"
+        />
       </div>
 
       {!active ? (
@@ -186,29 +223,29 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
       ) : (
         <>
           {/* Pedido activo + recorrido */}
-          <Glass hi className="p-5 sm:p-6">
-            <AnimatePresence mode="wait">
-              <motion.div key={active.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }}>
+          <Surface className="p-5 sm:p-6">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={active.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18, ease: "easeOut" }}>
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Mono className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-sm text-cyan-neon">#{active.short_id}</Mono>
+                      <IdTag id={active.short_id} />
                       <CategoryChip category={active.category} />
                       <StatusChip status={active.status} />
-                      {active.lane === "codigo" && <Chip tone="violet">Carril de código</Chip>}
-                      <span className="text-sm text-muted-foreground">
+                      {active.lane === "codigo" && <Chip tone="code">Carril de código</Chip>}
+                      <span className="text-xs text-muted-foreground sm:text-sm">
                         {project?.client_name ?? "Cliente"} · {relative(active.created_at, now)}
                       </span>
                     </div>
-                    <p className="mt-3 text-xl leading-snug font-medium text-balance sm:text-2xl lg:text-[28px]">“{active.raw_text}”</p>
+                    <p className="mt-3 text-xl leading-snug font-medium text-balance sm:text-2xl">“{active.raw_text}”</p>
                     {active.interpretation?.summary && (
-                      <p className="mt-2 flex items-center gap-2 text-base text-violet-neon sm:text-lg">
-                        <Sparkles className="size-4 shrink-0" />
+                      <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">
+                        <span className="mr-2 text-[11px] font-medium tracking-[0.08em] text-faint uppercase">IA</span>
                         {active.interpretation.summary}
                       </p>
                     )}
                   </div>
-                  <Link href={`/historial/${active.short_id}`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+                  <Link href={`/historial/${active.short_id}`} className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
                     Ver detalle <ExternalLink className="size-3.5" />
                   </Link>
                 </div>
@@ -217,7 +254,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
                 </div>
               </motion.div>
             </AnimatePresence>
-          </Glass>
+          </Surface>
 
           {/* Conversación · decisión · sitio */}
           <div className="grid gap-4 lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_360px] 2xl:grid-cols-[340px_minmax(0,1fr)_420px]">
@@ -225,14 +262,14 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
               <Phone messages={conversation} assistantName={`Asistente de ${initial.agencyName}`} big />
             </div>
 
-            <Glass className="flex flex-col gap-5 p-5">
+            <Surface className="flex flex-col gap-5 p-5">
               <section>
-                <PanelTitle icon={<Brain className="size-3.5 text-violet-neon" />}>Lo que va a hacer</PanelTitle>
+                <PanelTitle>Lo que va a hacer</PanelTitle>
                 <div className="mt-3">
                   {(active.ops ?? active.interpretation?.ops ?? []).length ? (
                     <OpsList request={active} content={live?.content} big />
                   ) : (
-                    <p className="text-base text-muted-foreground">
+                    <p className="text-sm text-muted-foreground sm:text-base">
                       {active.category === "consulta"
                         ? "Contesta con lo que dice la web."
                         : active.category === "fuera_de_alcance"
@@ -258,11 +295,11 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
                 <PanelTitle
                   right={
                     active.confidence != null && (
-                      <Mono className="text-xs text-muted-foreground">confianza {(Number(active.confidence) * 100).toFixed(0)}%</Mono>
+                      <span className="text-xs text-muted-foreground tnum">Confianza {(Number(active.confidence) * 100).toFixed(0)}%</span>
                     )
                   }
                 >
-                  Por qué es <span className={cn("ml-1", active.category ? toneText[CATEGORY_TONE[active.category]] : "")}>{active.category?.replaceAll("_", " ") ?? "…"}</span>
+                  Por qué es <CategoryChip category={active.category} className="normal-case tracking-normal" />
                 </PanelTitle>
                 <div className="mt-3">
                   <GateReasons request={active} />
@@ -271,24 +308,24 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
                   )}
                 </div>
               </section>
-              <div className="mt-auto flex flex-wrap gap-x-6 gap-y-1 border-t border-white/[0.06] pt-3 font-mono text-xs text-muted-foreground tnum">
+              <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 border-t border-line pt-3 font-mono text-[11px] text-faint tnum">
                 <span>reglas v{active.rules_version ?? "—"}</span>
                 <span>costo ${Number(active.cost_usd ?? 0).toFixed(4)}</span>
                 <span>llegó {clock(active.created_at, true)}</span>
-                {activePublish != null && <span className="text-emerald-neon">publicado en {ms(activePublish)}</span>}
+                {activePublish != null && <span className="text-ok">publicado en {ms(activePublish)}</span>}
               </div>
-            </Glass>
+            </Surface>
 
-            <Glass className="flex h-[560px] flex-col overflow-hidden lg:col-span-2 xl:col-span-1">
-              <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-2.5">
+            <Surface className="flex h-[560px] flex-col overflow-hidden lg:col-span-2 xl:col-span-1">
+              <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
                 <span className="label-xs">{waitingDraft ? "Vista previa del borrador" : "El sitio, en vivo"}</span>
                 <div className="flex items-center gap-2">
                   {iframeSrc && (
                     <>
-                      <button onClick={() => setSiteNonce((n) => n + 1)} className="text-muted-foreground hover:text-foreground" aria-label="Recargar el sitio">
+                      <button onClick={() => setSiteNonce((n) => n + 1)} className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Recargar el sitio">
                         <RefreshCw className="size-3.5" />
                       </button>
-                      <a href={iframeSrc} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" aria-label="Abrir el sitio">
+                      <a href={iframeSrc} target="_blank" rel="noreferrer" className="text-muted-foreground transition-colors hover:text-foreground" aria-label="Abrir el sitio">
                         <ExternalLink className="size-3.5" />
                       </a>
                     </>
@@ -301,69 +338,59 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
                 ) : live?.content ? (
                   <SiteMock content={live.content} highlight={active.changes?.map((c) => c.pointer)} />
                 ) : (
-                  <div className="grid h-full place-items-center bg-[#0A0D15] p-6 text-center text-sm text-muted-foreground">Sin URL del sitio: configurala en Proyectos o en DEMO_SITE_URL.</div>
+                  <div className="grid h-full place-items-center bg-surface-2 p-6 text-center text-sm text-muted-foreground">Sin URL del sitio: configurala en Proyectos o en DEMO_SITE_URL.</div>
                 )}
               </div>
-            </Glass>
+            </Surface>
           </div>
 
           {/* Últimos pedidos */}
-          <Glass className="p-4">
+          <Surface className="p-4">
             <PanelTitle>Últimos pedidos</PanelTitle>
             <div className="scrollbar-thin mt-3 flex gap-2 overflow-x-auto pb-1">
               {ordered.slice(0, 14).map((r) => (
-                <button
+                <motion.button
+                  layout
+                  transition={{ duration: 0.2, ease: "easeOut" }}
                   key={r.id}
                   onClick={() => setPinned(r.id === pinned ? null : r.id)}
+                  aria-pressed={r.id === pinned}
                   className={cn(
-                    "flex w-64 shrink-0 flex-col gap-1.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
-                    r.id === active.id ? "border-cyan-neon/50 bg-cyan-neon/[0.07]" : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]",
+                    "flex w-60 shrink-0 flex-col gap-1.5 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                    r.id === active.id ? "border-line-strong bg-white/[0.06]" : "border-line bg-surface-2 hover:bg-white/[0.04]",
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <Mono className="text-xs text-muted-foreground">#{r.short_id}</Mono>
+                    <Mono className="text-[11px] text-muted-foreground">#{r.short_id}</Mono>
                     <span className="flex items-center gap-1.5">
-                      {r.id === pinned && <Pin className="size-3 text-cyan-neon" />}
-                      {OPEN_STATUSES.includes(r.status) && <span className="size-1.5 animate-pulse rounded-full bg-cyan-neon" />}
-                      <CategoryChip category={r.category} className="px-2 py-0 text-[10px]" />
+                      {r.id === pinned && <Pin className="size-3 text-muted-foreground" />}
+                      {OPEN_STATUSES.includes(r.status) && <span className="size-1.5 animate-pulse rounded-full bg-info" title="Abierto" />}
+                      <CategoryChip category={r.category} />
                     </span>
                   </div>
                   <span className="line-clamp-2 text-sm">{r.raw_text}</span>
-                </button>
+                </motion.button>
               ))}
             </div>
-          </Glass>
+          </Surface>
         </>
       )}
     </div>
   );
 }
 
-function Kpi({ icon, label, tone, children }: { icon: React.ReactNode; label: string; tone: "cyan" | "emerald" | "violet" | "amber"; children: React.ReactNode }) {
-  return (
-    <Glass className="relative overflow-hidden p-4 sm:p-5">
-      <div className={cn("absolute -top-10 -right-10 size-28 rounded-full opacity-25 blur-2xl", { cyan: "bg-cyan-neon", emerald: "bg-emerald-neon", violet: "bg-violet-neon", amber: "bg-amber-neon" }[tone])} />
-      <div className={cn("flex items-center gap-2 text-xs font-medium tracking-wide uppercase sm:text-[13px]", toneText[tone])}>
-        {icon}
-        {label}
-      </div>
-      <div className="mt-2 font-mono text-3xl font-semibold tracking-tight tnum sm:text-4xl xl:text-5xl">{children}</div>
-    </Glass>
-  );
-}
-
 function ConnBadge({ conn }: { conn: Conn }) {
   const map = {
-    en_vivo: { t: "Realtime conectado", c: "border-emerald-neon/40 text-emerald-neon", dot: "bg-emerald-neon" },
-    conectando: { t: "Conectando…", c: "border-cyan-neon/40 text-cyan-neon", dot: "bg-cyan-neon" },
-    sin_conexion: { t: "Sin realtime", c: "border-rose-neon/40 text-rose-neon", dot: "bg-rose-neon" },
-    ejemplo: { t: "Simulación", c: "border-amber-neon/40 text-amber-neon", dot: "bg-amber-neon" },
+    en_vivo: { t: "Realtime conectado", dot: "bg-ok", ping: true },
+    conectando: { t: "Conectando…", dot: "bg-faint", ping: true },
+    sin_conexion: { t: "Sin realtime", dot: "bg-danger", ping: false },
+    ejemplo: { t: "Simulación", dot: "bg-warn", ping: true },
   }[conn];
   return (
-    <span className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs", map.c)}>
-      <span className="relative flex size-2">
-        <span className={cn("absolute inline-flex size-full animate-ping rounded-full opacity-60", map.dot)} />
-        <span className={cn("relative inline-flex size-2 rounded-full", map.dot)} />
+    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground" role="status">
+      <span className="relative flex size-1.5">
+        {map.ping && <span className={cn("absolute inline-flex size-full animate-ping rounded-full opacity-50 [animation-duration:2s]", map.dot)} />}
+        <span className={cn("relative inline-flex size-1.5 rounded-full", map.dot)} />
       </span>
       {map.t}
     </span>

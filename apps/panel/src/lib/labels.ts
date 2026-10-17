@@ -2,33 +2,35 @@ import type { Category, Change, Op, OpType, Policy, RequestStatus, SiteContent }
 
 export const TZ = "America/Montevideo";
 
-export type Tone = "cyan" | "violet" | "amber" | "emerald" | "rose" | "muted";
+export type Tone = "info" | "code" | "warn" | "ok" | "danger" | "muted";
 
 export const toneText: Record<Tone, string> = {
-  cyan: "text-cyan-neon",
-  violet: "text-violet-neon",
-  amber: "text-amber-neon",
-  emerald: "text-emerald-neon",
-  rose: "text-rose-neon",
+  info: "text-info",
+  code: "text-code",
+  warn: "text-warn",
+  ok: "text-ok",
+  danger: "text-danger",
   muted: "text-muted-foreground",
 };
 
+/** Badge sobrio: texto del tono, fondo muy oscuro del mismo tono y borde fino. */
 export const toneChip: Record<Tone, string> = {
-  cyan: "border-cyan-neon/40 bg-cyan-neon/10 text-cyan-neon",
-  violet: "border-violet-neon/40 bg-violet-neon/10 text-violet-neon",
-  amber: "border-amber-neon/40 bg-amber-neon/10 text-amber-neon",
-  emerald: "border-emerald-neon/40 bg-emerald-neon/10 text-emerald-neon",
-  rose: "border-rose-neon/40 bg-rose-neon/10 text-rose-neon",
-  muted: "border-white/10 bg-white/5 text-muted-foreground",
+  info: "border-info/25 bg-info/10 text-info",
+  code: "border-code/25 bg-code/10 text-code",
+  warn: "border-warn/25 bg-warn/10 text-warn",
+  ok: "border-ok/25 bg-ok/10 text-ok",
+  danger: "border-danger/25 bg-danger/10 text-danger",
+  muted: "border-line bg-surface-2 text-muted-foreground",
 };
 
-export const toneHex: Record<Tone, string> = {
-  cyan: "#22D3EE",
-  violet: "#A78BFA",
-  amber: "#FBBF24",
-  emerald: "#34D399",
-  rose: "#FB7185",
-  muted: "#8B93A7",
+/** Punto de color para estados en neutro. */
+export const toneDot: Record<Tone, string> = {
+  info: "bg-info",
+  code: "bg-code",
+  warn: "bg-warn",
+  ok: "bg-ok",
+  danger: "bg-danger",
+  muted: "bg-faint",
 };
 
 export const CATEGORY_LABEL: Record<Category, string> = {
@@ -42,13 +44,13 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 };
 
 export const CATEGORY_TONE: Record<Category, Tone> = {
-  permitido: "emerald",
-  riesgoso: "amber",
-  fuera_de_alcance: "violet",
-  consulta: "cyan",
-  bloqueado: "rose",
+  permitido: "ok",
+  riesgoso: "warn",
+  fuera_de_alcance: "code",
+  consulta: "info",
+  bloqueado: "danger",
   charla: "muted",
-  derivado: "rose",
+  derivado: "danger",
 };
 
 export const STATUS_LABEL: Record<RequestStatus, string> = {
@@ -72,21 +74,21 @@ export const STATUS_LABEL: Record<RequestStatus, string> = {
 };
 
 export const STATUS_TONE: Record<RequestStatus, Tone> = {
-  recibido: "cyan",
-  interpretando: "violet",
-  respondido: "emerald",
-  cotizando: "violet",
-  cotizado: "violet",
-  esperando_cliente: "amber",
-  esperando_agencia: "amber",
-  agente_trabajando: "violet",
-  agente_listo: "amber",
-  publicando: "cyan",
-  publicado: "emerald",
+  recibido: "info",
+  interpretando: "code",
+  respondido: "ok",
+  cotizando: "code",
+  cotizado: "code",
+  esperando_cliente: "warn",
+  esperando_agencia: "warn",
+  agente_trabajando: "code",
+  agente_listo: "warn",
+  publicando: "info",
+  publicado: "ok",
   revertido: "muted",
   rechazado: "muted",
-  bloqueado: "rose",
-  derivado: "rose",
+  bloqueado: "danger",
+  derivado: "danger",
   descartado: "muted",
   charla: "muted",
 };
@@ -144,9 +146,9 @@ export const POLICY_LABEL: Record<Policy, string> = {
 };
 
 export const POLICY_TONE: Record<Policy, Tone> = {
-  auto: "emerald",
-  agencia: "amber",
-  bloqueado: "rose",
+  auto: "ok",
+  agencia: "warn",
+  bloqueado: "danger",
 };
 
 const DAY_LABEL: Record<string, string> = {

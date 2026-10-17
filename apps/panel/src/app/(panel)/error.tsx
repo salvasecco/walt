@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui-dale";
 
 export default function PanelError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
@@ -7,9 +8,9 @@ export default function PanelError({ error, reset }: { error: Error & { digest?:
     <ErrorState
       title="No pudimos cargar esta pantalla"
       action={
-        <button onClick={reset} className="rounded-lg border border-white/15 px-4 py-2 text-sm hover:bg-white/5">
+        <Button variant="outline" size="lg" onClick={reset}>
           Reintentar
-        </button>
+        </Button>
       }
     >
       {error.message || "Error inesperado."} {error.digest && <span className="font-mono text-xs">({error.digest})</span>}
