@@ -47,8 +47,9 @@ export type RedeemResult =
   | { ok: false; reason: 'no_existe' | 'vencida' | 'sin_usos' };
 
 /**
- * Everything the worker reads and writes (SPEC §5). Two implementations: Postgres
- * (Supabase, via SUPABASE_DB_URL) and in memory (console, tests, no credentials).
+ * Everything the worker reads and writes (SPEC §5). Implementations: Supabase over HTTPS
+ * (supabase-js, service role), in memory (console, tests, no credentials) and PgStore
+ * (plain SQL, exercised in tests with PGlite against the real migration).
  */
 export interface Store {
   readonly kind: 'postgres' | 'memoria';

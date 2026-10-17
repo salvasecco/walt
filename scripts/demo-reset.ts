@@ -7,35 +7,39 @@
  */
 import { DEFAULT_RULES, loadEnv, redact, SEED_IDS, type DaleEnv } from '@dale/core';
 import { bakeryContent } from '@dale/core/fixtures';
-import { connect, runMain } from './lib/db.js';
+import { connect, must, runMain } from './lib/db.js';
 
 runMain('demo:reset', async () => {
   const env = loadEnv();
   const i = process.argv.indexOf('--project');
   const project = i > 0 && process.argv[i + 1] ? process.argv[i + 1]! : SEED_IDS.project;
-  const sql = connect(env);
-  try {
-    await sql.begin(async (tx) => {
-      await tx`delete from commands where request_id in (select id from requests where project_id = ${project})`;
-      await tx`delete from messages where request_id in (select id from requests where project_id = ${project})
-                 or contact_id in (select id from contacts where project_id = ${project})`;
-      await tx`update requests set draft_version_id = null, live_version_id = null, quote_id = null where project_id = ${project}`;
-      await tx`delete from requests where project_id = ${project}`;
-      await tx`delete from content_versions where project_id = ${project}`;
-      await tx`delete from rules where project_id = ${project}`;
-      await tx`
-        insert into rules (project_id, version, policies, limits, created_by)
-        values (${project}, 1, ${tx.json(DEFAULT_RULES.policies)}, ${tx.json(DEFAULT_RULES.limits)}, 'demo:reset')`;
-      await tx`
-        insert into content_versions (project_id, status, content, published_at)
-        values (${project}, 'viva', ${tx.json(bakeryContent() as never)}, now())`;
-    });
-    console.log(`✅ Proyecto ${project} reiniciado: contenido del fixture, reglas v1, sin pedidos.`);
-    if (process.argv.includes('--keep-repo')) console.log('   El repo del sitio no se tocó (--keep-repo).');
-    else console.log(`   ${await resetRepo(env)}`);
-  } finally {
-    await sql.end();
+  const db = connect(env);
+
+  // No transactions over REST: deletes go child-first; events, approvals, quotes and commands cascade with requests.
+  const requestIds = must(await db.from('requests').select('id').eq('project_id', project), 'requests')?.map((r) => r.id as string) ?? [];
+  const contactIds = must(await db.from('contacts').select('id').eq('project_id', project), 'contacts')?.map((r) => r.id as string) ?? [];
+  for (let k = 0; k < requestIds.length; k += 100) {
+    must(await db.from('messages').delete().in('request_id', requestIds.slice(k, k + 100)), 'messages');
   }
+  if (contactIds.length) must(await db.from('messages').delete().in('contact_id', contactIds), 'messages');
+  must(await db.from('requests').update({ draft_version_id: null, live_version_id: null, quote_id: null }).eq('project_id', project), 'requests');
+  must(await db.from('requests').delete().eq('project_id', project), 'requests');
+  must(await db.from('content_versions').delete().eq('project_id', project), 'content_versions');
+  must(await db.from('rules').delete().eq('project_id', project), 'rules');
+  must(
+    await db
+      .from('rules')
+      .insert({ project_id: project, version: 1, policies: DEFAULT_RULES.policies, limits: DEFAULT_RULES.limits, created_by: 'demo:reset' }),
+    'rules',
+  );
+  must(
+    await db.from('content_versions').insert({ project_id: project, status: 'viva', content: bakeryContent(), published_at: new Date().toISOString() }),
+    'content_versions',
+  );
+
+  console.log(`✅ Proyecto ${project} reiniciado: contenido del fixture, reglas v1, sin pedidos.`);
+  if (process.argv.includes('--keep-repo')) console.log('   El repo del sitio no se tocó (--keep-repo).');
+  else console.log(`   ${await resetRepo(env)}`);
 });
 
 /** Commits the fixture as content/site.json in DEMO_REPO when it differs. Returns a one-line status. */

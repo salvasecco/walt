@@ -9,7 +9,7 @@ import { CommandPoller } from './commands.js';
 import { Worker, type AgentLane, type WorkerDeps } from './pipeline.js';
 import { FakeSiteRepo, GitHubSiteRepo, type SiteRepo } from './site/repo.js';
 import { MemoryStore, seedMemory } from './store/memory.js';
-import { PgStore, postgresDb } from './store/pg.js';
+import { SupabaseStore, serviceClient } from './store/supabase.js';
 import type { Store } from './store/types.js';
 
 export const LOCAL_SITE_URL = 'http://localhost:3001';
@@ -42,9 +42,17 @@ export function agentFromEnv(env: DaleEnv): AgentLane {
   };
 }
 
-/** Store from the environment: Postgres with SUPABASE_DB_URL, otherwise in memory with the seed. */
+/**
+ * Store from the environment: Supabase over HTTPS (service role) when SUPABASE_URL and the key are set,
+ * otherwise in memory with the seed. SUPABASE_DB_URL is not used: the network only allows 443.
+ */
 export async function storeFromEnv(env: DaleEnv): Promise<Store> {
-  if (env.SUPABASE_DB_URL) return new PgStore(await postgresDb(env.SUPABASE_DB_URL));
+  if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) return new SupabaseStore(serviceClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY));
+  return memoryStore(env);
+}
+
+/** In-memory store loaded with the same data as the seed. */
+export function memoryStore(env: DaleEnv): Store {
   const mem = new MemoryStore();
   seedMemory(mem, {
     agencyName: env.DEMO_AGENCY_NAME,

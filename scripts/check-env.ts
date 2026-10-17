@@ -5,8 +5,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
-import postgres from 'postgres';
 import { loadEnv, redact, type DaleEnv } from '@dale/core';
+import { connect, schemaStatus } from './lib/db.js';
 
 const run = promisify(execFile);
 
@@ -49,7 +49,7 @@ async function checkSupabaseApi(env: DaleEnv): Promise<Row> {
     Authorization: `Bearer ${key}`,
   });
   if (status === 200) return { name, ok: true, detail: 'responde' };
-  if (status === 404) return { name, ok: false, detail: 'responde, pero falta la tabla projects: corré pnpm db:migrate' };
+  if (status === 404) return { name, ok: false, detail: 'responde, pero falta la tabla projects: aplicá 0001 en el SQL Editor' };
   return { name, ok: false, detail: `HTTP ${status}` };
 }
 
@@ -63,17 +63,13 @@ async function checkSupabaseAnon(env: DaleEnv): Promise<Row> {
   return { name, ok: status === 200, detail: status === 200 ? 'lee projects' : `HTTP ${status}` };
 }
 
-async function checkDb(env: DaleEnv): Promise<Row> {
-  const name = 'Postgres (SUPABASE_DB_URL)';
-  if (!env.SUPABASE_DB_URL) return { name, ok: false, detail: 'falta SUPABASE_DB_URL (solo para migraciones y seed)' };
-  const sql = postgres(env.SUPABASE_DB_URL, { max: 1, connect_timeout: 10, prepare: false, onnotice: () => {} });
-  try {
-    await sql`select 1`;
-    const [m] = await sql<{ n: number }[]>`select count(*)::int as n from information_schema.tables where table_name = '_migrations'`;
-    return { name, ok: true, detail: m?.n ? 'conecta, con migraciones' : 'conecta, sin migraciones todavía' };
-  } finally {
-    await sql.end({ timeout: 2 });
-  }
+async function checkSchema(env: DaleEnv): Promise<Row> {
+  const name = 'Migraciones (vía REST)';
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return { name, ok: false, detail: 'falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY' };
+  const s = await schemaStatus(connect(env), env);
+  if (s.missingTables.length || !s.publishVersion) return { name, ok: false, detail: '0001 sin aplicar: corré pnpm db:migrate para ver qué pegar' };
+  if (s.anonBlocked === false) return { name, ok: false, detail: '0001 aplicada, falta 0002 (pnpm db:migrate --copy 0002)' };
+  return { name, ok: true, detail: '0001 y 0002 aplicadas' };
 }
 
 async function checkGithub(env: DaleEnv): Promise<Row> {
@@ -128,7 +124,7 @@ async function main() {
     ['Telegram', () => checkTelegram(env)],
     ['Supabase', () => checkSupabaseApi(env)],
     ['Supabase anon', () => checkSupabaseAnon(env)],
-    ['Postgres', () => checkDb(env)],
+    ['Migraciones', () => checkSchema(env)],
     ['GitHub', () => checkGithub(env)],
     ['Modelo', () => checkModel(env)],
     ['Vercel', () => checkVercel()],

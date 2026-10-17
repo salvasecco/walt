@@ -1,19 +1,21 @@
 import { loadEnv, SEED_IDS, describeEnv, redact, type Interpretation } from '@dale/core';
-import { buildApp } from './app.js';
+import { buildApp, memoryStore } from './app.js';
 import { ConsoleChannel } from './channel/console.js';
 import { CONSOLE_CHATS, ensureConsoleContacts } from './console-contacts.js';
 
 /**
- * `pnpm dry-run "<pedido>" [--approve] [--undo] [--project <id>]`
+ * `pnpm dry-run "<pedido>" [--approve] [--undo] [--project <id>] [--memoria]`
+ * `--memoria` uses the in-memory store even when Supabase is configured.
  * Runs the real pipeline (SPEC §9) on the console channel and prints every step with its time.
  */
 function parseArgs(argv: string[]) {
-  const out = { text: '', approve: false, undo: false, project: SEED_IDS.project as string };
+  const out = { text: '', approve: false, undo: false, memory: false, project: SEED_IDS.project as string };
   const words: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--approve') out.approve = true;
     else if (a === '--undo') out.undo = out.approve = true;
+    else if (a === '--memoria') out.memory = true;
     else if (a === '--project') out.project = argv[++i] ?? out.project;
     else if (a !== '--') words.push(a);
   }
@@ -24,7 +26,7 @@ function parseArgs(argv: string[]) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.text) {
-    console.error('Uso: pnpm dry-run "<pedido>" [--approve] [--undo] [--project <id>]');
+    console.error('Uso: pnpm dry-run "<pedido>" [--approve] [--undo] [--project <id>] [--memoria]');
     process.exit(1);
   }
   const env = loadEnv({ fallbackToFake: true });
@@ -33,6 +35,7 @@ async function main() {
   const channel = new ConsoleChannel((l) => console.log(`${at()} ${l}`), { [CONSOLE_CHATS.cliente]: 'cliente', [CONSOLE_CHATS.agencia]: 'agencia' });
   const app = await buildApp(env, {
     channel,
+    ...(args.memory ? { store: memoryStore(env) } : {}),
     log: (l) => console.log(`${at()} ${redact(l, env.secrets)}`),
     onEvent: (e) => {
       if (e.status === 'inicio') return;

@@ -172,12 +172,12 @@ importers:
       '@dale/core':
         specifier: workspace:*
         version: link:packages/core
+      '@supabase/supabase-js':
+        specifier: ^2.118.0
+        version: 2.118.0(@opentelemetry/api@1.9.1)
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
-      postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -290,6 +290,9 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
+      '@supabase/supabase-js':
+        specifier: ^2.118.0
+        version: 2.118.0(@opentelemetry/api@1.9.1)
       grammy:
         specifier: ^1.46.0
         version: 1.46.0
