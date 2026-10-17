@@ -212,10 +212,16 @@ export async function getClientDetail(id: string): Promise<ClientDetail | null> 
   const projectIds = base.projects.filter((p) => p.client_id === id).map((p) => p.id);
   const months = lastMonths(now, MONTHS);
   const since = new Date(Date.UTC(Number(months[0]!.slice(0, 4)), Number(months[0]!.slice(5)) - 1, 1) - DAY).toISOString();
-  const requests = projectIds.length ? await requestsSince(projectIds, since) : [];
+  // Pedidos y contactos no dependen entre sí: van en paralelo.
+  const [requests, realContacts] = await Promise.all([
+    projectIds.length ? requestsSince(projectIds, since) : Promise.resolve([] as LightRequest[]),
+    mode() === "supabase" && projectIds.length
+      ? supabaseAdmin().from("contacts").select("id, project_id, display_name, role, created_at").in("project_id", projectIds).then(must<Contact[]>)
+      : Promise.resolve([] as Contact[]),
+  ]);
   const [summary] = await summarize({ ...base, clients: [client] }, requests, attention);
 
-  let contacts: Contact[] = [];
+  let contacts: Contact[] = realContacts;
   let messages: Message[] = [];
   let quotes: Quote[] = [];
   if (mode() === "ejemplo") {
@@ -227,7 +233,6 @@ export async function getClientDetail(id: string): Promise<ClientDetail | null> 
     quotes = s.quotes.filter((q) => q.request_id && reqIds.has(q.request_id));
   } else if (projectIds.length) {
     const db = supabaseAdmin();
-    contacts = await db.from("contacts").select("id, project_id, display_name, role, created_at").in("project_id", projectIds).then(must<Contact[]>);
     const reqIds = requests.map((r) => r.id);
     [messages, quotes] = await Promise.all([
       contacts.length
@@ -258,6 +263,6 @@ export async function getClientDetail(id: string): Promise<ClientDetail | null> 
     usage: usageByMonth(requests, months),
     attention: Object.values(attention.board)
       .flat()
-      .filter((c) => projectIds.includes(c.projectId)),
+      .filter((c) => c.project.client_id === id),
   };
 }
