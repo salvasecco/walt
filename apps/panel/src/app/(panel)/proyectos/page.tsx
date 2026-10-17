@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { FolderGit2, Globe, GitBranch } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
-import { Chip, EmptyState, Glass, Mono, PageHeader, SampleBadge } from "@/components/ui-dale";
+import { Chip, EmptyState, Surface, Mono, PageHeader, SampleBadge } from "@/components/ui-dale";
 import { getProjects, NotConfiguredError } from "@/lib/data";
 import { dataMode, env } from "@/lib/env";
 import { dateTime } from "@/lib/labels";
@@ -31,24 +31,24 @@ export default async function ProyectosPage() {
             </EmptyState>
           )}
           {projects.map((p) => (
-            <Glass key={p.id} className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+            <Surface key={p.id} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:p-5">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold">{p.name}</h2>
-                  <Chip tone={p.mode === "contenido" ? "emerald" : "violet"} dot>
+                  <h2 className="text-base font-semibold">{p.name}</h2>
+                  <Chip tone={p.mode === "contenido" ? "muted" : "code"}>
                     Modo {p.mode === "contenido" ? "contenido" : "código"}
                   </Chip>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
                   <span>Cliente: {p.client_name}</span>
-                  <a href={`https://github.com/${p.repo_owner}/${p.repo_name}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-foreground">
+                  <a href={`https://github.com/${p.repo_owner}/${p.repo_name}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 transition-colors hover:text-foreground">
                     <GitBranch className="size-3.5" />
                     <Mono>
                       {p.repo_owner}/{p.repo_name}@{p.default_branch}
                     </Mono>
                   </a>
                   {siteOf(p) && (
-                    <a href={siteOf(p)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-foreground">
+                    <a href={siteOf(p)} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 transition-colors hover:text-foreground">
                       <Globe className="size-3.5" />
                       {siteOf(p).replace(/^https?:\/\//, "")}
                     </a>
@@ -57,7 +57,7 @@ export default async function ProyectosPage() {
                 </div>
               </div>
               <InviteButton projectId={p.id} projectName={p.name} />
-            </Glass>
+            </Surface>
           ))}
         </div>
         <ConnectRepo hasToken={!!env.githubToken} />

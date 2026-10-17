@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { BarChart3, Lightbulb, Repeat } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
-import { EmptyState, Glass, Mono, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-dale";
+import { StatTile } from "@/components/stat-tile";
+import { EmptyState, Surface, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-dale";
 import { getInsightsData, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
-import { CATEGORY_LABEL, OP_LABEL } from "@/lib/labels";
+import { CATEGORY_LABEL, OP_LABEL, TZ } from "@/lib/labels";
 import { CATEGORIES, OP_TYPES, type DaleRequest, type OpType, type Project } from "@/lib/types";
 import { HBar } from "./charts";
 
@@ -62,7 +63,13 @@ function analyze(requests: DaleRequest[], projects: Project[]) {
     .filter((x): x is string => !!x)
     .slice(0, 5);
   const outOfScope = requests.filter((r) => r.category === "fuera_de_alcance");
-  return { byCat, byOp, autoPct: decided.length ? Math.round((auto / decided.length) * 100) : 0, decided: decided.length, auto, repeated, suggestions, outOfScope };
+  // Pedidos por día, últimos 30 días (día en America/Montevideo).
+  const day = (t: number | string) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(t));
+  const perDay = new Map<string, number>();
+  for (const r of requests) perDay.set(day(r.created_at), (perDay.get(day(r.created_at)) ?? 0) + 1);
+  const now = Date.now();
+  const daily = Array.from({ length: 30 }, (_, i) => perDay.get(day(now - (29 - i) * 86_400_000)) ?? 0);
+  return { byCat, byOp, daily, autoPct: decided.length ? Math.round((auto / decided.length) * 100) : 0, decided: decided.length, auto, repeated, suggestions, outOfScope };
 }
 
 export default async function LoQuePidenPage() {
@@ -83,67 +90,69 @@ export default async function LoQuePidenPage() {
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-3">
-            <Glass className="p-5">
-              <div className="label-xs">Resuelto automático</div>
-              <div className="mt-2 font-mono text-5xl font-semibold text-emerald-neon tnum">{a.autoPct}%</div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {a.auto} de {a.decided} pedidos sin intervención de la agencia
-              </p>
-            </Glass>
-            <Glass className="p-5">
-              <div className="label-xs">Pedidos</div>
-              <div className="mt-2 font-mono text-5xl font-semibold tnum">{requests.length}</div>
-              <p className="mt-1 text-sm text-muted-foreground">en {projects.length} proyectos</p>
-            </Glass>
-            <Glass className="p-5">
-              <div className="label-xs">Funciones nuevas pedidas</div>
-              <div className="mt-2 font-mono text-5xl font-semibold text-violet-neon tnum">{a.outOfScope.length}</div>
-              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{a.outOfScope.map((r) => r.raw_text).join(" · ") || "Ninguna"}</p>
-            </Glass>
+            <StatTile
+              label="Resuelto automático"
+              help="Pedidos con categoría permitido, consulta o charla, sobre los que tienen categoría."
+              value={`${a.autoPct}%`}
+              context={`${a.auto} de ${a.decided} sin intervención de la agencia`}
+            />
+            <StatTile
+              label="Pedidos"
+              value={requests.length}
+              context={`En ${projects.length} ${projects.length === 1 ? "proyecto" : "proyectos"}`}
+              trend={a.daily}
+              trendLabel="Pedidos por día, últimos 30 días"
+            />
+            <StatTile
+              label="Funciones nuevas pedidas"
+              help="Pedidos fuera de alcance: los que terminan en presupuesto."
+              value={a.outOfScope.length}
+              context={a.outOfScope.map((r) => r.raw_text).join(" · ") || "Ninguna"}
+            />
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Glass className="p-5">
+            <Surface className="p-4 sm:p-5">
               <PanelTitle>Pedidos por categoría</PanelTitle>
               <HBar data={a.byCat} unit="pedidos" />
-            </Glass>
-            <Glass className="p-5">
+            </Surface>
+            <Surface className="p-4 sm:p-5">
               <PanelTitle>Pedidos por tipo de cambio</PanelTitle>
               {a.byOp.length ? <HBar data={a.byOp} unit="pedidos" /> : <p className="mt-4 text-sm text-muted-foreground">Sin operaciones todavía.</p>}
-            </Glass>
+            </Surface>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
-            <Glass className="p-5">
-              <PanelTitle icon={<Lightbulb className="size-3.5 text-amber-neon" />}>Sugerencias</PanelTitle>
+            <Surface className="p-4 sm:p-5">
+              <PanelTitle icon={<Lightbulb />}>Sugerencias</PanelTitle>
               <ul className="mt-3 flex flex-col gap-2">
                 {a.suggestions.length === 0 && <li className="text-sm text-muted-foreground">Todavía no hay patrones claros. Aparecen cuando un cliente repite un tipo de cambio 3 veces o más.</li>}
                 {a.suggestions.map((s) => (
-                  <li key={s} className="rounded-xl border border-amber-neon/25 bg-amber-neon/5 px-4 py-3 text-base">
+                  <li key={s} className="rounded-lg border border-line bg-surface-2 px-4 py-3 text-sm">
                     {s}
                   </li>
                 ))}
               </ul>
-            </Glass>
-            <Glass className="p-5">
-              <PanelTitle icon={<Repeat className="size-3.5 text-cyan-neon" />}>Pedidos repetidos</PanelTitle>
+            </Surface>
+            <Surface className="p-4 sm:p-5">
+              <PanelTitle icon={<Repeat />}>Pedidos repetidos</PanelTitle>
               <ul className="mt-3 flex flex-col gap-2">
                 {a.repeated.length === 0 && <li className="text-sm text-muted-foreground">Ningún pedido se repitió igual.</li>}
                 {a.repeated.map((g) => (
-                  <li key={g[0].id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.06] px-4 py-2.5 text-sm">
+                  <li key={g[0].id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 px-4 py-2.5 text-sm">
                     <span className="truncate">“{g[0].raw_text}”</span>
-                    <Mono className="shrink-0 text-cyan-neon">×{g.length}</Mono>
+                    <span className="shrink-0 text-muted-foreground tnum">×{g.length}</span>
                   </li>
                 ))}
               </ul>
-            </Glass>
+            </Surface>
           </div>
-          <details className="glass rounded-2xl p-5 text-sm">
+          <details className="rounded-xl border border-line bg-surface p-5 text-sm">
             <summary className="label-xs cursor-pointer">Ver como tabla</summary>
             <table className="mt-3 w-full text-left">
               <tbody>
                 {[...a.byCat, ...a.byOp].map((r) => (
-                  <tr key={r.name} className="border-b border-white/[0.04]">
+                  <tr key={r.name} className="border-b border-line last:border-0">
                     <td className="py-1.5">{r.name}</td>
-                    <td className="py-1.5 text-right font-mono tnum">{r.value}</td>
+                    <td className="py-1.5 text-right tnum">{r.value}</td>
                   </tr>
                 ))}
               </tbody>

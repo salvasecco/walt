@@ -13,7 +13,7 @@ import { SiteMock } from "@/components/site-mock";
 import { CategoryChip, Chip, EmptyState, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
 import type { LiveSnapshot } from "@/lib/data";
 import { buildJourney, timeToPublish } from "@/lib/journey";
-import { OPEN_STATUSES, TZ, clock, ms, relative, usd } from "@/lib/labels";
+import { OPEN_STATUSES, TZ, clock, ms, relative } from "@/lib/labels";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 import { SEED_PROJECT_ID, type ContentVersion, type DaleEvent, type DaleRequest, type Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -183,7 +183,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
       </div>
 
       {/* Indicadores */}
-      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatTile
           label="Pedidos hoy"
           help="Pedidos que llegaron hoy (hora de Montevideo)."
@@ -210,7 +210,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
           label="Costo de IA hoy (USD)"
           help="Suma de cost_usd de los pedidos de hoy, en USD."
           value={<CountUp value={kpis.cost} format={fmtUsd} />}
-          context={kpis.count ? `≈ ${usd(kpis.costPer, 3)} por pedido` : "Sin pedidos hoy"}
+          context={kpis.count ? `≈ $${kpis.costPer.toFixed(3)} por pedido` : "Sin pedidos hoy"}
           trend={kpis.costTrend}
           trendLabel="Costo por hora, últimas 24 h"
         />

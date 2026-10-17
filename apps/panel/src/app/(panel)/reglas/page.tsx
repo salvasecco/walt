@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
-import { EmptyState, Glass, Mono, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-dale";
+import { Chip, EmptyState, Surface, Mono, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-dale";
 import { getProjects, getRules, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { DEFAULT_RULES } from "@/lib/sample";
@@ -38,14 +38,16 @@ export default async function ReglasPage({ searchParams }: PageProps<"/reglas">)
         right={dataMode() === "ejemplo" && <SampleBadge />}
       />
       {projects.length > 1 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1 self-start rounded-lg border border-line bg-surface p-1" role="tablist" aria-label="Proyecto">
           {projects.map((p) => (
             <Link
               key={p.id}
               href={`/reglas?proyecto=${p.id}`}
+              role="tab"
+              aria-selected={p.id === project.id}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm",
-                p.id === project.id ? "border-cyan-neon/50 bg-cyan-neon/10 text-cyan-neon" : "border-white/10 text-muted-foreground hover:text-foreground",
+                "rounded-md px-3 py-1 text-sm transition-colors",
+                p.id === project.id ? "bg-white/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {p.name}
@@ -61,14 +63,14 @@ export default async function ReglasPage({ searchParams }: PageProps<"/reglas">)
           version={current?.version ?? 0}
           since={current?.created_at ?? null}
         />
-        <Glass className="self-start p-5">
+        <Surface className="self-start p-5">
           <PanelTitle>Versiones</PanelTitle>
           <ol className="mt-3 flex flex-col">
             {versions.length === 0 && <li className="text-sm text-muted-foreground">Sin versiones: se usan las reglas por defecto.</li>}
             {versions.map((v, i) => (
-              <li key={v.id} className="flex items-center justify-between border-b border-white/[0.04] py-2 text-sm last:border-0">
-                <span className={cn(i === 0 && "text-cyan-neon")}>
-                  versión {v.version} {i === 0 && "· vigente"}
+              <li key={v.id} className="flex flex-col gap-1 border-b border-line py-2.5 text-sm last:border-0">
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  versión {v.version} {i === 0 && <Chip tone="ok">vigente</Chip>}
                 </span>
                 <Mono className="text-xs text-muted-foreground">
                   {dateTime(v.created_at)} · {v.created_by ?? "—"}
@@ -76,7 +78,7 @@ export default async function ReglasPage({ searchParams }: PageProps<"/reglas">)
               </li>
             ))}
           </ol>
-        </Glass>
+        </Surface>
       </div>
     </div>
   );

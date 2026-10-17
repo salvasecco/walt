@@ -42,7 +42,7 @@ export function StatTile({
           </Tooltip>
         )}
       </div>
-      <div className="text-3xl leading-tight font-semibold tracking-tight whitespace-nowrap tnum sm:text-4xl">{value}</div>
+      <div className="text-2xl leading-tight font-semibold tracking-tight whitespace-nowrap tnum sm:text-4xl">{value}</div>
       <div className="flex min-h-9 items-end justify-between gap-3">
         {context && <div className="min-w-0 truncate pb-0.5 text-xs text-muted-foreground sm:text-[13px]">{context}</div>}
         {showTrend && <Sparkline data={trend!} label={trendLabel} />}
@@ -55,7 +55,7 @@ function Sparkline({ data, label }: { data: number[]; label?: string }) {
   const points = data.map((v, i) => ({ i, v }));
   const last = points.length - 1;
   return (
-    <div className="h-9 w-24 shrink-0 sm:w-28" role="img" aria-label={label} title={label}>
+    <div className="hidden h-9 w-20 shrink-0 sm:block" role="img" aria-label={label} title={label}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={points} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
           <YAxis hide domain={[0, "dataMax"]} />

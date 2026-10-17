@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { saveRules } from "@/app/actions";
-import { Glass, PanelTitle } from "@/components/ui-dale";
-import { OP_LABEL, POLICY_LABEL, clock, toneChip, POLICY_TONE } from "@/lib/labels";
+import { Surface, PanelTitle } from "@/components/ui-dale";
+import { Button } from "@/components/ui/button";
+import { OP_LABEL, POLICY_LABEL, clock, toneDot, POLICY_TONE } from "@/lib/labels";
 import { OP_TYPES, type OpType, type Policy, type Rules } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -25,17 +26,19 @@ export function RulesForm({ projectId, initial, version, since }: { projectId: s
   const setLimit = (k: keyof Value["limits"], n: number) => setV((s) => ({ ...s, limits: { ...s.limits, [k]: n } }));
 
   return (
-    <Glass hi className="flex flex-col gap-6 p-5 sm:p-6">
+    <Surface className="flex flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-lg font-semibold">
+          <div className="text-base font-semibold">
             versión {ver.version || "—"}
             {ver.since && <span className="font-normal text-muted-foreground">, vigente desde {clock(ver.since)}</span>}
           </div>
           <p className="text-sm text-muted-foreground">Guardar crea una versión nueva. Las anteriores quedan en el historial.</p>
         </div>
-        <button
+        <Button
           type="button"
+          size="lg"
+          className="px-3.5"
           disabled={!dirty || pending}
           onClick={() =>
             start(async () => {
@@ -47,22 +50,21 @@ export function RulesForm({ projectId, initial, version, since }: { projectId: s
               router.refresh();
             })
           }
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-cyan-neon px-4 text-sm font-medium text-[#031016] disabled:opacity-40"
         >
-          {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Guardar versión nueva
-        </button>
+          {pending ? <Loader2 className="animate-spin" /> : <Save />} Guardar versión nueva
+        </Button>
       </div>
 
       <section>
         <PanelTitle>Por tipo de cambio</PanelTitle>
-        <ul className="mt-3 flex flex-col gap-2">
+        <ul className="mt-3 flex flex-col overflow-hidden rounded-lg border border-line">
           {OP_TYPES.map((t) => (
-            <li key={t} className="flex flex-col gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <li key={t} className="flex flex-col gap-2 border-b border-line bg-surface-2 px-4 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="font-medium">{OP_LABEL[t]}</div>
-                <code className="font-mono text-xs text-muted-foreground">{t}</code>
+                <div className="text-sm font-medium">{OP_LABEL[t]}</div>
+                <code className="font-mono text-[11px] text-faint">{t}</code>
               </div>
-              <div role="radiogroup" aria-label={OP_LABEL[t]} className="flex gap-1 rounded-xl border border-white/10 p-1">
+              <div role="radiogroup" aria-label={OP_LABEL[t]} className="flex gap-0.5 self-start rounded-lg border border-line bg-surface p-0.5 sm:self-auto">
                 {POLICIES.map((p) => {
                   const on = v.policies[t] === p;
                   return (
@@ -72,8 +74,9 @@ export function RulesForm({ projectId, initial, version, since }: { projectId: s
                       role="radio"
                       aria-checked={on}
                       onClick={() => setPolicy(t, p)}
-                      className={cn("rounded-lg border px-3 py-1.5 text-xs font-medium transition", on ? toneChip[POLICY_TONE[p]] : "border-transparent text-muted-foreground hover:text-foreground")}
+                      className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors", on ? "bg-white/[0.08] text-foreground" : "text-muted-foreground hover:text-foreground")}
                     >
+                      {on && <span className={cn("size-1.5 rounded-full", toneDot[POLICY_TONE[p]])} />}
                       {POLICY_LABEL[p]}
                     </button>
                   );
@@ -93,13 +96,13 @@ export function RulesForm({ projectId, initial, version, since }: { projectId: s
           <NumField label="Operaciones por pedido" suffix="máx." hint="Tope de operaciones en un solo pedido" value={v.limits.maxOpsPerRequest} min={1} max={500} onChange={(n) => setLimit("maxOpsPerRequest", n)} />
         </div>
       </section>
-    </Glass>
+    </Surface>
   );
 }
 
 function NumField({ label, suffix, hint, value, min, max, onChange }: { label: string; suffix: string; hint: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
   return (
-    <label className="flex flex-col gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+    <label className="flex flex-col gap-1.5 rounded-lg border border-line bg-surface-2 p-4">
       <span className="text-sm font-medium">{label}</span>
       <span className="flex items-baseline gap-2">
         <input
@@ -108,7 +111,7 @@ function NumField({ label, suffix, hint, value, min, max, onChange }: { label: s
           max={max}
           value={Number.isFinite(value) ? value : ""}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-28 rounded-lg border border-white/10 bg-transparent px-2 py-1 font-mono text-2xl tnum outline-none focus:border-cyan-neon/60"
+          className="w-28 rounded-md border border-input bg-surface px-2 py-1 text-xl font-semibold tnum outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
         />
         <span className="text-sm text-muted-foreground">{suffix}</span>
       </span>

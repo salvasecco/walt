@@ -113,12 +113,6 @@
   --color-line: var(--dale-line);
   --color-line-strong: var(--dale-line-strong);
   --color-faint: var(--dale-faint);
-  /* Alias viejos: se van cuando los componentes usan los nombres semánticos. */
-  --color-cyan-neon: var(--dale-info);
-  --color-violet-neon: var(--dale-code);
-  --color-amber-neon: var(--dale-warn);
-  --color-emerald-neon: var(--dale-ok);
-  --color-rose-neon: var(--dale-danger);
 }
 
 @layer base {
@@ -132,7 +126,6 @@
   body {
     @apply text-foreground;
     background-color: var(--dale-bg);
-    font-feature-settings: "cv11", "ss01";
   }
   ::selection {
     background: rgb(255 255 255 / 0.18);
@@ -140,14 +133,6 @@
 }
 
 @layer components {
-  /* Superficie plana: tarjeta con borde de 1px. Sin blur, sin sombra. */
-  .glass {
-    background: var(--dale-surface);
-    border: 1px solid var(--dale-line);
-  }
-  .glass-hi {
-    border-color: var(--dale-line-strong);
-  }
   .tnum {
     font-variant-numeric: tabular-nums;
   }

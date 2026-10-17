@@ -5,7 +5,7 @@ import { CommandButton } from "@/components/command-button";
 import { NotConfigured } from "@/components/not-configured";
 import { PreviewFrame } from "@/components/preview-frame";
 import { ChangesDiff, GateReasons, OpsList } from "@/components/request-parts";
-import { CategoryChip, Chip, EmptyState, Glass, Mono, PageHeader, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
+import { CategoryChip, Chip, EmptyState, IdTag, Surface, PageHeader, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
 import { getPendingApprovals, NotConfiguredError } from "@/lib/data";
 import { dataMode, env } from "@/lib/env";
 import { relative } from "@/lib/labels";
@@ -35,7 +35,7 @@ export default async function AprobacionesPage() {
             const code = r.lane === "codigo";
             const agentReady = r.status === "agente_listo";
             return (
-              <Glass key={r.id} hi className="grid gap-6 p-5 md:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
+              <Surface key={r.id} className="grid gap-6 p-4 sm:p-5 md:grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
                 <PreviewFrame
                   request={r}
                   siteUrl={project?.site_url || (r.project_id === SEED_PROJECT_ID ? env.demoSiteUrl : "") || null}
@@ -47,18 +47,18 @@ export default async function AprobacionesPage() {
                 <div className="flex min-w-0 flex-col gap-5">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/historial/${r.short_id}`}>
-                        <Mono className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-sm text-cyan-neon">#{r.short_id}</Mono>
+                      <Link href={`/historial/${r.short_id}`} className="transition-opacity hover:opacity-80">
+                        <IdTag id={r.short_id} />
                       </Link>
                       <CategoryChip category={r.category} />
                       <StatusChip status={r.status} />
-                      {code && <Chip tone="violet">Carril de código</Chip>}
-                      <span className="text-sm text-muted-foreground">
+                      {code && <Chip tone="code">Carril de código</Chip>}
+                      <span className="text-xs text-muted-foreground sm:text-sm">
                         {project?.client_name ?? "Cliente"} · {relative(r.created_at)}
                       </span>
                     </div>
-                    <p className="mt-3 text-xl font-medium">“{r.raw_text}”</p>
-                    {r.interpretation?.summary && <p className="mt-1 text-violet-neon">{r.interpretation.summary}</p>}
+                    <p className="mt-3 text-lg font-medium sm:text-xl">“{r.raw_text}”</p>
+                    {r.interpretation?.summary && <p className="mt-1 text-sm text-muted-foreground">{r.interpretation.summary}</p>}
                   </div>
                   <section>
                     <PanelTitle>Por qué lo tenés que aprobar</PanelTitle>
@@ -85,24 +85,24 @@ export default async function AprobacionesPage() {
                   {code && (
                     <section className="flex flex-wrap gap-3">
                       {r.interpretation?.codeInstruction && (
-                        <p className="w-full rounded-xl border border-violet-neon/20 bg-violet-neon/5 p-3 text-sm">
-                          <span className="label-xs mb-1 block text-violet-neon">Ficha para el agente</span>
+                        <p className="w-full rounded-lg border border-line bg-surface-2 p-3 text-sm">
+                          <span className="label-xs mb-1 block">Ficha para el agente</span>
                           {r.interpretation.codeInstruction}
                         </p>
                       )}
                       {r.pr_url && (
-                        <a href={r.pr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-cyan-neon hover:underline">
+                        <a href={r.pr_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-foreground underline-offset-4 hover:underline">
                           <GitPullRequest className="size-4" /> Ver PR #{r.pr_number} <ExternalLink className="size-3" />
                         </a>
                       )}
                       {r.preview_url && (
-                        <a href={r.preview_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-cyan-neon hover:underline">
+                        <a href={r.preview_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-foreground underline-offset-4 hover:underline">
                           <Eye className="size-4" /> Ver vista previa <ExternalLink className="size-3" />
                         </a>
                       )}
                     </section>
                   )}
-                  <div className="mt-auto flex flex-wrap gap-3 border-t border-white/[0.06] pt-4">
+                  <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
                     {agentReady ? (
                       <>
                         <CommandButton type="publicar" requestId={r.id} variant="approve">
@@ -124,7 +124,7 @@ export default async function AprobacionesPage() {
                     )}
                   </div>
                 </div>
-              </Glass>
+              </Surface>
             );
           })}
         </div>
