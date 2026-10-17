@@ -70,3 +70,25 @@
 - "Resuelto sin la agencia" = pedidos del día con categoría permitido, consulta o charla sobre los que tienen categoría. "Tiempo medio a publicado" = desde `requests.created_at` hasta el evento `publicado` ok. Día en America/Montevideo.
 - Lo que piden: sugerencias cuando un proyecto repite un tipo de operación 3 veces o más en 30 días; "repetidos" agrupa textos normalizados (sin tildes, números como `#`).
 - Para instalar en el workspace hubo que agregar `sharp: false` y `unrs-resolver: false` a `allowBuilds` del `pnpm-workspace.yaml` raíz (pnpm 12 falla si quedan builds sin decidir).
+
+## 01-worker
+
+- `@dale/ai`: un transporte común (Messages API) para `anthropic` (SDK `@anthropic-ai/sdk`, `client.beta.messages.create` con `fallbacks: 'default'` y beta `server-side-fallback-2026-07-01`) y `bedrock` (`AnthropicBedrockMantle` de `@anthropic-ai/bedrock-sdk`, id con prefijo `anthropic.`). Salida estructurada con `output_config.format` + `interpretationJsonSchema`, revalidada con `InterpretationSchema`; un reintento si no valida; un rechazo (`stop_reason: refusal`) no se reintenta y termina en derivado.
+- Sin `temperature`: Sonnet 5.5 rechaza valores no default. "Temperatura baja" del SPEC se reemplaza por `effort`: `medium` para interpretar, `low` para consultas y presupuestos. Timeout 45 s por llamada, `maxRetries: 1` en el SDK.
+- El system prompt (estático, en `packages/ai/prompts/*.md`) lleva `cache_control`; el inventario, el historial y el mensaje van en el turno del usuario. El texto del cliente va en `<mensaje_cliente>` (y el historial en `<historial>`), con las etiquetas de cierre neutralizadas.
+- Si el modelo devuelve operaciones en algo que no es `cambio`, se descartan.
+- `answerConsulta` acepta `assistantName` opcional para presentarse con el nombre de la agencia (marca blanca).
+- `transcribe`: API de OpenAI (`gpt-4o-mini-transcribe`) con `OPENAI_API_KEY`; sin la clave, "Por ahora mandámelo escrito".
+- El worker usa `SUPABASE_DB_URL` (Postgres directo con `postgres`, service role implícito) en vez del cliente REST de Supabase: un solo camino, probado con PGlite sobre la migración real. Realtime no cambia (es replicación lógica). Sin `SUPABASE_DB_URL` el worker usa una base en memoria con los mismos datos del seed.
+- Consola: los contactos de consola usan los chat ids fijos 1 (cliente) y 2 (agencia) en el proyecto del seed.
+- Respuestas cortas ("sí", "dale", "no", "volvé atrás") a un pedido abierto no crean pedido nuevo: se guardan como mensaje del pedido abierto y actúan como el botón. Si la IA devuelve `aprobacion`/`revertir`, el pedido queda `charla` y se resuelve el pedido abierto.
+- "No era eso": el borrador queda `descartada`, el pedido `descartado`, y el próximo mensaje del chat crea un pedido con `parent_request_id` (en memoria del proceso).
+- Al publicar se reutiliza el borrador que vio el cliente si se armó sobre la misma versión viva (mismas operaciones, mismo resultado); si la viva cambió, se crea una versión nueva y el borrador se descarta.
+- Si al publicar el gate da `agencia` (cambiaron las reglas entre la vista previa y el "Dale"), el pedido pasa a la agencia en vez de publicarse.
+- Riesgoso de contenido sin cambios concretos (por ejemplo, poca confianza y sin operaciones) va a derivado: no hay nada que la agencia pueda aprobar.
+- Vuelta atrás: `revertChanges` y después `runGate` sin operaciones sobre el contenido revertido (esquema y seguridad).
+- Carril de código: el `mergeSha` se guarda en `requests.changes` como `{ mergeSha }` (no hay columna) y se usa para el revert. [Descartar] usa `gno:{short}`.
+- Límite por chat: 5 pedidos en 10 minutos cuenta pedidos creados; el sexto recibe "Me mandaste muchos pedidos seguidos…". Cola rápida y lenta de 20 como máximo, concurrencia 1.
+- Captura: Chromium de Playwright reutilizado entre capturas, 390×844 con `deviceScaleFactor: 2`, `networkidle`, 25 s. Sin captura o con `SCREENSHOTS=off` se manda el link de la vista previa.
+- Textos del worker que no están en `@dale/core/copy` (rechazo de la agencia, conflicto al revertir, avisos a la agencia, límite de pedidos) viven en `apps/worker/src/texts.ts` hasta que la 90 los mueva a core.
+- `PANEL_URL` (opcional, `process.env`) agrega el botón "Ver en el panel" a los avisos de la agencia.

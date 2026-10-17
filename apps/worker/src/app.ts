@@ -33,6 +33,15 @@ export interface App {
   close(): Promise<void>;
 }
 
+/** The code lane (`@dale/agent`) bound to this worker's env (with the fake fallbacks). Built lazily. */
+export function agentFromEnv(env: DaleEnv): AgentLane {
+  return {
+    runCodeChange: (input) => agentLane.runCodeChange(input, agentLane.createAgentDeps(env)),
+    mergeChange: (input) => agentLane.mergeChange(input, agentLane.createHost(env)),
+    revertChange: (input) => agentLane.revertChange(input, agentLane.createHost(env)),
+  };
+}
+
 /** Store from the environment: Postgres with SUPABASE_DB_URL, otherwise in memory with the seed. */
 export async function storeFromEnv(env: DaleEnv): Promise<Store> {
   if (env.SUPABASE_DB_URL) return new PgStore(await postgresDb(env.SUPABASE_DB_URL));
@@ -61,7 +70,7 @@ export async function buildApp(env: DaleEnv, opts: BuildOptions = {}): Promise<A
     ai,
     repo,
     screenshots,
-    agent: opts.agent ?? agentLane,
+    agent: opts.agent ?? agentFromEnv(env),
     secrets: env.secrets,
     defaultSiteUrl: env.DEMO_SITE_URL ?? LOCAL_SITE_URL,
     panelUrl: process.env.PANEL_URL || undefined,
