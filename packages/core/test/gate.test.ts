@@ -48,6 +48,40 @@ describe('runGate', () => {
     it('cambiar el color principal no mira el contraste del texto', () => {
       expect(gate([{ type: 'set_color', token: 'primary', value: '#7C3AED' }]).outcome).toBe('auto');
     });
+    it('el título naranja legible pasa solo; uno muy claro va a la agencia', () => {
+      expect(gate([{ type: 'set_color', token: 'title', value: '#EA580C' }]).outcome).toBe('auto');
+      const r = gate([{ type: 'set_color', token: 'title', value: '#FACC15' }]);
+      expect(r.outcome).toBe('agencia');
+      expect(r.reasons.join(' ')).toMatch(/El título queda con poco contraste sobre el fondo/);
+    });
+    it('un fondo nuevo también se mide contra el título', () => {
+      const r = gate([{ type: 'set_color', token: 'background', value: '#B45309' }]);
+      expect(r.reasons.join(' ')).toMatch(/título/);
+    });
+    it('botones: texto del botón contra el color del botón', () => {
+      expect(gate([{ type: 'set_color', token: 'button', value: '#15803D' }]).outcome).toBe('auto');
+      const r = gate([{ type: 'set_color', token: 'button', value: '#16A34A' }]);
+      expect(r.outcome).toBe('agencia');
+      expect(r.reasons.join(' ')).toMatch(/texto de los botones/);
+      expect(
+        gate([
+          { type: 'set_color', token: 'button', value: '#FACC15' },
+          { type: 'set_color', token: 'buttonText', value: '#1C1917' },
+        ]).outcome,
+      ).toBe('auto');
+    });
+    it('el color del texto se puede cambiar y se mide contra el fondo', () => {
+      expect(gate([{ type: 'set_color', token: 'text', value: '#292524' }]).outcome).toBe('auto');
+      expect(gate([{ type: 'set_color', token: 'text', value: '#FDE68A' }]).outcome).toBe('agencia');
+    });
+  });
+
+  describe('textos de las secciones', () => {
+    it('títulos y subtítulos de secciones se cambian solos', () => {
+      const r = gate([{ type: 'set_text', path: '/headings/hours/subtitle', value: 'Te esperamos' }]);
+      expect(r.outcome).toBe('auto');
+      expect(r.changes).toEqual([{ pointer: '/headings/hours/subtitle', before: '', after: 'Te esperamos' }]);
+    });
   });
 
   describe('límite de precio', () => {
@@ -177,7 +211,10 @@ describe('inventoryPointers', () => {
     expect(p.has('/products/0/available')).toBe(true);
     expect(p.has('/products/0/name')).toBe(false);
     expect(p.has('/contact/whatsapp')).toBe(false);
-    expect(p.has('/theme/text')).toBe(false);
+    expect(p.has('/theme/text')).toBe(true);
+    expect(p.has('/theme/title')).toBe(true);
+    expect(p.has('/headings/products/title')).toBe(true);
+    expect(p.has('/brand/name')).toBe(false);
     expect(p.has('/banner/text')).toBe(true);
     expect(p.has('/hours/6/open')).toBe(true);
     expect(p.has('/sections/about')).toBe(true);

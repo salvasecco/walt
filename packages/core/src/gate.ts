@@ -91,6 +91,32 @@ export function contrastRatio(a: string, b: string): number {
 
 /** Minimum contrast between text and background before a color change needs the agency (WCAG AA). */
 export const MIN_TEXT_CONTRAST = 4.5;
+/** Big titles count as large text in WCAG AA: 3:1. */
+export const MIN_LARGE_TEXT_CONTRAST = 3;
+
+export interface ContrastPair {
+  fg: string;
+  bg: string;
+  min: number;
+  what: string;
+  on: string;
+}
+
+/**
+ * Color pairs that must stay readable, as content pointers: text on background (4.5:1), title on
+ * background (3:1, large text) and button text on the button (4.5:1). The text color is taken from
+ * its token or from the background's sibling `text`; a pair is only checked when both colors exist.
+ */
+export function contrastPairs(config: DaleConfig): ContrastPair[] {
+  const c = config.colors;
+  const bg = c.background;
+  const text = c.text ?? bg?.replace(/[^/]+$/, 'text');
+  const pairs: ContrastPair[] = [];
+  if (bg && text) pairs.push({ fg: text, bg, min: MIN_TEXT_CONTRAST, what: 'El texto', on: 'el fondo' });
+  if (bg && c.title) pairs.push({ fg: c.title, bg, min: MIN_LARGE_TEXT_CONTRAST, what: 'El título', on: 'el fondo' });
+  if (c.button && c.buttonText) pairs.push({ fg: c.buttonText, bg: c.button, min: MIN_TEXT_CONTRAST, what: 'El texto de los botones', on: 'el botón' });
+  return pairs;
+}
 
 function hasAtMostTwoDecimals(n: number): boolean {
   return Math.abs(Math.round(n * 100) - n * 100) < 1e-6;
@@ -153,16 +179,14 @@ export function runGate(input: GateInput): GateResult {
     }
   }
 
-  // 4b. Readability: a color change can't leave the text unreadable on the background without the agency.
-  const bgPath = config.colors.background;
-  // The text color is usually not editable: take it from the token or from the background's sibling `text`.
-  const textPath = config.colors.text ?? bgPath?.replace(/[^/]+$/, 'text');
-  if (bgPath && textPath && changes.some((c) => c.pointer === bgPath || c.pointer === textPath)) {
-    const bg = getPointer(next, bgPath);
-    const fg = getPointer(next, textPath);
+  // 4b. Readability: a color change can't leave text unreadable without the agency.
+  for (const pair of contrastPairs(config)) {
+    if (!changes.some((c) => c.pointer === pair.fg || c.pointer === pair.bg)) continue;
+    const fg = getPointer(next, pair.fg);
+    const bg = getPointer(next, pair.bg);
     if (typeof bg === 'string' && typeof fg === 'string' && COLOR.test(bg) && COLOR.test(fg)) {
       const ratio = contrastRatio(bg, fg);
-      if (ratio < MIN_TEXT_CONTRAST) raise('agencia', `El texto queda con poco contraste sobre el fondo (${ratio.toFixed(1)}:1, mínimo ${MIN_TEXT_CONTRAST}:1)`);
+      if (ratio < pair.min) raise('agencia', `${pair.what} queda con poco contraste sobre ${pair.on} (${ratio.toFixed(1)}:1, mínimo ${pair.min}:1)`);
     }
   }
 

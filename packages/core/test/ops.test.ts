@@ -105,7 +105,7 @@ describe('applyOps', () => {
   it('set_color por token', () => {
     const r = applyOps(bakeryContent(), [{ type: 'set_color', token: 'background', value: '#7C3AED' }], config);
     expect(r.changes).toEqual([{ pointer: '/theme/background', before: '#FFF7ED', after: '#7C3AED' }]);
-    expect(() => applyOps(bakeryContent(), [{ type: 'set_color', token: 'text', value: '#000000' }], config)).toThrow(/text/);
+    expect(() => applyOps(bakeryContent(), [{ type: 'set_color', token: 'link', value: '#000000' }], config)).toThrow(/link/);
   });
 
   it('set_banner solo cambia los campos que vienen', () => {

@@ -27,7 +27,8 @@ describe('buildInventory', () => {
       label: 'Título principal',
       value: 'El pan de siempre, recién salido',
     });
-    expect(inv.colors.map((c) => c.token)).toEqual(['primary', 'accent', 'background']);
+    expect(inv.colors.map((c) => c.token)).toEqual(['primary', 'accent', 'background', 'text', 'title', 'button', 'buttonText']);
+    expect(inv.texts.find((t) => t.path === '/headings/products/title')?.value).toBe('Nuestros productos');
     expect(inv.products).toHaveLength(9);
     expect(inv.products[0]).toEqual({ id: 'pan-flauta', name: 'Pan flauta', category: 'panes', price: 80, available: true });
     expect(inv.categories).toEqual(['panes', 'facturas', 'tortas', 'dulces', 'bebidas']);

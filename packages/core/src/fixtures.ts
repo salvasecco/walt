@@ -22,11 +22,12 @@ export const FIXTURES_DIR = dir;
 
 export interface BakeryContent {
   brand: { name: string; tagline: string };
-  theme: { primary: string; accent: string; background: string; text: string };
+  theme: { primary: string; accent: string; background: string; text: string; title?: string; button?: string; buttonText?: string };
   hero: { title: string; subtitle: string; cta: string };
   banner: { enabled: boolean; text: string; discountPercent: number | null; startsAt: string | null; endsAt: string | null };
   products: { id: string; name: string; category: string; price: number; available: boolean }[];
   hours: { day: string; open: string | null; close: string | null }[];
+  headings?: Record<'products' | 'hours' | 'contact', { title: string; subtitle: string }>;
   about: { title: string; text: string };
   contact: { whatsapp: string; address: string; instagram: string };
   sections: Record<string, boolean>;

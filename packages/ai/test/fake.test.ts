@@ -67,3 +67,21 @@ describe('nextWeekdayEnd', () => {
     expect(nextWeekdayEnd('2026-10-18T10:00:00-03:00', 'viernes')).toBe('2026-10-23T23:59:00-03:00');
   });
 });
+
+describe('proveedor falso: colores del contrato ampliado', () => {
+  it('"cambiá el título a naranja" sale por contenido con el token title', async () => {
+    const r = await run('cambiá el título a naranja');
+    expect(r.interpretation.ops).toEqual([{ type: 'set_color', token: 'title', value: '#EA580C' }]);
+    expect(r.decision.category).toBe('permitido');
+  });
+  it('"poné los botones en verde" usa un verde que se lee con texto blanco', async () => {
+    const r = await run('poné los botones en verde');
+    expect(r.interpretation.ops).toEqual([{ type: 'set_color', token: 'button', value: '#15803D' }]);
+    expect(r.decision.category).toBe('permitido');
+  });
+  it('botones amarillos: también cambia el texto del botón a oscuro', async () => {
+    const r = await run('poné los botones en amarillo');
+    expect(r.interpretation.ops.map((o) => (o as { token: string }).token)).toEqual(['button', 'buttonText']);
+    expect(r.decision.category).toBe('permitido');
+  });
+});

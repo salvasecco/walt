@@ -8,14 +8,33 @@
     "/hero/subtitle": "Subtítulo",
     "/hero/cta": "Texto del botón principal",
     "/brand/tagline": "Frase de la marca",
-    "/about/text": "Texto de quiénes somos"
+    "/about/text": "Texto de quiénes somos",
+    "/about/title": "Título de quiénes somos",
+    "/headings/products/title": "Título de la sección de productos",
+    "/headings/products/subtitle": "Subtítulo de la sección de productos",
+    "/headings/hours/title": "Título de la sección de horarios",
+    "/headings/hours/subtitle": "Subtítulo de la sección de horarios",
+    "/headings/contact/title": "Título de la sección de contacto",
+    "/headings/contact/subtitle": "Subtítulo de la sección de contacto",
+    "/contact/address": "Dirección del local"
   },
   "colors": {
     "primary": "/theme/primary",
     "accent": "/theme/accent",
-    "background": "/theme/background"
+    "background": "/theme/background",
+    "text": "/theme/text",
+    "title": "/theme/title",
+    "button": "/theme/button",
+    "buttonText": "/theme/buttonText"
   },
-  "products": { "path": "/products", "id": "id", "name": "name", "price": "price", "category": "category", "available": "available" },
+  "products": {
+    "path": "/products",
+    "id": "id",
+    "name": "name",
+    "price": "price",
+    "category": "category",
+    "available": "available"
+  },
   "banner": "/banner",
   "hours": "/hours",
   "sections": "/sections"

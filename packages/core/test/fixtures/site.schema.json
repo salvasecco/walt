@@ -9,7 +9,13 @@
     "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
     "time": { "type": ["string", "null"], "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
     "isoDate": { "type": ["string", "null"], "format": "date-time" },
-    "shortText": { "type": "string", "maxLength": 300 }
+    "shortText": { "type": "string", "maxLength": 300 },
+    "heading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "subtitle"],
+      "properties": { "title": { "$ref": "#/$defs/shortText" }, "subtitle": { "$ref": "#/$defs/shortText" } }
+    }
   },
   "properties": {
     "brand": {
@@ -29,7 +35,10 @@
         "primary": { "$ref": "#/$defs/color" },
         "accent": { "$ref": "#/$defs/color" },
         "background": { "$ref": "#/$defs/color" },
-        "text": { "$ref": "#/$defs/color" }
+        "text": { "$ref": "#/$defs/color" },
+        "title": { "$ref": "#/$defs/color" },
+        "button": { "$ref": "#/$defs/color" },
+        "buttonText": { "$ref": "#/$defs/color" }
       }
     },
     "hero": {
@@ -80,6 +89,15 @@
           "open": { "$ref": "#/$defs/time" },
           "close": { "$ref": "#/$defs/time" }
         }
+      }
+    },
+    "headings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "products": { "$ref": "#/$defs/heading" },
+        "hours": { "$ref": "#/$defs/heading" },
+        "contact": { "$ref": "#/$defs/heading" }
       }
     },
     "about": {

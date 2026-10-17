@@ -25,6 +25,28 @@ const COLORS: Record<string, string> = {
   beige: '#F5F5DC',
 };
 
+/** Deep tones for buttons, so the white button text stays readable. */
+const BUTTON_TONES: Record<string, string> = {
+  verde: '#15803D',
+  naranja: '#C2410C',
+  azul: '#2563EB',
+  rojo: '#B91C1C',
+  violeta: '#6D28D9',
+  morado: '#6D28D9',
+  rosa: '#BE185D',
+  gris: '#4B5563',
+};
+const LIGHT = new Set(['amarillo', 'celeste', 'blanco', 'beige', 'lila']);
+const COLOR_LABELS: Record<string, string> = {
+  background: 'el fondo',
+  accent: 'el color de acento',
+  primary: 'el color principal',
+  title: 'el título',
+  button: 'los botones',
+  buttonText: 'el texto de los botones',
+  text: 'el texto',
+};
+
 /** Light tints for backgrounds, so the dark text stays readable (same rule as the interpret prompt). */
 const BACKGROUND_TINTS: Record<string, string> = {
   violeta: '#EDE9FE',
@@ -206,19 +228,30 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     });
   }
 
-  // Color: "poné el fondo violeta"
+  // Color: "poné el fondo violeta", "cambiá el título a naranja", "poné los botones en verde"
   const colorWord = Object.keys(COLORS).find((c) => t.includes(normalize(c)));
   const hex = raw.match(/#[0-9a-f]{6}\b/i)?.[0];
-  if ((colorWord || hex) && /(fondo|color|principal|acento|boton)/.test(t)) {
-    const token = /fondo/.test(t) ? 'background' : /acento/.test(t) ? 'accent' : 'primary';
-    if (inv.colors.some((c) => c.token === token)) {
-      const value = (hex ?? (token === 'background' ? BACKGROUND_TINTS[colorWord!] : undefined) ?? COLORS[colorWord!]!).toUpperCase();
-      const label = token === 'background' ? 'el fondo' : token === 'accent' ? 'el color de acento' : 'el color principal';
-      return base({
-        kind: 'cambio',
-        summary: `Pongo ${label} ${colorWord ?? value}`,
-        ops: [{ type: 'set_color', token, value }],
-      });
+  if ((colorWord || hex) && /(fondo|color|principal|acento|boton|titulo|texto|letra)/.test(t)) {
+    const has = (tok: string) => inv.colors.some((c) => c.token === tok);
+    const wanted = /fondo/.test(t)
+      ? 'background'
+      : /acento/.test(t)
+        ? 'accent'
+        : /boton/.test(t)
+          ? 'button'
+          : /titulo/.test(t)
+            ? 'title'
+            : /(texto|letra)/.test(t)
+              ? 'text'
+              : 'primary';
+    const token = has(wanted) ? wanted : wanted === 'button' || wanted === 'title' ? 'primary' : wanted;
+    if (has(token)) {
+      const tone = token === 'background' ? BACKGROUND_TINTS : token === 'button' ? BUTTON_TONES : {};
+      const value = (hex ?? tone[colorWord!] ?? COLORS[colorWord!]!).toUpperCase();
+      const label = COLOR_LABELS[token] ?? 'el color principal';
+      const ops: Op[] = [{ type: 'set_color', token, value }];
+      if (token === 'button' && colorWord && LIGHT.has(colorWord) && has('buttonText')) ops.push({ type: 'set_color', token: 'buttonText', value: '#1C1917' });
+      return base({ kind: 'cambio', summary: `Pongo ${label} ${colorWord ?? value}`, ops });
     }
   }
 
