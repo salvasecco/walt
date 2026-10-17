@@ -6,7 +6,7 @@
 | worker + ai | 01-worker | pendiente | 01-worker | — |
 | panel | 02-panel | pendiente | 02-panel | — |
 | sitio | 03-sitio | pendiente | main (dale-demo) | — |
-| agente + eval | 04-agente-eval | pendiente | 04-agente-eval | — |
+| agente + eval | 04-agente-eval | en curso | 04-agente-eval | `@dale/agent` completo: hook de rutas (lstat/realpath, symlinks, protegidos), entorno mínimo, revisión del diff, clone→agente→PR→vista previa, merge squash y revert; host GitHub (octokit) o local (`GITHUB_MODE=fake`). Probar: `pnpm --filter @dale/agent test` (17 en verde, sin red). Prueba real: `pnpm --filter @dale/agent smoke -- --close` (falta ANTHROPIC_API_KEY y GITHUB_TOKEN). Sigue: eval |
 | integración | 90-integracion | pendiente | main | — |
 
 ## Credenciales (`pnpm check`, 2026-10-17)
