@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.4.2",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "check": "tsx scripts/check-env.ts",
     "db:migrate": "tsx scripts/db-migrate.ts",
@@ -18,11 +20,12 @@
     "demo:reset": "tsx scripts/demo-reset.ts"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@dale/core": "workspace:*",
     "@types/node": "^24.19.2",
     "postgres": "^3.4.9",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
-    "vitest": "^5.0.5",
-    "@dale/core": "workspace:*"
+    "vitest": "^5.0.5"
   }
 }
