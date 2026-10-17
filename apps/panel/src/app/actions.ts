@@ -36,7 +36,7 @@ export async function login(_prev: { error?: string } | undefined, form: FormDat
     maxAge,
   });
   const desde = String(form.get("desde") ?? "/");
-  redirect(desde.startsWith("/") && !desde.startsWith("//") ? desde : "/");
+  redirect(safeRedirect(desde));
 }
 
 export async function logout() {
@@ -321,4 +321,15 @@ function clampNum(n: number, min: number, max: number) {
 
 function errorText(e: unknown) {
   return e instanceof Error ? e.message : "Error inesperado";
+}
+
+/** Only same-site paths: rejects "//x", "/\\x" and anything that resolves to another origin. */
+function safeRedirect(desde: string): string {
+  if (!desde.startsWith("/") || desde.includes("\\")) return "/";
+  try {
+    const u = new URL(desde, "http://panel.local");
+    return u.origin === "http://panel.local" ? u.pathname + u.search + u.hash : "/";
+  } catch {
+    return "/";
+  }
 }
