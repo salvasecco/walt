@@ -227,6 +227,41 @@ describe('runCodeChange con un repo local', () => {
     expect(sh(host.remoteUrl(repo), 'show', 'main:src/footer.tsx')).toBe(FOOTER);
   });
 
+  it('Sonnet primero; si no cambia nada, reintenta con Opus desde un clon limpio', async () => {
+    const used: (string | undefined)[] = [];
+    const edit = scripted([{ tool: 'Edit', input: { file_path: 'src/footer.tsx', old_string: '<footer>', new_string: '<><p>Envío gratis</p><footer>' } }]);
+    const runner: AgentRunner = async (i) => {
+      used.push(i.model);
+      if (i.model === 'claude-sonnet-5-5') return { summary: 'nada', turns: 15 };
+      return edit(i);
+    };
+    const res = await runCodeChangeWith(input('RTY234'), { host, runner, models: ['claude-sonnet-5-5', 'claude-opus-5-5'], previewTimeoutMs: 0 });
+    expect(used).toEqual(['claude-sonnet-5-5', 'claude-opus-5-5']);
+    expect(res.model).toBe('claude-opus-5-5');
+    expect(res.changedFiles).toEqual(['src/footer.tsx']);
+    expect(res.logs.some((l) => /diff rechazado \(claude-sonnet-5-5\)/.test(l))).toBe(true);
+  });
+
+  it('si Sonnet tira error o deja un diff rechazado, Opus lo rehace; si Sonnet anda, Opus no corre', async () => {
+    const used: (string | undefined)[] = [];
+    const bad = scripted([{ tool: 'Write', input: { file_path: 'src/k.ts', content: 'export const k = process.env.X;\n' } }]);
+    const good = scripted([{ tool: 'Edit', input: { file_path: 'src/footer.tsx', old_string: '<footer>', new_string: '<><p>Hola</p><footer>' } }]);
+    const runner: AgentRunner = async (i) => {
+      used.push(i.model);
+      return i.model === 'claude-sonnet-5-5' ? bad(i) : good(i);
+    };
+    const res = await runCodeChangeWith(input('RJC234'), { host, runner, models: ['claude-sonnet-5-5', 'claude-opus-5-5'], previewTimeoutMs: 0 });
+    expect(res.changedFiles).toEqual(['src/footer.tsx']); // the rejected file from the first attempt is gone
+    const failing: AgentRunner = async (i) => {
+      used.push(i.model);
+      if (i.model === 'claude-sonnet-5-5') throw new Error('overloaded');
+      return good(i);
+    };
+    expect((await runCodeChangeWith(input('ERR234'), { host, runner: failing, models: ['claude-sonnet-5-5', 'claude-opus-5-5'], previewTimeoutMs: 0 })).model).toBe('claude-opus-5-5');
+    used.length = 0;
+    expect((await runCodeChangeWith(input('OKS234'), { host, runner: good, models: ['claude-sonnet-5-5', 'claude-opus-5-5'], previewTimeoutMs: 0 })).model).toBe('claude-sonnet-5-5');
+  });
+
   it('un diff con process.env se rechaza y no se sube nada', async () => {
     const runner = scripted([{ tool: 'Write', input: { file_path: 'src/key.ts', content: 'export const k = process.env.GITHUB_TOKEN;\n' } }]);
     await expect(runCodeChangeWith(input('ENV234'), { host, runner, previewTimeoutMs: 0 })).rejects.toBeInstanceOf(DiffRejectedError);

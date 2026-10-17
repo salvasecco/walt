@@ -28,4 +28,6 @@ export interface RunCodeChangeResult {
   timings?: { clone: number; agent: number; pr: number; preview: number };
   /** Agent turns used, when the runner reports them. */
   turns?: number;
+  /** Model whose change was kept (when the deps list models). */
+  model?: string;
 }

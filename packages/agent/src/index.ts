@@ -21,7 +21,7 @@ import { createClaudeAgentRunner } from './runner.js';
 import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.js';
 
 export type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.js';
-export { DEFAULT_PROTECTED_GLOBS, DiffRejectedError, runCodeChangeWith, mergeChangeWith, revertChangeWith, findPreviewUrlWith } from './code-change.js';
+export { DEFAULT_MAX_TURNS, DEFAULT_PROTECTED_GLOBS, DiffRejectedError, runCodeChangeWith, mergeChangeWith, revertChangeWith, findPreviewUrlWith } from './code-change.js';
 export type { AgentDeps } from './code-change.js';
 export { GitHubHost, LocalHost, currentDeployState, isVercelAppUrl, vercelPreviewFromComment, type CodeHost } from './hosts.js';
 export { createClaudeAgentRunner, guardHook, agentPrompt, type AgentRunner, type AgentRunInput, type AgentRunOutput } from './runner.js';
@@ -38,8 +38,15 @@ export function createHost(env: DaleEnv): CodeHost {
 }
 
 /** Dependencies from the environment: GitHub or local host, Claude Agent SDK runner. */
+/** Opus runs only when the default agent model (Sonnet) fails: error, no changes or a rejected diff. */
+export const AGENT_FALLBACK_MODEL = 'claude-opus-5-5';
+
+export function agentModels(primary: string): string[] {
+  return primary === AGENT_FALLBACK_MODEL ? [primary] : [primary, AGENT_FALLBACK_MODEL];
+}
+
 export function createAgentDeps(env: DaleEnv = loadEnv()): AgentDeps {
-  return { host: createHost(env), runner: createClaudeAgentRunner(env), secrets: env.secrets };
+  return { host: createHost(env), runner: createClaudeAgentRunner(env), secrets: env.secrets, models: agentModels(env.MODEL_AGENT) };
 }
 
 export async function runCodeChange(input: RunCodeChangeInput, deps?: AgentDeps): Promise<RunCodeChangeResult> {

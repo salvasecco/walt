@@ -16,6 +16,8 @@ export interface AgentRunInput {
   signal: AbortSignal;
   maxTurns: number;
   log: (line: string) => void;
+  /** Model for this attempt; default MODEL_AGENT. */
+  model?: string;
 }
 
 export interface AgentRunOutput {
@@ -63,7 +65,7 @@ type RunnerEnv = Pick<
 
 /** Runner with the Claude Agent SDK (SPEC §11.2). */
 export function createClaudeAgentRunner(env: RunnerEnv): AgentRunner {
-  return async ({ cwd, instruction, protectedGlobs, signal, maxTurns, log }) => {
+  return async ({ cwd, instruction, protectedGlobs, signal, maxTurns, log, model }) => {
     const home = mkdtempSync(join(tmpdir(), 'dale-agent-home-'));
     const secrets = env.secrets ?? [];
     try {
@@ -74,7 +76,7 @@ export function createClaudeAgentRunner(env: RunnerEnv): AgentRunner {
         prompt: agentPrompt(instruction),
         options: {
           cwd,
-          model: agentModelId(env.LLM_PROVIDER, env.MODEL_AGENT),
+          model: agentModelId(env.LLM_PROVIDER, model ?? env.MODEL_AGENT),
           tools: [...AGENT_TOOLS],
           allowedTools: [...AGENT_TOOLS],
           disallowedTools: ['Bash', 'WebFetch', 'WebSearch', 'Agent', 'Task', 'NotebookEdit', 'Skill'],

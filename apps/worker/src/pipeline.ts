@@ -937,6 +937,7 @@ export class Worker {
         archivos: res.changedFiles,
         ...(tm ? { clonMs: tm.clone, agenteMs: tm.agent } : {}),
         ...(res.turns !== undefined ? { turnos: res.turns } : {}),
+        ...(res.model ? { modelo: res.model } : {}),
       });
       await this.event(req, 'agente_pr', 'ok', tm?.pr ?? null, { pr: res.prUrl, numero: res.prNumber });
       if (res.previewUrl) await this.event(req, 'agente_preview', 'ok', tm?.preview ?? null, { url: res.previewUrl });

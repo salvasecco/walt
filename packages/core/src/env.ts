@@ -42,7 +42,7 @@ export const EnvSchema = z.object({
   AWS_ACCESS_KEY_ID: opt,
   AWS_SECRET_ACCESS_KEY: opt,
   MODEL_INTERPRET: z.string().default('claude-sonnet-5-5'),
-  MODEL_AGENT: z.string().default('claude-opus-5-5'),
+  MODEL_AGENT: z.string().default('claude-sonnet-5-5'),
   OPENAI_API_KEY: opt,
   SCREENSHOTS: z.enum(['on', 'off']).default('off'),
   PANEL_PASSWORD: opt,

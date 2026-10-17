@@ -48,11 +48,20 @@ export interface AgentDeps {
   runner: AgentRunner;
   /** Secret values to keep out of diffs and logs. */
   secrets?: string[];
+  /** Turn cap per attempt. Default `DEFAULT_MAX_TURNS`. */
   maxTurns?: number;
+  /**
+   * Models to try in order (default: the runner's own model, once). The next one runs only if the
+   * previous attempt failed: an error, no changes, or a diff rejected by the review.
+   */
+  models?: string[];
   /** Poll for the Vercel preview after the PR. Default 240000 (4 minutes); 0 skips it. */
   previewTimeoutMs?: number;
   previewPollMs?: number;
 }
+
+/** Measured: the agent uses 5–6 turns for the demo changes; 15 leaves room without letting it wander. */
+export const DEFAULT_MAX_TURNS = 15;
 
 export class DiffRejectedError extends Error {
   constructor(readonly reasons: string[], readonly logs: string[]) {
@@ -124,35 +133,49 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
     lap('clone');
 
     const timeoutMs = input.timeoutMs ?? 300_000;
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), timeoutMs);
+    const deadline = Date.now() + timeoutMs;
+    const models: (string | undefined)[] = deps.models?.length ? deps.models : [undefined];
     let summary: string | undefined;
-    const timedOut = new Promise<never>((_, reject) =>
-      ac.signal.addEventListener('abort', () => reject(new Error(`El agente superó el tiempo de ${Math.round(timeoutMs / 1000)} s`)), { once: true }),
-    );
-    timedOut.catch(() => {}); // also aborted on normal exit; only the race cares
-    try {
-      const out = await Promise.race([
-        deps.runner({ cwd: dir, instruction: input.instruction, protectedGlobs, signal: ac.signal, maxTurns: deps.maxTurns ?? 40, log }),
-        timedOut,
-      ]);
-      summary = out.summary;
-      turns = out.turns;
-      log(`agente listo${out.turns ? ` en ${out.turns} turnos` : ''}${out.costUsd !== undefined ? `, USD ${out.costUsd.toFixed(4)}` : ''}`);
-    } finally {
-      clearTimeout(timer);
-      ac.abort();
+    let files: DiffFile[] = [];
+    let diff = '';
+    let usedModel: string | undefined;
+    for (let attempt = 0; attempt < models.length; attempt++) {
+      const model = models[attempt];
+      const last = attempt === models.length - 1;
+      if (attempt > 0) {
+        // Start the next model from a clean checkout of the branch.
+        await g(['reset', '--quiet', '--hard', 'HEAD'], dir);
+        await g(['clean', '-fdxq'], dir);
+      }
+      const left = deadline - Date.now();
+      try {
+        if (left <= 0) throw new Error(`El agente superó el tiempo de ${Math.round(timeoutMs / 1000)} s`);
+        const out = await runWithTimeout(
+          (signal) => deps.runner({ cwd: dir, instruction: input.instruction, protectedGlobs, signal, maxTurns: deps.maxTurns ?? DEFAULT_MAX_TURNS, log, model }),
+          left,
+          timeoutMs,
+        );
+        summary = out.summary;
+        turns = out.turns;
+        log(`agente listo${model ? ` (${model})` : ''}${out.turns ? ` en ${out.turns} turnos` : ''}${out.costUsd !== undefined ? `, USD ${out.costUsd.toFixed(4)}` : ''}`);
+      } catch (err) {
+        log(`el agente falló${model ? ` (${model})` : ''}: ${err instanceof Error ? err.message : String(err)}`);
+        if (last || Date.now() >= deadline) throw err;
+        continue;
+      }
+
+      await g(['add', '-A'], dir);
+      files = parseRaw(await g(['diff', '--cached', '--raw', '-z', '--no-renames'], dir));
+      diff = await g(['diff', '--cached', '--no-color', '--no-ext-diff'], dir);
+      const reasons = reviewDiff({ diff, files, protectedGlobs, secrets });
+      if (reasons.length === 0) {
+        usedModel = model;
+        break;
+      }
+      log(`diff rechazado${model ? ` (${model})` : ''}: ${reasons.join('; ')}`);
+      if (last) throw new DiffRejectedError(reasons, logs);
     }
     lap('agent');
-
-    await g(['add', '-A'], dir);
-    const files = parseRaw(await g(['diff', '--cached', '--raw', '-z', '--no-renames'], dir));
-    const diff = await g(['diff', '--cached', '--no-color', '--no-ext-diff'], dir);
-    const reasons = reviewDiff({ diff, files, protectedGlobs, secrets });
-    if (reasons.length > 0) {
-      log(`diff rechazado: ${reasons.join('; ')}`);
-      throw new DiffRejectedError(reasons, logs);
-    }
 
     const title = `dale: ${firstLine(summary ?? input.instruction)} (#${input.shortId})`;
     await g(['commit', '--quiet', '--no-verify', '-m', title, '-m', `Pedido ${input.requestId}`], dir);
@@ -195,6 +218,7 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
       logs,
       timings,
       ...(turns !== undefined ? { turns } : {}),
+      ...(usedModel ? { model: usedModel } : {}),
     };
   } finally {
     rmSync(work, { recursive: true, force: true });
@@ -231,6 +255,22 @@ export async function revertChangeWith(
     return { revertSha };
   } finally {
     rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/** Runs `fn` with an abort signal that fires after `ms`; rejects with a timeout error then. */
+async function runWithTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms: number, totalMs: number): Promise<T> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  const timedOut = new Promise<never>((_, reject) =>
+    ac.signal.addEventListener('abort', () => reject(new Error(`El agente superó el tiempo de ${Math.round(totalMs / 1000)} s`)), { once: true }),
+  );
+  timedOut.catch(() => {}); // also aborted on normal exit; only the race cares
+  try {
+    return await Promise.race([fn(ac.signal), timedOut]);
+  } finally {
+    clearTimeout(timer);
+    ac.abort();
   }
 }
 
