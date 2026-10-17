@@ -47,6 +47,8 @@ export interface AgentLane {
   runCodeChange(input: RunCodeChangeInput): Promise<RunCodeChangeResult>;
   mergeChange(input: { repo: RepoRef; prNumber: number }): Promise<{ mergeSha: string }>;
   revertChange(input: { repo: RepoRef; mergeSha: string; shortId: string }): Promise<{ revertSha: string }>;
+  /** Resolves true once the hosting deploy of `sha` is live. Without it, merge = published. */
+  waitForDeploy?(input: { repo: RepoRef; sha: string }): Promise<boolean>;
 }
 
 export interface WorkerDeps {
@@ -114,6 +116,8 @@ const EMPTY_INVENTORY: Inventory = { currency: '', texts: [], colors: [], produc
 export class Worker {
   readonly fast: Queue;
   readonly slow: Queue;
+  /** Deploy watches running outside the queues (see `whenLive`). */
+  private readonly background = new Set<Promise<unknown>>();
   private readonly awaitingCorrection = new Map<string, string>();
   private readonly now: () => Date;
   private readonly log: (line: string) => void;
@@ -144,8 +148,9 @@ export class Worker {
     for (let i = 0; i < 5; i++) {
       await this.fast.onIdle();
       await this.slow.onIdle();
-      if (this.fast.size === 0 && this.slow.size === 0) return;
+      if (this.fast.size === 0 && this.slow.size === 0) break;
     }
+    await Promise.all([...this.background]);
   }
 
   // ───────────────────────── entrada ─────────────────────────
@@ -345,14 +350,17 @@ export class Worker {
 
     // aprobacion / revertir from the model with an open request: treat as the answer (SPEC §9 step 3).
     if (interpretation.kind === 'aprobacion' || interpretation.kind === 'revertir') {
-      const target =
-        interpretation.kind === 'aprobacion'
-          ? await store.latestRequestOfContact(contact.id, ['esperando_cliente'])
-          : await store.latestRequestOfContact(contact.id, ['publicado']);
+      const answer = interpretation.kind === 'aprobacion' ? await this.approvalTarget(contact) : null;
+      const undo = interpretation.kind === 'revertir' ? await store.latestRequestOfContact(contact.id, ['publicado']) : null;
+      const target = answer?.target ?? undo;
       await store.updateRequest(req.id, { status: 'charla', category: 'charla', parent_request_id: target?.id ?? req.parent_request_id });
       await this.event(req, 'decidido', 'ok', 0, { categoria: 'charla', razones: target ? ['Respuesta a un pedido abierto'] : [] });
-      if (target) {
-        await this.handleCallback(contact, `${interpretation.kind === 'aprobacion' ? 'ok' : 'undo'}:${target.short_id}`, 'telegram');
+      if (answer?.action === 'espera') {
+        await this.say(contact, req.id, { text: copy.loApruebaAgencia((await this.ctxFor(req.project_id)).agencyName) });
+      } else if (answer) {
+        await this.handleCallback(contact, `${answer.action}:${answer.target.short_id}`, 'telegram');
+      } else if (undo) {
+        await this.handleCallback(contact, `undo:${undo.short_id}`, 'telegram');
       } else {
         await this.say(contact, req.id, { text: interpretation.kind === 'aprobacion' ? copy.nadaPendiente() : copy.nadaParaVolver() });
       }
@@ -652,6 +660,23 @@ export class Worker {
   // ───────────────────────── botones y respuestas ─────────────────────────
 
   /** Button presses and panel commands. Never throws. */
+  /**
+   * What a written "sí / aprobá / publicalo" answers. First the contact's own preview; then, for the
+   * agency, the project's request waiting for it (approve, or publish a ready code change), the same
+   * thing its buttons do. A client whose request waits for the agency gets told so.
+   */
+  private async approvalTarget(contact: ContactRow): Promise<{ action: 'ok' | 'gok' | 'pub' | 'espera'; target: RequestRow } | null> {
+    const own = await this.d.store.latestRequestOfContact(contact.id, ['esperando_cliente']);
+    if (own) return { action: 'ok', target: own };
+    if (contact.role === 'agencia') {
+      const waiting = (await this.d.store.requestsWithStatus(['esperando_agencia', 'agente_listo'])).filter((r) => r.project_id === contact.project_id);
+      const target = waiting[waiting.length - 1];
+      return target ? { action: target.status === 'agente_listo' ? 'pub' : 'gok', target } : null;
+    }
+    const mine = await this.d.store.latestRequestOfContact(contact.id, ['esperando_agencia', 'agente_trabajando', 'agente_listo']);
+    return mine ? { action: 'espera', target: mine } : null;
+  }
+
   async handleCallback(actor: ContactRow | null, data: string, via: Via): Promise<void> {
     const [action, short] = data.split(':');
     if (!action || !short) return;
@@ -848,7 +873,7 @@ export class Worker {
       );
       await store.updateRequest(req.id, { status: 'revertido' });
       await this.event(req, 'revertido', 'ok', Math.round(performance.now() - t0), { sha: revertSha });
-      await this.sayTo(req.contact_id, req.id, { text: copy.revertido() });
+      await this.whenLive(req, ctx, revertSha, copy.revirtiendoCodigo(), { text: copy.revertido() });
       return;
     }
 
@@ -918,7 +943,29 @@ export class Worker {
     const { mergeSha } = await withTimeout(this.d.agent.mergeChange({ repo: this.repoRef(ctx.project), prNumber: req.pr_number }), 60_000, 'Merge');
     req = await this.d.store.updateRequest(req.id, { status: 'publicado', changes: { mergeSha } });
     await this.event(req, 'publicado', 'ok', Math.round(performance.now() - t0), { sha: mergeSha });
-    await this.sayTo(req.contact_id, req.id, { text: copy.aprobadoAgencia(ctx.agencyName), buttons: [[{ text: B.volver, data: `undo:${req.short_id}` }]] });
+    const done = { text: copy.aprobadoAgencia(ctx.agencyName), buttons: [[{ text: B.volver, data: `undo:${req.short_id}` }]] };
+    await this.whenLive(req, ctx, mergeSha, copy.publicandoCodigo(ctx.agencyName), done);
+  }
+
+  /**
+   * A merge is not the site yet: the host still has to build it. Says `pending` now and `done` once
+   * the deploy of `sha` is live, in the background so the queue keeps moving. Without a way to
+   * watch the deploy, says `done` right away.
+   */
+  private async whenLive(req: RequestRow, ctx: Ctx, sha: string, pending: string, done: OutMessage): Promise<void> {
+    const wait = this.d.agent.waitForDeploy;
+    if (!wait) return this.sayTo(req.contact_id, req.id, done);
+    await this.sayTo(req.contact_id, req.id, { text: pending });
+    const t0 = performance.now();
+    const watch = (async () => {
+      const live = await wait({ repo: this.repoRef(ctx.project), sha }).catch(() => false);
+      await this.event(req, 'en_la_web', live ? 'ok' : 'falla', Math.round(performance.now() - t0), { sha });
+      if (live) return this.sayTo(req.contact_id, req.id, done);
+      await this.sayTo(req.contact_id, req.id, { text: copy.demoraPublicacion(ctx.agencyName) });
+      await this.notifyAgency(ctx, req.id, { text: `#${req.short_id}: el cambio ${sha.slice(0, 7)} no aparece publicado en el hosting.`, buttons: this.panelRow() });
+    })().catch((e) => this.log(`[en la web] ${this.redact(errMsg(e))}`));
+    this.background.add(watch);
+    void watch.finally(() => this.background.delete(watch));
   }
 
   // ───────────────────────── comandos del panel ─────────────────────────

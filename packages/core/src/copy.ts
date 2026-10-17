@@ -31,6 +31,10 @@ export const copy = {
   esperaAgencia: (agencia: string, razon: string) =>
     `Esto lo aprueba ${agencia} porque ${razon}. Te aviso apenas esté.`,
   aprobadoAgencia: (agencia: string) => `${agencia} lo aprobó y ya está publicado.`,
+  publicandoCodigo: (agencia: string) => `${agencia} lo aprobó. Se está publicando: tarda un minuto o dos y te aviso cuando esté en la web.`,
+  revirtiendoCodigo: () => 'Lo estoy volviendo atrás: tarda un minuto o dos y te aviso cuando esté.',
+  demoraPublicacion: (agencia: string) => `El cambio ya está hecho, pero la web tarda más de lo normal en actualizarse. Se lo aviso a ${agencia}.`,
+  loApruebaAgencia: (agencia: string) => `Ese cambio lo aprueba ${agencia}. Ya les avisé; te escribo apenas esté.`,
   fueraDeAlcance: (agencia: string) =>
     `Eso es algo nuevo para tu web. Se lo paso a ${agencia} para que te mande un presupuesto.`,
   presupuesto: (agencia: string, titulo: string, monto: number, dias: number) =>

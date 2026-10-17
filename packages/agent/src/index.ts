@@ -23,7 +23,7 @@ import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.j
 export type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.js';
 export { DEFAULT_PROTECTED_GLOBS, DiffRejectedError, runCodeChangeWith, mergeChangeWith, revertChangeWith, findPreviewUrlWith } from './code-change.js';
 export type { AgentDeps } from './code-change.js';
-export { GitHubHost, LocalHost, isVercelAppUrl, vercelPreviewFromComment, type CodeHost } from './hosts.js';
+export { GitHubHost, LocalHost, currentDeployState, isVercelAppUrl, vercelPreviewFromComment, type CodeHost } from './hosts.js';
 export { createClaudeAgentRunner, guardHook, agentPrompt, type AgentRunner, type AgentRunInput, type AgentRunOutput } from './runner.js';
 export { checkPath, evaluateToolUse, AGENT_TOOLS, ALWAYS_PROTECTED } from './guard.js';
 export { reviewDiff, addedLines } from './review.js';
@@ -60,4 +60,28 @@ export async function revertChange(
 
 export async function findPreviewUrl(input: { repo: RepoRef; sha: string; timeoutMs?: number }, host?: CodeHost): Promise<string | undefined> {
   return findPreviewUrlWith(input, host ?? createHost(loadEnv()));
+}
+
+/**
+ * Waits until the hosting deploy of `sha` (usually the merge on the default branch) is live.
+ * True when it is green; false on failure or after `timeoutMs` (default 4 minutes).
+ */
+export async function waitForDeploy(
+  input: { repo: RepoRef; sha: string; timeoutMs?: number; pollMs?: number },
+  host?: CodeHost,
+): Promise<boolean> {
+  const h = host ?? createHost(loadEnv());
+  const pollMs = input.pollMs ?? 5_000;
+  const deadline = Date.now() + (input.timeoutMs ?? 240_000);
+  for (;;) {
+    try {
+      const state = await h.deployStateOnce(input.repo, input.sha);
+      if (state === 'success') return true;
+      if (state === 'failure') return false;
+    } catch {
+      // Transient API errors: keep polling until the deadline.
+    }
+    if (Date.now() + pollMs > deadline) return false;
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
 }

@@ -69,6 +69,7 @@ export const EVENT_STEPS = [
   'agente_inicio',
   'agente_pr',
   'agente_preview',
+  'en_la_web',
   'presupuesto',
   'respondido',
 ] as const;

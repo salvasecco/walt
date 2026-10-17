@@ -282,6 +282,67 @@ describe('riesgoso de código: cola lenta y @dale/agent', () => {
   });
 });
 
+describe('aprobar por texto (SPEC §9, paso 3)', () => {
+  const ai = aiWith((t) =>
+    t.includes('mapa')
+      ? { kind: 'cambio', summary: 'Agrego un mapa en contacto', ops: [], needsCode: true, codeInstruction: 'Agregar un mapa', unexpressedParts: ['un mapa'], confidence: 0.9 }
+      : /aprob|public|hacer/.test(t)
+        ? { kind: 'aprobacion', summary: 'Aprueba', ops: [], needsCode: false, unexpressedParts: [], confidence: 0.9 }
+        : null,
+  );
+  const agencySays = async (h: Awaited<ReturnType<typeof harness>>, text: string) => {
+    await h.worker.handle({ kind: 'text', chatId: AGENCY_CHAT, fromName: 'Faro', text });
+    await h.worker.idle();
+  };
+
+  it('la agencia escribe "aprobar y hacer" y después "publicalo": hace lo mismo que los botones', async () => {
+    const agent = okAgent();
+    const h = await harness({ ai, agent });
+    await h.say('agregá un mapa en contacto');
+    const req = lastReq(h);
+    await agencySays(h, 'aprobar y hacer');
+    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('agente_listo');
+    await agencySays(h, 'publicalo');
+    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('publicado');
+    expect(agent.calls).toEqual(['run:Agregar un mapa', 'merge:7']);
+  });
+
+  it('la agencia aprueba por texto un cartel que espera su aprobación', async () => {
+    const h = await harness({ ai });
+    await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
+    const req = lastReq(h);
+    await agencySays(h, 'aprobado');
+    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('publicado');
+    expect(h.store.approvals).toEqual([expect.objectContaining({ actor: 'agencia', decision: 'aprobado' })]);
+  });
+
+  it('si el cliente aprueba algo que espera a la agencia, le dice que lo aprueba la agencia', async () => {
+    const h = await harness({ ai });
+    await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
+    const req = lastReq(h);
+    await h.say('aprobar y hacer');
+    expect(h.last()).toBe(copy.loApruebaAgencia('Estudio Faro'));
+    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('esperando_agencia');
+  });
+
+  it('en el carril de código avisa "se está publicando" y recién después "ya está publicado"', async () => {
+    const agent = okAgent();
+    let release!: (ok: boolean) => void;
+    const h = await harness({ ai, agent: { ...agent, waitForDeploy: () => new Promise<boolean>((r) => (release = r)) } });
+    await h.say('agregá un mapa en contacto');
+    const req = lastReq(h);
+    await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
+    // press() waits for idle, which includes the deploy watch: release it while press is pending.
+    const pressed = h.press(`pub:${req.short_id}`, AGENCY_CHAT);
+    for (let i = 0; i < 50 && h.last() !== copy.publicandoCodigo('Estudio Faro'); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(h.last()).toBe(copy.publicandoCodigo('Estudio Faro'));
+    release(true);
+    await pressed;
+    expect(h.last()).toBe(copy.aprobadoAgencia('Estudio Faro'));
+    expect(h.store.events.some((e) => e.request_id === req.id && e.step === 'en_la_web' && e.status === 'ok')).toBe(true);
+  });
+});
+
 describe('acceso y límites (SPEC §9, §12)', () => {
   it('un chat sin vincular no pasa', async () => {
     const h = await harness();

@@ -1,6 +1,7 @@
 /**
  * Leaves the bakery project as new for a demo run: deletes requests, messages, commands and
- * versions, restores the fixture as the live version and rules v1. Keeps contacts and invites.
+ * versions, restores the fixture as the live version and rules v1. Keeps contacts (except the
+ * dry-run's console ones) and invites.
  * With GITHUB_MODE=real it also commits the fixture to content/site.json of DEMO_REPO if it differs,
  * so git history matches the live version again (skip with --keep-repo).
  * Usage: pnpm demo:reset [--project <id>] [--keep-repo]
@@ -22,6 +23,8 @@ runMain('demo:reset', async () => {
     must(await db.from('messages').delete().in('request_id', requestIds.slice(k, k + 100)), 'messages');
   }
   if (contactIds.length) must(await db.from('messages').delete().in('contact_id', contactIds), 'messages');
+  // The dry-run's console contacts (chats 1 and 2) are not real chats: the worker would try to message them.
+  must(await db.from('contacts').delete().eq('project_id', project).in('telegram_chat_id', [1, 2]), 'contacts');
   must(await db.from('requests').update({ draft_version_id: null, live_version_id: null, quote_id: null }).eq('project_id', project), 'requests');
   must(await db.from('requests').delete().eq('project_id', project), 'requests');
   must(await db.from('content_versions').delete().eq('project_id', project), 'content_versions');

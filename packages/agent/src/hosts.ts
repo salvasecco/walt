@@ -20,6 +20,8 @@ export interface CodeHost {
   mergePullRequest(repo: RepoRef, prNumber: number, title: string): Promise<{ sha: string }>;
   /** One look for a preview URL of a commit (and its PR, when known); `findPreviewUrl` polls this. */
   previewUrlOnce(repo: RepoRef, sha: string, prNumber?: number): Promise<string | undefined>;
+  /** State of the hosting deploy of a commit (Vercel's commit status), if there is one yet. */
+  deployStateOnce(repo: RepoRef, sha: string): Promise<'success' | 'pending' | 'failure' | undefined>;
 }
 
 export class GitHubHost implements CodeHost {
@@ -81,6 +83,17 @@ export class GitHubHost implements CodeHost {
     }
     return undefined;
   }
+  async deployStateOnce(repo: RepoRef, sha: string) {
+    const { data } = await this.octokit.rest.repos.listCommitStatusesForRef({ owner: repo.owner, repo: repo.name, ref: sha, per_page: 50 });
+    return currentDeployState(data);
+  }
+}
+
+/** GitHub returns commit statuses newest first: the first one per context is the current state. */
+export function currentDeployState(statuses: { context: string; state: string }[]): 'success' | 'pending' | 'failure' | undefined {
+  const st = statuses.find((x) => x.context === 'Vercel');
+  if (!st) return undefined;
+  return st.state === 'success' ? 'success' : st.state === 'pending' ? 'pending' : 'failure';
 }
 
 /** The `[Preview](https://….vercel.app)` link of a vercel[bot] PR comment, if any. */
@@ -166,5 +179,8 @@ export class LocalHost implements CodeHost {
   }
   async previewUrlOnce(_repo: RepoRef, sha: string) {
     return this.previews(sha);
+  }
+  async deployStateOnce() {
+    return 'success' as const;
   }
 }
