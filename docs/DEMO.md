@@ -22,6 +22,8 @@ Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan
 | 6 | ¿a qué hora abren el domingo? | Consulta | Contesta 08:00 a 13:00 con lo que dice la web |
 | 7 | quiero que la gente pueda reservar tortas online | Fuera de alcance | Borrador de presupuesto en Presupuestos |
 | 8 | poné el fondo violeta | Permitido: color | El fondo del sitio cambia |
+| 9 | (audio) "subí el pan flauta a 95" | Permitido, igual que el caso 1 | El bot responde "🎙️ subí el pan flauta a 95" y sigue con la captura. Necesita `OPENAI_API_KEY`; sin la clave dice que falta configurar la transcripción |
+| 10 | cambiá el título a naranja | Permitido: color del título (contenido, sin agente) | El título cambia en segundos, sin deploy |
 
 **Última corrida (2026-10-17, 90-integracion): solo con el proveedor FALSO**, porque no había `ANTHROPIC_API_KEY`. Eso prueba el pipeline (reglas, gate, publicar, mensajes), no la IA. Antes de la demo hay que repetirla con el modelo real: `pnpm dry-run "<pedido>" --approve` para cada caso.
 
@@ -48,6 +50,8 @@ Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan
 | 2:00–2:20 | Caso 5: el script | "Esto no lo publica nunca, diga lo que diga la IA." |
 | 2:20–2:40 | Caso 7: reservar tortas online → presupuesto | "Lo nuevo no se pierde: es una venta para la agencia." |
 | 2:40–3:00 | Indicadores: % resuelto sin la agencia, tiempo a publicado, costo por pedido. Invitación del jurado | "Prueben ustedes: este QR es el del jurado." |
+
+Probar el audio sin Telegram: `pnpm voice-test "subí el pan flauta a 95" --approve` (genera la voz con `say` y la pasa por el mismo handler del worker).
 
 ## Plan B
 

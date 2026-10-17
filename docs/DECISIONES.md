@@ -87,7 +87,7 @@
 - El system prompt (estático, en `packages/ai/prompts/*.md`) lleva `cache_control`; el inventario, el historial y el mensaje van en el turno del usuario. El texto del cliente va en `<mensaje_cliente>` (y el historial en `<historial>`), con las etiquetas de cierre neutralizadas.
 - Si el modelo devuelve operaciones en algo que no es `cambio`, se descartan.
 - `answerConsulta` acepta `assistantName` opcional para presentarse con el nombre de la agencia (marca blanca).
-- `transcribe`: API de OpenAI (`gpt-4o-mini-transcribe`) con `OPENAI_API_KEY`; sin la clave, "Por ahora mandámelo escrito".
+- `transcribe`: API de OpenAI con `OPENAI_API_KEY` (ver "velocidad" abajo); sin la clave, el bot pide el texto.
 - El worker usa `SUPABASE_DB_URL` (Postgres directo con `postgres`, service role implícito) en vez del cliente REST de Supabase: un solo camino, probado con PGlite sobre la migración real. Realtime no cambia (es replicación lógica). Sin `SUPABASE_DB_URL` el worker usa una base en memoria con los mismos datos del seed.
 - Consola: los contactos de consola usan los chat ids fijos 1 (cliente) y 2 (agencia) en el proyecto del seed.
 - Respuestas cortas ("sí", "dale", "no", "volvé atrás") a un pedido abierto no crean pedido nuevo: se guardan como mensaje del pedido abierto y actúan como el botón. Si la IA devuelve `aprobacion`/`revertir`, el pedido queda `charla` y se resuelve el pedido abierto.
@@ -111,3 +111,18 @@
 - **Salida estructurada con ops planas.** La API rechazó el esquema exacto de `Interpretation` ("compiled grammar is too large"). Las ops viajan como un objeto plano con todos los campos requeridos y nulables, y `fromWire` las vuelve a la unión antes de validar con zod.
 - **Contraste en el gate.** Un cambio de color que deja el texto con contraste menor a 4.5:1 (WCAG AA) contra el fondo va a la agencia. El prompt pide tintes claros para el fondo.
 - **GITHUB_TOKEN** sale de `gh auth token` (acceso a todos los repos de la cuenta); reemplazar por uno fine-grained si hace falta.
+
+## velocidad (17/10)
+
+- Audios: modelo `gpt-transcribe` (el más nuevo y recomendado para `/v1/audio/transcriptions` según la doc oficial de OpenAI de octubre de 2026; elegido por la doc porque no había `OPENAI_API_KEY` para listar modelos), con `languages[]=es` y un `prompt` corto de contexto. Si la API rechaza el pedido (4xx que no sea 401/403/429, por ejemplo un formato que no toma), reintenta una vez con `gpt-4o-mini-transcribe` y `language=es`. La doc no lista OGG entre los formatos; las notas de voz de Telegram son OGG/Opus: el reintento cubre ese caso.
+- La transcripción no depende de `LLM_PROVIDER`: `createTranscriber(env)` solo mira `OPENAI_API_KEY` (antes exigía un proveedor real de LLM).
+- Audio transcripto: se responde "🎙️ {transcripción}" (mensaje de salida del pedido), la entrada guarda la transcripción como `text` con `media: { tipo: 'audio', mime, transcripcion: true }` y sigue el pipeline como un texto (también como respuesta corta: un "dale" por audio aprueba). Sin clave: "Todavía no puedo escuchar audios: falta configurar la transcripción. ¿Me lo escribís?". Si la transcripción falla o viene vacía: "No pude entender el audio. ¿Me lo escribís?", sin crear pedido.
+- `pnpm voice-test ["<texto>"] [--approve] [--undo] [--file <audio>]` genera el audio con `say -v Paulina` y lo pasa por el mismo handler de voz del worker (`pnpm dry-run --audio <archivo>`). `afconvert` de esta Mac no escribe Ogg/Opus ("pck?") y no hay ffmpeg: el script cae a m4a (AAC), que la API acepta.
+- `pnpm dry-run --agency`: además de `gok`, aprieta `pub` cuando el agente termina y espera "en la web". El dry-run imprime al final un resumen de pasos con duración y segundo en que terminó.
+- Contrato de contenido ampliado: colores `text`, `title`, `button`, `buttonText`; textos `/about/title`, `/headings/{products,hours,contact}/{title,subtitle}` y `/contact/address`. En el JSON Schema de core y en el zod del sitio los campos nuevos no son obligatorios (una versión viva vieja sigue valiendo; el sitio usa valores por defecto). Un subtítulo vacío no se muestra.
+- Gate de contraste por pares (`contrastPairs`): texto/fondo 4,5:1, título/fondo 3:1 (WCAG AA texto grande), texto del botón/botón 4,5:1. Se mide solo si el cambio toca alguno de los dos colores del par. Un par que no pasa va a la agencia, no se bloquea.
+- Prompt de interpretación v4: usa el token más específico (`title`, `button`) y tonos legibles (título naranja `#EA580C`, botón verde `#15803D`; botón claro → `buttonText` oscuro).
+- Agente: `MODEL_AGENT` por defecto `claude-sonnet-5-5`; si Sonnet tira error, no cambia nada o la revisión rechaza el diff, reintenta con `claude-opus-5-5` desde un clon limpio y con el mismo tiempo total. 15 turnos de tope (medido: 4–6). El resultado trae `timings` por fase, `turns` y `model`.
+- Worker: eventos y mensajes salientes se guardan en una cadena ordenada sin bloquear el pedido; `idle()` la espera y el historial la vacía antes de leer. El commit del JSON va de fondo y en orden. Si el proceso muere sin cerrar, se pueden perder los últimos eventos (no el estado del pedido).
+- `GitHubSiteRepo.loadContract`: caché con refresco de fondo pasados 60 s.
+- Vercel: `ignoreCommand` en dale-demo (solo `content/` o `dale.config.json` → no buildea) y en `apps/panel/vercel.json` (sin cambios en el panel, core ni lockfile → no buildea). `typescript.ignoreBuildErrors` en los dos; tipos y lint en `pnpm typecheck` y CI.

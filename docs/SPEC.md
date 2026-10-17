@@ -199,6 +199,7 @@ Un repo en modo contenido tiene en la raíz `dale.config.json`:
 
 Y un JSON Schema del contenido, draft 2020-12. El contenido de la panadería está en la sección 14.
 
+- Contrato ampliado (oct. 2026, ver `docs/DECISIONES.md` › velocidad y los fixtures de `@dale/core`): además, colores `text`, `title`, `button` y `buttonText`, y textos `/about/title`, `/headings/{products,hours,contact}/{title,subtitle}` y `/contact/address`.
 - `buildInventory(config, content)` arma lo que ve la IA: cada texto con su etiqueta y valor actual, cada color, cada producto con id, nombre, categoría, precio y disponibilidad, el cartel, los horarios y las secciones.
 - Nada fuera del config se puede tocar en modo contenido.
 - Un repo sin `dale.config.json` se conecta en modo código: solo el carril del agente.
