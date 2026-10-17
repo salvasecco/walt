@@ -172,8 +172,9 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
             {d.messages.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">Sin mensajes todavía.</p>
             ) : (
-              <ol className="scrollbar-thin mt-3 flex max-h-[560px] flex-col gap-2 overflow-y-auto pr-1">
-                {d.messages.map((m) => (
+              // Al revés y con flex-col-reverse: arranca scrolleado abajo, en lo más nuevo.
+              <ol className="scrollbar-thin mt-3 flex max-h-[560px] flex-col-reverse gap-2 overflow-y-auto pr-1">
+                {[...d.messages].reverse().map((m) => (
                   <li key={m.id} className={cn("flex flex-col gap-0.5", m.direction === "entrada" ? "items-end" : "items-start")}>
                     <div
                       className={cn(

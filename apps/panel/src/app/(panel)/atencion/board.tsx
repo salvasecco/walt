@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Eye, Send } from "lucide-react";
+import { Check, Eye, Receipt, Send } from "lucide-react";
 import { LayoutGroup, MotionConfig, motion } from "framer-motion";
 import { CommandButton } from "@/components/command-button";
 import { buttonVariants } from "@/components/ui/button";
@@ -70,13 +70,13 @@ function ProjectCard({ card, now }: { card: AttentionCard; now: number }) {
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             {client ? (
-              <Link href={`/clientes/${client.id}`} className="truncate text-sm font-medium hover:underline hover:underline-offset-4">
+              <Link href={`/clientes/${client.id}`} className="text-sm font-medium hover:underline hover:underline-offset-4">
                 {clientName}
               </Link>
             ) : (
-              <span className="truncate text-sm font-medium">{clientName}</span>
+              <span className="text-sm font-medium">{clientName}</span>
             )}
             {sample && <Chip className="h-4 px-1 text-[10px]">ejemplo</Chip>}
           </div>
@@ -132,7 +132,7 @@ function Actions({ item }: { item: AttItem }) {
           href={`/presupuestos#q-${item.quoteId}`}
           className={cn(buttonVariants({ variant: item.kind === "presupuesto_borrador" ? "default" : "outline" }), small)}
         >
-          <Send /> {item.kind === "presupuesto_borrador" ? "Mandar presupuesto" : "Ver presupuesto"}
+          {item.kind === "presupuesto_borrador" ? <><Send /> Mandar presupuesto</> : <><Receipt /> Ver presupuesto</>}
         </Link>
       </div>
     );
