@@ -293,7 +293,7 @@ export class Worker {
     this.awaitingCorrection.delete(contact.id);
     const t0 = performance.now();
     const req = await this.createRequest(contact, text, parent);
-    await this.d.store.addMessage({ request_id: req.id, contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
+    this.later('mensaje', () => this.d.store.addMessage({ request_id: req.id, contact_id: contact.id, direction: 'entrada', text, media: media ?? null }));
     await echo(req.id);
     await this.say(contact, req.id, { text: copy.recibido() });
     await this.event(req, 'recibido', 'ok', Math.round(performance.now() - t0), parent ? { correccionDe: parent } : null);
@@ -357,16 +357,17 @@ export class Worker {
     const { store } = this.d;
     let req = (await store.getRequest(requestId))!;
     // Everything the interpretation needs, read in parallel (each read is a round trip).
-    const [contact, ctx, , live, rulesRow, history, autoPublishedThisMonth] = await Promise.all([
+    const ctxP = this.ctxFor(req.project_id);
+    const [contact, ctx, contract, , live, rulesRow, history, autoPublishedThisMonth] = await Promise.all([
       store.getContact(req.contact_id!).then((c) => c!),
-      this.ctxFor(req.project_id),
+      ctxP,
+      ctxP.then((c) => (c.project.mode === 'contenido' ? this.d.repo.loadContract(c.project) : null)),
       store.updateRequest(req.id, { status: 'interpretando' }),
       store.getLiveVersion(req.project_id),
       store.latestRules(req.project_id),
       this.history(req.contact_id!, req.id),
       store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now())),
     ]);
-    const contract = ctx.project.mode === 'contenido' ? await this.d.repo.loadContract(ctx.project) : null;
     if (ctx.project.mode === 'contenido' && !live) throw new Error('El proyecto no tiene versión viva');
     this.liveFor.set(req.id, live?.id ?? null);
     const inventory = contract && live ? buildInventory(contract.config, live.content) : EMPTY_INVENTORY;

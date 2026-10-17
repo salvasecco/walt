@@ -60,6 +60,7 @@ export class GitHubSiteRepo implements SiteRepo {
   readonly mode = 'real' as const;
   private readonly octokit: Octokit;
   private readonly cache = new Map<string, { at: number; contract: Contract }>();
+  private readonly refreshing = new Set<string>();
 
   constructor(token: string, octokit?: Octokit) {
     this.octokit = octokit ?? new Octokit({ auth: token, request: { timeout: 15_000 } });
@@ -77,10 +78,26 @@ export class GitHubSiteRepo implements SiteRepo {
     return JSON.parse(Buffer.from(data.content, (data.encoding as BufferEncoding) ?? 'base64').toString('utf8'));
   }
 
+  /**
+   * Contract with stale-while-revalidate: a cached one older than 60 s is returned at once and
+   * refreshed in the background, so only the very first request pays the two GitHub reads.
+   */
   async loadContract(project: ProjectRow): Promise<Contract> {
     const key = `${project.repo_owner}/${project.repo_name}@${project.default_branch}`;
     const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < 60_000) return hit.contract;
+    if (hit) {
+      if (Date.now() - hit.at >= 60_000 && !this.refreshing.has(key)) {
+        this.refreshing.add(key);
+        this.fetchContract(project, key)
+          .catch(() => {})
+          .finally(() => this.refreshing.delete(key));
+      }
+      return hit.contract;
+    }
+    return this.fetchContract(project, key);
+  }
+
+  private async fetchContract(project: ProjectRow, key: string): Promise<Contract> {
     const config = parseConfig(await this.readJson(project, project.config_path));
     const schema = (await this.readJson(project, config.schema)) as object;
     const contract = { config, schema };
