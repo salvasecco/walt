@@ -50,3 +50,4 @@
 - Revisión del diff: solo cuentan las líneas agregadas. Además del SPEC rechaza `new Function(`, binarios, symlinks nuevos, rutas con `..`, más de 30 archivos y un diff vacío.
 - Revert de código: clon de la rama principal, `git revert` del squash (con `-m 1` si fuera un merge con dos padres) y commit `dale: revert #{short_id}`.
 - Vista previa: primero los deployments de GitHub del commit (estado success, `environment_url` https); si no, statuses con link a `*.vercel.app`. Sondeo cada 10 s hasta 4 min.
+- `@dale/core` importa sus módulos con extensión `.ts` (no `.js`): Turbopack y webpack de Next no mapean `.js`→`.ts` en un paquete transpilado. El panel necesita `allowImportingTsExtensions` en su tsconfig.

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseConfig, type DaleConfig } from './config.js';
+import { parseConfig, type DaleConfig } from './config.ts';
 
 const dir = fileURLToPath(new URL('../test/fixtures/', import.meta.url));
 const read = (name: string): unknown => JSON.parse(readFileSync(dir + name, 'utf8'));

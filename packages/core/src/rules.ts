@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { OP_TYPES, type OpType } from './ops.js';
+import { OP_TYPES, type OpType } from './ops.ts';
 
 export const POLICIES = ['auto', 'agencia', 'bloqueado'] as const;
 export type Policy = (typeof POLICIES)[number];

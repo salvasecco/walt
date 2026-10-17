@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { OpSchema } from './ops.js';
+import { OpSchema } from './ops.ts';
 
 export const INTERPRETATION_KINDS = ['cambio', 'consulta', 'funcion_nueva', 'charla', 'aprobacion', 'revertir'] as const;
 export type InterpretationKind = (typeof INTERPRETATION_KINDS)[number];

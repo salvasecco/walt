@@ -1,7 +1,7 @@
-import type { GateResult } from './gate.js';
-import type { Interpretation } from './interpretation.js';
-import type { Rules } from './rules.js';
-import type { Category, Lane, ProjectMode } from './types.js';
+import type { GateResult } from './gate.ts';
+import type { Interpretation } from './interpretation.ts';
+import type { Rules } from './rules.ts';
+import type { Category, Lane, ProjectMode } from './types.ts';
 
 /** HTML or code in the client's own text. Checked before anything else. */
 export const CODE_IN_TEXT =

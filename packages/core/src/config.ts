@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getPointer, joinPointer } from './pointer.js';
+import { getPointer, joinPointer } from './pointer.ts';
 
 /** `dale.config.json` contract (SPEC §6). */
 export const DaleConfigSchema = z.object({

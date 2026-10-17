@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
-import type { DaleConfig } from './config.js';
-import { inventoryPointers } from './config.js';
-import { applyOps, OpSchema, OP_LABELS, OpValidationError, type Change, type Op } from './ops.js';
-import { policyFor, type Policy, type Rules } from './rules.js';
+import type { DaleConfig } from './config.ts';
+import { inventoryPointers } from './config.ts';
+import { applyOps, OpSchema, OP_LABELS, OpValidationError, type Change, type Op } from './ops.ts';
+import { policyFor, type Policy, type Rules } from './rules.ts';
 
 const require = createRequire(import.meta.url);
 // ajv ships CommonJS; createRequire avoids ESM default-export interop issues.

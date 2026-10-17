@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { BANNER_FIELDS, DAYS, getProducts, type DaleConfig } from './config.js';
-import { deepClone, deepEqual, getPointer, hasPointer, joinPointer, setPointer } from './pointer.js';
+import { BANNER_FIELDS, DAYS, getProducts, type DaleConfig } from './config.ts';
+import { deepClone, deepEqual, getPointer, hasPointer, joinPointer, setPointer } from './pointer.ts';
 
 const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
