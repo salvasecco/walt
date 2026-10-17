@@ -20,6 +20,7 @@ function loadDaleEnv() {
 loadDaleEnv();
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@dale/core"],
   // Panel 100% dinámico (datos en vivo): sin Cache Components. Ver docs/DECISIONES.md.
   turbopack: {
     rules: {
