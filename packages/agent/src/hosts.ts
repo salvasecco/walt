@@ -18,8 +18,8 @@ export interface CodeHost {
   gitAuthEnv(): Record<string, string>;
   createPullRequest(repo: RepoRef, pr: { head: string; base: string; title: string; body: string }): Promise<{ number: number; url: string }>;
   mergePullRequest(repo: RepoRef, prNumber: number, title: string): Promise<{ sha: string }>;
-  /** One look for a preview URL of a commit; `findPreviewUrl` polls this. */
-  previewUrlOnce(repo: RepoRef, sha: string): Promise<string | undefined>;
+  /** One look for a preview URL of a commit (and its PR, when known); `findPreviewUrl` polls this. */
+  previewUrlOnce(repo: RepoRef, sha: string, prNumber?: number): Promise<string | undefined>;
 }
 
 export class GitHubHost implements CodeHost {
@@ -50,7 +50,7 @@ export class GitHubHost implements CodeHost {
     if (!data.merged) throw new Error(`GitHub no mergeó el PR #${prNumber}: ${data.message}`);
     return { sha: data.sha };
   }
-  async previewUrlOnce(repo: RepoRef, sha: string): Promise<string | undefined> {
+  async previewUrlOnce(repo: RepoRef, sha: string, prNumber?: number): Promise<string | undefined> {
     const owner = repo.owner;
     const name = repo.name;
     // 1. Deployments for the commit (Vercel's Git integration creates them).
@@ -64,8 +64,31 @@ export class GitHubHost implements CodeHost {
     // 2. Commit statuses as a fallback (only https links to a vercel.app host).
     const { data: statuses } = await this.octokit.rest.repos.listCommitStatusesForRef({ owner, repo: name, ref: sha, per_page: 50 });
     const st = statuses.find((s) => s.state === 'success' && s.target_url && isVercelAppUrl(s.target_url));
-    return st?.target_url ?? undefined;
+    if (st?.target_url) return st.target_url;
+    // 3. Vercel's status links to vercel.com, not to the preview; once it is green, the vercel[bot]
+    //    comment on the commit's PR carries the vercel.app link.
+    if (!statuses.some((s) => s.state === 'success' && s.context === 'Vercel')) return undefined;
+    const prNumbers = prNumber
+      ? [prNumber]
+      : (await this.octokit.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo: name, commit_sha: sha })).data.map((pr) => pr.number);
+    for (const issue_number of prNumbers) {
+      const { data: comments } = await this.octokit.rest.issues.listComments({ owner, repo: name, issue_number, per_page: 50 });
+      for (const c of comments) {
+        if (c.user?.login !== 'vercel[bot]' || !c.body) continue;
+        const url = vercelPreviewFromComment(c.body);
+        if (url) return url;
+      }
+    }
+    return undefined;
   }
+}
+
+/** The `[Preview](https://….vercel.app)` link of a vercel[bot] PR comment, if any. */
+export function vercelPreviewFromComment(body: string): string | undefined {
+  for (const m of body.matchAll(/\[Preview\]\((https:\/\/[^)\s]+)\)/g)) {
+    if (isVercelAppUrl(m[1]!)) return m[1];
+  }
+  return undefined;
 }
 
 export function isVercelAppUrl(url: string): boolean {

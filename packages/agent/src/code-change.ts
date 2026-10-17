@@ -164,7 +164,7 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
     log(`PR #${pr.number}: ${pr.url}`);
 
     const previewUrl = await findPreviewUrlWith(
-      { repo: input.repo, sha: commitSha, timeoutMs: deps.previewTimeoutMs ?? 240_000 },
+      { repo: input.repo, sha: commitSha, prNumber: pr.number, timeoutMs: deps.previewTimeoutMs ?? 240_000 },
       deps.host,
       deps.previewPollMs,
     );
@@ -221,14 +221,14 @@ export async function revertChangeWith(
 
 /** Polls the host for a preview URL of `sha` until `timeoutMs` (default 4 minutes). */
 export async function findPreviewUrlWith(
-  input: { repo: RepoRef; sha: string; timeoutMs?: number },
+  input: { repo: RepoRef; sha: string; prNumber?: number; timeoutMs?: number },
   host: CodeHost,
   pollMs = 10_000,
 ): Promise<string | undefined> {
   const deadline = Date.now() + (input.timeoutMs ?? 240_000);
   for (;;) {
     try {
-      const url = await host.previewUrlOnce(input.repo, input.sha);
+      const url = await host.previewUrlOnce(input.repo, input.sha, input.prNumber);
       if (url) return url;
     } catch {
       // Transient API errors: keep polling until the deadline.

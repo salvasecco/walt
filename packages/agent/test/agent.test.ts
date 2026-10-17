@@ -274,3 +274,14 @@ describe('findPreviewUrl', () => {
     expect(await findPreviewUrlWith({ repo, sha: 'abc1234', timeoutMs: 30 }, h, 10)).toBeUndefined();
   });
 });
+
+describe('vista previa desde el comentario de vercel[bot]', () => {
+  it('toma el link de Preview a vercel.app y nada más', async () => {
+    const { vercelPreviewFromComment } = await import('../src/index.js');
+    const body =
+      '| [dale-demo](https://vercel.com/x/dale-demo) | [Ready](https://vercel.com/x/dale-demo/abc) | [Preview](https://dale-demo-git-dale-uzptza-x-projects.vercel.app) | now |';
+    expect(vercelPreviewFromComment(body)).toBe('https://dale-demo-git-dale-uzptza-x-projects.vercel.app');
+    expect(vercelPreviewFromComment('[Preview](https://evil.example.com/x.vercel.app)')).toBeUndefined();
+    expect(vercelPreviewFromComment('sin links')).toBeUndefined();
+  });
+});
