@@ -25,3 +25,11 @@
 | Audios (OPENAI_API_KEY, opcional) | ❌ | sin audios: se pide por escrito |
 
 Faltan: TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL, GITHUB_TOKEN, ANTHROPIC_API_KEY (o AWS para Bedrock), PANEL_PASSWORD. Opcional: OPENAI_API_KEY.
+
+## Integración real (17/10, tarde)
+
+- Supabase por HTTPS: migraciones 0001 y 0002 aplicadas en el SQL Editor; seed corrido; el sitio lee la versión viva (`data-content-source="live"`).
+- Dry-run de los 8 casos con el modelo real contra Supabase: los 8 dan la categoría esperada. "Subí el pan flauta a 95" llega a la vista previa en 13,4 s.
+- Eval con el modelo real (antes del ajuste del prompt v3): sintéticos 96,7% de categoría, 100% de ops, 0 falsos permitidos, 0 prohibidos aplicados, USD 0,19. Los 4 casos que fallaban pasan con v3; falta la corrida completa con v3.
+- Agente de código real: PR #1 en dale-demo, vista previa de Vercel lista en 16 s, PR cerrado. La búsqueda de la vista previa se arregló después (comentario de vercel[bot]).
+- Worker: `scripts/run-worker.sh` en polling como @wal101_bot, en la compu.
