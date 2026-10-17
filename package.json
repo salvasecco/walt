@@ -1,0 +1,28 @@
+{
+  "name": "dale",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.4.2",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "check": "tsx scripts/check-env.ts",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "seed": "tsx scripts/seed.ts",
+    "dry-run": "pnpm --filter @dale/worker dry-run",
+    "eval": "pnpm --filter @dale/eval eval",
+    "e2e": "tsx scripts/e2e.ts",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "start:worker": "pnpm --filter @dale/worker start",
+    "dev:panel": "pnpm --filter @dale/panel dev",
+    "demo:reset": "tsx scripts/demo-reset.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "postgres": "^3.4.9",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.5",
+    "@dale/core": "workspace:*"
+  }
+}
