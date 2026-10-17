@@ -44,9 +44,10 @@ export type LiveSnapshot = {
 export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   if (mode() === "ejemplo") {
     const s = buildSample();
+    const sampleIds = new Set(s.projects.filter((p) => p.is_sample).map((p) => p.id));
     return {
       projects: s.projects,
-      requests: s.requests.slice(0, 12),
+      requests: s.requests.filter((r) => !sampleIds.has(r.project_id)).slice(0, 12),
       events: s.events,
       messages: s.messages,
       liveVersions: s.versions.filter((v) => v.status === "viva"),
@@ -55,11 +56,13 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   }
   const db = supabaseAdmin();
   const since = new Date(Date.now() - 36 * 3_600_000).toISOString();
-  const [projects, requests, liveVersions] = await Promise.all([
+  const [projects, allRequests, liveVersions] = await Promise.all([
     db.from("projects").select("*").order("created_at").then(must<Project[]>),
     db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(60).then(must<DaleRequest[]>),
     db.from("content_versions").select("*").eq("status", "viva").then(must<ContentVersion[]>),
   ]);
+  // En vivo es la pantalla de la demo: sin los clientes de ejemplo (migración 0003).
+  const requests = allRequests.filter((r) => !r.is_sample);
   const ids = requests.map((r) => r.id);
   const [events, messages] = ids.length
     ? await Promise.all([

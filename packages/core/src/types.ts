@@ -126,6 +126,24 @@ export interface ProjectRow {
   mode: ProjectMode;
   config_path: string;
   site_url: string | null;
+  /** Migration 0003; optional because rows read before it was applied don't have it. */
+  client_id?: Uuid | null;
+  /** Migration 0003: sample data shown in the panel, never sent to a real chat. */
+  is_sample?: boolean;
+  created_at: Timestamp;
+}
+
+/** A client of the agency (migration 0003): owns projects and has a monthly plan. */
+export interface ClientRow {
+  id: Uuid;
+  factory_id: Uuid;
+  name: string;
+  contact_name: string | null;
+  plan_name: string;
+  monthly_quota: number;
+  monthly_fee_usd: number;
+  notes: string;
+  is_sample: boolean;
   created_at: Timestamp;
 }
 
@@ -183,6 +201,8 @@ export interface RequestRow {
   error: string | null;
   cost_usd: number;
   usage: unknown;
+  /** Migration 0003: sample data shown in the panel. */
+  is_sample?: boolean;
   created_at: Timestamp;
   updated_at: Timestamp;
 }

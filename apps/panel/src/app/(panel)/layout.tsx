@@ -1,10 +1,12 @@
 import { LogOut } from "lucide-react";
 import { logout } from "@/app/actions";
 import { Logo } from "@/components/logo";
+import { LiveRefresh } from "@/components/live-refresh";
 import { Nav } from "@/components/nav";
 import { SampleBadge } from "@/components/ui-dale";
 import { authMode } from "@/lib/auth";
-import { dataMode, env } from "@/lib/env";
+import { getNeedCount } from "@/lib/agency";
+import { dataMode, env, publicSupabase } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { buildSample } from "@/lib/sample";
 
@@ -28,11 +30,12 @@ async function pendingCount(): Promise<number> {
 
 export default async function PanelLayout({ children }: LayoutProps<"/">) {
   const mode = dataMode();
-  const pending = await pendingCount();
-  const badges = { "/aprobaciones": pending };
+  const [pending, need] = await Promise.all([pendingCount(), getNeedCount()]);
+  const badges = { "/atencion": need, "/aprobaciones": pending };
   const canLogout = authMode() === "password";
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
+      {mode === "supabase" && <LiveRefresh supabase={publicSupabase()} />}
       <div className="hidden border-r border-line bg-sidebar lg:block">
         <aside className="sticky top-0 flex h-dvh flex-col gap-7 px-3 py-5">
           <Logo className="px-2" />

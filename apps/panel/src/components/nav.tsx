@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, BarChart3, CheckCheck, FolderGit2, History, type LucideIcon, Receipt, SlidersHorizontal } from "lucide-react";
+import { Activity, BarChart3, CheckCheck, FolderGit2, History, LayoutGrid, type LucideIcon, Receipt, SlidersHorizontal, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: "/" | "/aprobaciones" | "/historial" | "/proyectos" | "/reglas" | "/lo-que-piden" | "/presupuestos"; label: string; icon: LucideIcon };
+type NavItem = { href: "/atencion" | "/clientes" | "/" | "/aprobaciones" | "/historial" | "/proyectos" | "/reglas" | "/lo-que-piden" | "/presupuestos"; label: string; icon: LucideIcon };
 
 export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Operación",
     items: [
+      { href: "/atencion", label: "Atención", icon: LayoutGrid },
       { href: "/", label: "En vivo", icon: Activity },
       { href: "/aprobaciones", label: "Aprobaciones", icon: CheckCheck },
       { href: "/historial", label: "Historial", icon: History },
@@ -26,6 +27,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Negocio",
     items: [
+      { href: "/clientes", label: "Clientes", icon: Users },
       { href: "/lo-que-piden", label: "Lo que piden", icon: BarChart3 },
       { href: "/presupuestos", label: "Presupuestos", icon: Receipt },
     ],
@@ -34,10 +36,17 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
 
 export const NAV = NAV_SECTIONS.flatMap((s) => s.items);
 
-function Count({ n, className }: { n: number; className?: string }) {
+/** Para lectores de pantalla y tooltip: qué cuenta cada contador. */
+const BADGE_LABEL: Record<string, (n: number) => string> = {
+  "/atencion": (n) => `Te necesita (${n})`,
+  "/aprobaciones": (n) => `${n} esperando aprobación`,
+};
+
+function Count({ n, href, long, className }: { n: number; href: string; long?: boolean; className?: string }) {
+  const label = BADGE_LABEL[href]?.(n);
   return (
-    <span className={cn("inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-md border border-warn/30 bg-warn/10 px-1 text-[11px] font-medium text-warn tnum", className)}>
-      {n}
+    <span title={label} aria-label={label} className={cn("inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-md border border-warn/30 bg-warn/10 px-1 text-[11px] font-medium text-warn tnum", className)}>
+      {long && href === "/atencion" ? `Te necesita ${n}` : n}
     </span>
   );
 }
@@ -59,7 +68,7 @@ export function Nav({ badges = {}, variant }: { badges?: Record<string, number>;
             )}
           >
             {label}
-            {!!badges[href] && <Count n={badges[href]} />}
+            {!!badges[href] && <Count n={badges[href]} href={href} />}
           </Link>
         ))}
       </nav>
@@ -81,7 +90,7 @@ export function Nav({ badges = {}, variant }: { badges?: Record<string, number>;
             >
               <Icon className="size-4 shrink-0" strokeWidth={1.75} />
               <span className="flex-1 truncate">{label}</span>
-              {!!badges[href] && <Count n={badges[href]} />}
+              {!!badges[href] && <Count n={badges[href]} href={href} long />}
             </Link>
           ))}
         </div>

@@ -38,6 +38,31 @@ export type Project = {
   mode: "contenido" | "codigo";
   config_path: string;
   site_url: string | null;
+  /** Migración 0003: opcionales porque antes de aplicarla no vienen. */
+  client_id?: string | null;
+  is_sample?: boolean;
+  created_at: string;
+};
+
+/** Cliente de la agencia (migración 0003). */
+export type Client = {
+  id: string;
+  factory_id: string;
+  name: string;
+  contact_name: string | null;
+  plan_name: string;
+  monthly_quota: number;
+  monthly_fee_usd: number;
+  notes: string;
+  is_sample: boolean;
+  created_at: string;
+};
+
+export type Contact = {
+  id: string;
+  project_id: string;
+  display_name: string;
+  role: "cliente" | "agencia";
   created_at: string;
 };
 
@@ -81,6 +106,7 @@ export type DaleRequest = {
   error: string | null;
   cost_usd: number | null;
   usage: Record<string, unknown> | null;
+  is_sample?: boolean;
   created_at: string;
   updated_at: string | null;
 };

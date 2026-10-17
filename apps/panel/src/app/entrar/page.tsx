@@ -21,10 +21,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/entrar">) 
           </p>
         ) : mode === "abierto" ? (
           <p className="mt-6 rounded-lg border border-line bg-surface-2 p-3 text-sm text-muted-foreground">
-            En desarrollo y sin <code className="font-mono">PANEL_PASSWORD</code>, el panel está abierto. <Link href="/" className="text-foreground underline underline-offset-4">Entrar</Link>
+            En desarrollo y sin <code className="font-mono">PANEL_PASSWORD</code>, el panel está abierto. <Link href="/atencion" className="text-foreground underline underline-offset-4">Entrar</Link>
           </p>
         ) : (
-          <LoginForm desde={typeof desde === "string" ? desde : "/"} />
+          <LoginForm desde={typeof desde === "string" ? desde : "/atencion"} />
         )}
       </div>
     </main>

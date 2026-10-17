@@ -1,12 +1,16 @@
 /**
  * Idempotent seed with the fixed ids of SPEC §5: agency, bakery project, rules v1,
  * initial live version from the fixture, and three invites (client, agency, jury).
+ * With migration 0003 it also creates the bakery's client (linked to its project) and two sample
+ * clients with their projects and requests (is_sample = true), rebuilt on every run.
  * Goes through supabase-js with the service role (HTTPS only).
  * Usage: pnpm seed
  */
 import { assistantName, DEFAULT_RULES, inviteToken, loadEnv, SEED_IDS, type Role } from '@dale/core';
 import { bakeryContent } from '@dale/core/fixtures';
-import { connect, must, runMain } from './lib/db.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { buildSampleClientRows, MABEL_CLIENT, SAMPLE_PROJECT_IDS } from '../apps/panel/src/lib/sample-clients.mts';
+import { connect, must, runMain, schemaStatus } from './lib/db.js';
 
 const HOUR = 3600_000;
 const INVITES: { label: string; role: Role; maxUses: number; ttlMs: number }[] = [
@@ -103,10 +107,41 @@ runMain('seed', async () => {
     links.push(`${inv.label.padEnd(16)} https://t.me/${bot}?start=${token}`);
   }
 
+  const has0003 = (await schemaStatus(db, env)).clients;
+  const sampleSummary = has0003 ? await seedClients(db, env.DEMO_AGENCY_NAME) : null;
+
   console.log(`✅ Agencia ${env.DEMO_AGENCY_NAME} (${SEED_IDS.agency})`);
   console.log(`✅ Proyecto Panadería Mabel (${SEED_IDS.project}) → ${siteUrl}, repo ${env.DEMO_REPO}`);
   console.log('✅ Reglas v1 y versión viva inicial');
+  if (sampleSummary) console.log(`✅ ${sampleSummary}`);
+  else console.log('⏭️  Salteé los clientes: falta aplicar la migración 0003 (pnpm db:migrate --status).');
   console.log('\nInvitaciones:');
   for (const l of links) console.log(`  ${l}`);
   if (!env.TELEGRAM_BOT_USERNAME) console.log('\n(Falta TELEGRAM_BOT_USERNAME: reemplazá TU_BOT en los links.)');
 });
+
+/**
+ * Bakery client (kept if it exists, so panel edits survive) linked to the seed project, and the sample
+ * clients: their projects are deleted and rebuilt (cascade: contacts, requests, events, messages,
+ * quotes, approvals) so dates stay in the current month. Sample projects have no agency contact and
+ * their client contacts use fake negative chat ids, so the worker never messages anyone.
+ */
+async function seedClients(db: SupabaseClient, agencyName: string): Promise<string> {
+  must(await db.from('clients').upsert({ ...MABEL_CLIENT, factory_id: SEED_IDS.agency }, { ignoreDuplicates: true }), 'clients');
+  must(await db.from('projects').update({ client_id: MABEL_CLIENT.id }).eq('id', SEED_IDS.project).is('client_id', null), 'projects');
+
+  const rows = buildSampleClientRows({ now: Date.now(), factoryId: SEED_IDS.agency, agencyName });
+  must(await db.from('projects').delete().in('id', [...SAMPLE_PROJECT_IDS]), 'projects');
+  must(await db.from('clients').upsert(rows.clients), 'clients');
+  must(await db.from('projects').insert(rows.projects), 'projects');
+  must(await db.from('contacts').insert(rows.contacts), 'contacts');
+  must(await db.from('requests').insert(rows.requests.map((r) => ({ ...r, quote_id: null }))), 'requests');
+  must(await db.from('quotes').insert(rows.quotes), 'quotes');
+  for (const r of rows.requests.filter((x) => x.quote_id)) {
+    must(await db.from('requests').update({ quote_id: r.quote_id, updated_at: r.updated_at }).eq('id', r.id), 'requests');
+  }
+  must(await db.from('events').insert(rows.events), 'events');
+  must(await db.from('messages').insert(rows.messages), 'messages');
+  must(await db.from('approvals').insert(rows.approvals), 'approvals');
+  return `Clientes: ${MABEL_CLIENT.name} y ${rows.clients.length} de ejemplo (${rows.clients.map((c) => c.name).join(', ')}) con ${rows.requests.length} pedidos de ejemplo`;
+}
