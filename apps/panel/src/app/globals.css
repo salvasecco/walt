@@ -49,58 +49,76 @@
 }
 
 :root {
-  /* Dale: centro de control. Tema único oscuro. */
-  --dale-bg: #05060a;
-  --dale-cyan: #22d3ee;
-  --dale-violet: #a78bfa;
-  --dale-amber: #fbbf24;
-  --dale-emerald: #34d399;
-  --dale-rose: #fb7185;
+  /* Dale: centro de control. Tema único oscuro, neutral y plano.
+     Superficies en 3 niveles, bordes de 1px de baja opacidad; el color es solo semántico. */
+  --dale-bg: #0a0a0a;
+  --dale-surface: #121212;
+  --dale-surface-2: #18181b;
+  --dale-surface-3: #1f1f23;
   --dale-line: rgb(255 255 255 / 0.08);
-  --dale-glass: rgb(13 16 26 / 0.62);
+  --dale-line-strong: rgb(255 255 255 / 0.14);
+  --dale-faint: #5c5c66;
 
-  --background: #05060a;
-  --foreground: #e6e9f2;
-  --card: rgb(13 16 26 / 0.62);
-  --card-foreground: #e6e9f2;
-  --popover: #0c0f18;
-  --popover-foreground: #e6e9f2;
-  --primary: #22d3ee;
-  --primary-foreground: #031016;
-  --secondary: rgb(255 255 255 / 0.06);
-  --secondary-foreground: #e6e9f2;
-  --muted: rgb(255 255 255 / 0.05);
-  --muted-foreground: #8b93a7;
-  --accent: rgb(34 211 238 / 0.12);
-  --accent-foreground: #e6e9f2;
-  --destructive: #fb7185;
-  --border: rgb(255 255 255 / 0.09);
+  /* Acentos semánticos */
+  --dale-ok: #3ecf8e;
+  --dale-warn: #f0a83a;
+  --dale-danger: #f2706b;
+  --dale-info: #5b9cf5;
+  --dale-code: #a48bf5;
+
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #121212;
+  --card-foreground: #ededed;
+  --popover: #18181b;
+  --popover-foreground: #ededed;
+  --primary: #3ecf8e;
+  --primary-foreground: #06140d;
+  --secondary: #1f1f23;
+  --secondary-foreground: #ededed;
+  --muted: #18181b;
+  --muted-foreground: #8f8f99;
+  --accent: #1f1f23;
+  --accent-foreground: #ededed;
+  --destructive: #f2706b;
+  --border: rgb(255 255 255 / 0.08);
   --input: rgb(255 255 255 / 0.12);
-  --ring: #22d3ee;
-  --chart-1: #22d3ee;
-  --chart-2: #a78bfa;
-  --chart-3: #fbbf24;
-  --chart-4: #34d399;
-  --chart-5: #fb7185;
-  --radius: 0.75rem;
-  --sidebar: #070910;
-  --sidebar-foreground: #e6e9f2;
-  --sidebar-primary: #22d3ee;
-  --sidebar-primary-foreground: #031016;
-  --sidebar-accent: rgb(255 255 255 / 0.05);
-  --sidebar-accent-foreground: #e6e9f2;
+  --ring: rgb(255 255 255 / 0.3);
+  --chart-1: #8f8f99;
+  --chart-2: #5b9cf5;
+  --chart-3: #f0a83a;
+  --chart-4: #3ecf8e;
+  --chart-5: #f2706b;
+  --radius: 0.5rem;
+  --sidebar: #0d0d0d;
+  --sidebar-foreground: #ededed;
+  --sidebar-primary: #ededed;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: rgb(255 255 255 / 0.06);
+  --sidebar-accent-foreground: #ededed;
   --sidebar-border: rgb(255 255 255 / 0.08);
-  --sidebar-ring: #22d3ee;
+  --sidebar-ring: rgb(255 255 255 / 0.3);
   color-scheme: dark;
 }
 
 @theme inline {
-  --color-cyan-neon: var(--dale-cyan);
-  --color-violet-neon: var(--dale-violet);
-  --color-amber-neon: var(--dale-amber);
-  --color-emerald-neon: var(--dale-emerald);
-  --color-rose-neon: var(--dale-rose);
+  --color-ok: var(--dale-ok);
+  --color-warn: var(--dale-warn);
+  --color-danger: var(--dale-danger);
+  --color-info: var(--dale-info);
+  --color-code: var(--dale-code);
+  --color-surface: var(--dale-surface);
+  --color-surface-2: var(--dale-surface-2);
+  --color-surface-3: var(--dale-surface-3);
   --color-line: var(--dale-line);
+  --color-line-strong: var(--dale-line-strong);
+  --color-faint: var(--dale-faint);
+  /* Alias viejos: se van cuando los componentes usan los nombres semánticos. */
+  --color-cyan-neon: var(--dale-info);
+  --color-violet-neon: var(--dale-code);
+  --color-amber-neon: var(--dale-warn);
+  --color-emerald-neon: var(--dale-ok);
+  --color-rose-neon: var(--dale-danger);
 }
 
 @layer base {
@@ -114,40 +132,31 @@
   body {
     @apply text-foreground;
     background-color: var(--dale-bg);
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgb(34 211 238 / 0.10), transparent 60%),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(167 139 250 / 0.08), transparent 60%),
-      linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px);
-    background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
-    background-attachment: fixed;
+    font-feature-settings: "cv11", "ss01";
   }
   ::selection {
-    background: rgb(34 211 238 / 0.3);
+    background: rgb(255 255 255 / 0.18);
   }
 }
 
 @layer components {
+  /* Superficie plana: tarjeta con borde de 1px. Sin blur, sin sombra. */
   .glass {
-    background: var(--dale-glass);
+    background: var(--dale-surface);
     border: 1px solid var(--dale-line);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 10px 40px -20px rgb(0 0 0 / 0.8);
   }
   .glass-hi {
-    border-color: rgb(34 211 238 / 0.35);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05), 0 0 0 1px rgb(34 211 238 / 0.08), 0 0 40px -12px rgb(34 211 238 / 0.45);
+    border-color: var(--dale-line-strong);
   }
   .tnum {
     font-variant-numeric: tabular-nums;
   }
   .label-xs {
-    @apply text-[11px] font-medium tracking-[0.14em] uppercase text-muted-foreground;
+    @apply text-[11px] font-medium tracking-[0.08em] uppercase text-muted-foreground;
   }
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+    scrollbar-color: rgb(255 255 255 / 0.12) transparent;
   }
 }
 
