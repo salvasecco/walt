@@ -129,6 +129,16 @@ describe('revisión del diff', () => {
     expect(reviewDiff({ diff: diffWith("import { exec } from 'node:child_process';"), files, protectedGlobs: G })).toContain('El diff usa child_process');
     expect(reviewDiff({ diff: diffWith('eval (code)'), files, protectedGlobs: G })).toContain('El diff usa eval(');
     expect(reviewDiff({ diff: diffWith('<Script src="x" />'), files, protectedGlobs: G })).toContain('El diff agrega un <script');
+    for (const evasion of ["import { env } from 'node:process';", 'const { env } = process;', 'const e = process?.env;', "Reflect.get(process, 'env')"]) {
+      expect(reviewDiff({ diff: diffWith(evasion), files, protectedGlobs: G }), evasion).toContain('El diff usa process.env');
+    }
+    expect(reviewDiff({ diff: diffWith("await import('node:child_' + 'process')"), files, protectedGlobs: G })).toContain('El diff usa child_process');
+    expect(reviewDiff({ diff: diffWith('await import(mod)'), files, protectedGlobs: G })).toContain('El diff usa un import() dinámico');
+    expect(reviewDiff({ diff: diffWith("React.createElement('script', null)"), files, protectedGlobs: G })).toContain('El diff agrega un <script');
+    expect(reviewDiff({ diff: diffWith("const Page = () => import('./page');"), files, protectedGlobs: G })).toEqual([]);
+    for (const p of ['.yarnrc.yml', 'pnpm-workspace.yaml', 'instrumentation.ts', 'src/instrumentation.ts', '.gitattributes', '.babelrc']) {
+      expect(checkPath(root, p, G).ok, p).toBe(false);
+    }
   });
 
   it('acepta borrar un eval( y rechaza secretos, protegidos y symlinks', () => {

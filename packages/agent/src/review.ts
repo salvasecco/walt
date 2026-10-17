@@ -22,11 +22,13 @@ export interface ReviewInput {
 }
 
 const FORBIDDEN: { re: RegExp; reason: string }[] = [
-  { re: /process\s*\.\s*env|process\s*\[\s*['"`]env['"`]\s*\]/, reason: 'usa process.env' },
-  { re: /child_process/, reason: 'usa child_process' },
+  { re: /process\s*\??\.\s*env|process\s*\[\s*['"`]env['"`]\s*\]|\{\s*env\b[^}]*\}\s*=\s*process\b/, reason: 'usa process.env' },
+  { re: /['"`](node:)?process['"`]|Reflect\s*\.\s*get\s*\(\s*process\b/, reason: 'usa process.env' },
+  { re: /child_process|child_['"`]\s*\+/, reason: 'usa child_process' },
   { re: /\beval\s*\(/, reason: 'usa eval(' },
   { re: /new\s+Function\s*\(/, reason: 'usa new Function(' },
-  { re: /<\s*script\b/i, reason: 'agrega un <script' },
+  { re: /\bimport\s*\(\s*[^'"`\s)]/, reason: 'usa un import() dinámico' },
+  { re: /<\s*script\b|createElement\s*\(\s*['"`]script['"`]/i, reason: 'agrega un <script' },
 ];
 
 /** Lines added by the diff, without the leading `+`. */
