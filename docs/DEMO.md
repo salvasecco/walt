@@ -23,7 +23,18 @@ Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan
 | 7 | quiero que la gente pueda reservar tortas online | Fuera de alcance | Borrador de presupuesto en Presupuestos |
 | 8 | poné el fondo violeta | Permitido: color | El fondo del sitio cambia |
 
-El resultado de la última corrida está en el README, sección "Qué es real y qué falta".
+**Última corrida (2026-10-17, 90-integracion): solo con el proveedor FALSO**, porque no había `ANTHROPIC_API_KEY`. Eso prueba el pipeline (reglas, gate, publicar, mensajes), no la IA. Antes de la demo hay que repetirla con el modelo real: `pnpm dry-run "<pedido>" --approve` para cada caso.
+
+| # | Con el proveedor falso | Con el modelo real |
+|---|---|---|
+| 1 | permitido → publicado (`set_price` pan-flauta 95) | sin correr |
+| 2 | permitido → publicado (`adjust_prices` all +10 %, `nearest_5`) | sin correr |
+| 3 | permitido → publicado (`set_availability` medialunas false) | sin correr |
+| 4 | riesgoso/contenido → espera agencia → publicado al aprobar (`set_banner` 25 %, vence el domingo 23:59) | sin correr |
+| 5 | bloqueado por la expresión de código; la agencia avisada; nada aplicado | sin correr |
+| 6 | consulta → "El domingo abrimos de 08:00 a 13:00." | sin correr |
+| 7 | fuera de alcance → presupuesto borrador (USD 300, 5 días) | sin correr |
+| 8 | permitido → publicado (`set_color` background #7C3AED) | sin correr |
 
 ## Orden de la demo (3 minutos)
 
