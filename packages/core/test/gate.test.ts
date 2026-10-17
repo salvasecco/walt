@@ -226,3 +226,12 @@ describe('checkText', () => {
     expect(checkText('Pan de masa madre, todos los días')).toEqual([]);
   });
 });
+
+describe('gate con add_product', () => {
+  it('un producto nuevo pasa solo por las reglas por defecto', () => {
+    expect(gate([{ type: 'add_product', name: 'Brushing', category: 'servicios', price: 2500 }]).outcome).toBe('auto');
+  });
+  it('un nombre con HTML se bloquea', () => {
+    expect(gate([{ type: 'add_product', name: '<img src=x onerror=alert(1)>', category: 'servicios', price: 10 }]).outcome).toBe('bloqueado');
+  });
+});

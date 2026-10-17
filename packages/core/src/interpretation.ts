@@ -35,7 +35,7 @@ const closed = (properties: Record<string, JsonSchema>): JsonSchema => ({
  * API rejects as too large; this flat shape is small, and `fromWire` turns it back into the union.
  */
 const WIRE_OP: JsonSchema = closed({
-  type: { type: 'string', enum: ['set_text', 'set_price', 'adjust_prices', 'set_availability', 'set_color', 'set_banner', 'set_hours', 'toggle_section'] },
+  type: { type: 'string', enum: ['set_text', 'set_price', 'adjust_prices', 'set_availability', 'set_color', 'set_banner', 'set_hours', 'toggle_section', 'add_product'] },
   path: nullable(str),
   productId: nullable(str),
   value: nullable({ anyOf: [str, { type: 'number' }] }),
@@ -55,6 +55,9 @@ const WIRE_OP: JsonSchema = closed({
   close: nullable(str),
   section: nullable(str),
   visible: nullable({ type: 'boolean' }),
+  name: nullable(str),
+  category: nullable(str),
+  price: nullable({ type: 'number' }),
 });
 
 /**
@@ -86,6 +89,7 @@ const OP_FIELDS: Record<string, Record<string, boolean>> = {
   set_banner: { enabled: false, text: false, discountPercent: true, startsAt: true, endsAt: true },
   set_hours: { day: false, open: true, close: true },
   toggle_section: { section: false, visible: false },
+  add_product: { name: false, category: false, price: false },
 };
 
 function dropNulls(o: Record<string, unknown>): Record<string, unknown> {

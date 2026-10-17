@@ -158,10 +158,13 @@ export function inventoryPointers(config: DaleConfig, content: unknown): Set<str
   for (const path of Object.values(config.colors)) out.add(path);
   const p = config.products;
   if (p) {
-    getProducts(config, content).forEach((_, i) => {
+    const items = getProducts(config, content);
+    items.forEach((_, i) => {
       out.add(`${p.path}${joinPointer(i, p.price)}`);
       out.add(`${p.path}${joinPointer(i, p.available)}`);
     });
+    // Slots for new products (add_product appends).
+    for (let i = items.length; i < items.length + 5; i++) out.add(`${p.path}${joinPointer(i)}`);
   }
   if (config.banner) for (const f of BANNER_FIELDS) out.add(`${config.banner}${joinPointer(f)}`);
   if (config.hours) {

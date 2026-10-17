@@ -184,3 +184,26 @@ describe('revertChanges', () => {
     expect(later).toEqual(snapshot);
   });
 });
+
+describe('add_product', () => {
+  const add = (op: Partial<Extract<Op, { type: 'add_product' }>>) =>
+    applyOps(bakeryContent(), [{ type: 'add_product', name: 'Brushing', category: 'Servicios', price: 2500, ...op } as Op], config);
+
+  it('agrega el producto al final, disponible, con id y categoría en slug', () => {
+    const r = add({});
+    const products = (r.content as ReturnType<typeof bakeryContent>).products;
+    expect(products.at(-1)).toEqual({ id: 'brushing', name: 'Brushing', category: 'servicios', price: 2500, available: true });
+    expect(r.changes).toEqual([{ pointer: `/products/${products.length - 1}`, before: undefined, after: products.at(-1) }]);
+  });
+
+  it('vuelve atrás sacando el producto', () => {
+    const r = add({});
+    const back = revertChanges(r.content, r.changes);
+    expect('content' in back && back.content).toEqual(bakeryContent());
+  });
+
+  it('rechaza precios inválidos y nombres repetidos', () => {
+    expect(() => add({ price: 0 })).toThrow(OpValidationError);
+    expect(() => add({ name: 'Pan flauta' })).toThrow(/Ya existe/);
+  });
+});

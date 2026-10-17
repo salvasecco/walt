@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { BANNER_FIELDS, DAYS, getProducts, type DaleConfig } from './config.ts';
-import { deepClone, deepEqual, getPointer, hasPointer, joinPointer, setPointer } from './pointer.ts';
+import { deepClone, deepEqual, getPointer, hasPointer, joinPointer, removePointer, setPointer } from './pointer.ts';
 
 const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
@@ -48,6 +48,13 @@ export const SetHoursOp = z.object({
   close: z.string().regex(TIME).nullable(),
 });
 export const ToggleSectionOp = z.object({ type: z.literal('toggle_section'), section: z.string(), visible: z.boolean() });
+/** A new product or service, appended to the list (a new category becomes a new section of the site). */
+export const AddProductOp = z.object({
+  type: z.literal('add_product'),
+  name: z.string().trim().min(1).max(80),
+  category: z.string().trim().min(1).max(40),
+  price: z.number(),
+});
 
 export const OpSchema = z.union([
   SetTextOp,
@@ -58,6 +65,7 @@ export const OpSchema = z.union([
   SetBannerOp,
   SetHoursOp,
   ToggleSectionOp,
+  AddProductOp,
 ]);
 export type Op = z.infer<typeof OpSchema>;
 export type OpType = Op['type'];
@@ -71,6 +79,7 @@ export const OP_TYPES = [
   'set_banner',
   'set_hours',
   'toggle_section',
+  'add_product',
 ] as const satisfies readonly OpType[];
 
 /** Human labels in Spanish for each operation type (panel, reasons). */
@@ -83,6 +92,7 @@ export const OP_LABELS: Record<OpType, string> = {
   set_banner: 'poner o sacar un cartel',
   set_hours: 'cambiar horarios',
   toggle_section: 'mostrar u ocultar una sección',
+  add_product: 'agregar un producto o servicio',
 };
 
 export interface Change {
@@ -124,6 +134,16 @@ class Recorder {
     const prev = this.changes.get(pointer);
     this.changes.set(pointer, { pointer, before: prev ? prev.before : deepClone(before), after: deepClone(value) });
     setPointer(this.content, pointer, deepClone(value));
+  }
+
+  /** Appends to an array; the change has no `before` (reverting removes the item). */
+  push(arrayPointer: string, value: unknown): string {
+    const list = getPointer(this.content, arrayPointer);
+    if (!Array.isArray(list)) throw new OpValidationError(`La ruta ${arrayPointer} no es una lista`);
+    const pointer = `${arrayPointer}${joinPointer(list.length)}`;
+    list.push(deepClone(value));
+    this.changes.set(pointer, { pointer, before: undefined, after: deepClone(value) });
+    return pointer;
   }
 
   list(): Change[] {
@@ -223,6 +243,23 @@ export function applyOps(content: unknown, ops: Op[], config: DaleConfig): { con
         rec.set(`${config.hours}${joinPointer(idx, 'close')}`, op.close);
         break;
       }
+      case 'add_product': {
+        const p = config.products;
+        if (!p) throw new OpValidationError('Este sitio no tiene productos');
+        if (!(op.price > 0) || Math.abs(Math.round(op.price * 100) - op.price * 100) > 1e-6) {
+          throw new OpValidationError('Los precios tienen que ser positivos y con hasta 2 decimales');
+        }
+        const items = getProducts(config, rec.content);
+        const name = op.name.trim();
+        if (items.some((x) => String(x[p.name]).toLowerCase() === name.toLowerCase())) {
+          throw new OpValidationError(`Ya existe "${name}"`);
+        }
+        const base = slugify(name) || 'producto';
+        let id = base;
+        for (let n = 2; items.some((x) => x[p.id] === id); n++) id = `${base}-${n}`;
+        rec.push(p.path, { [p.id]: id, [p.name]: name, [p.category]: slugify(op.category) || 'otros', [p.price]: op.price, [p.available]: true });
+        break;
+      }
       case 'toggle_section': {
         if (!config.sections) throw new OpValidationError('Este sitio no tiene secciones');
         const pointer = `${config.sections}${joinPointer(op.section)}`;
@@ -233,6 +270,17 @@ export function applyOps(content: unknown, ops: Op[], config: DaleConfig): { con
     }
   }
   return { content: rec.content, changes: rec.list() };
+}
+
+/** Lowercase ascii slug for ids and categories: "Pan de Masa Madre" → "pan-de-masa-madre". */
+export function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
 }
 
 export type RevertResult = { content: unknown; changes: Change[] } | { conflict: string[] };
@@ -247,6 +295,9 @@ export function revertChanges(content: unknown, changes: Change[]): RevertResult
     .map((c) => c.pointer);
   if (conflict.length > 0) return { conflict };
   const next = deepClone(content);
-  for (const c of changes) setPointer(next, c.pointer, deepClone(c.before));
+  // Appended items (no `before`) are removed, last ones first so the indexes stay valid.
+  const added = changes.filter((c) => c.before === undefined).sort((a, b) => b.pointer.localeCompare(a.pointer, undefined, { numeric: true }));
+  for (const c of changes) if (c.before !== undefined) setPointer(next, c.pointer, deepClone(c.before));
+  for (const c of added) removePointer(next, c.pointer);
   return { content: next, changes: changes.map((c) => ({ pointer: c.pointer, before: c.after, after: c.before })) };
 }

@@ -211,6 +211,7 @@ export const OP_TYPES = [
   "set_hours",
   "set_banner",
   "toggle_section",
+  "add_product",
 ] as const satisfies readonly OpType[];
 
 export const CATEGORIES = [

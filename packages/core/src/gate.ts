@@ -167,6 +167,12 @@ export function runGate(input: GateInput): GateResult {
   // 3 + 4. Security and secrets on every new value.
   const colorPaths = new Set(Object.values(config.colors));
   for (const c of changes) {
+    // A new item (add_product): every string inside goes through the same checks.
+    if (c.after && typeof c.after === 'object') {
+      for (const v of Object.values(c.after as Record<string, unknown>)) {
+        if (typeof v === 'string') for (const r of checkText(v, secrets)) raise('bloqueado', r);
+      }
+    }
     if (typeof c.after === 'string') {
       for (const r of checkText(c.after, secrets)) raise('bloqueado', r);
       if (colorPaths.has(c.pointer) && !COLOR.test(c.after)) raise('bloqueado', 'Los colores tienen que ser #RRGGBB');

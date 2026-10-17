@@ -67,6 +67,7 @@ export const DEFAULT_RULES: Pick<Rules, "policies" | "limits"> = {
     set_hours: "auto",
     set_banner: "agencia",
     toggle_section: "agencia",
+    add_product: "auto",
   },
   limits: { maxPriceChangePct: 30, monthlyQuota: 200, minConfidence: 0.6, maxOpsPerRequest: 40 },
 };

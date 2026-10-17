@@ -138,6 +138,7 @@ export const OP_LABEL: Record<OpType, string> = {
   set_hours: "Horarios",
   set_banner: "Cartel de promoción",
   toggle_section: "Mostrar u ocultar secciones",
+  add_product: "Agregar productos o servicios",
 };
 
 export const POLICY_LABEL: Record<Policy, string> = {
@@ -276,6 +277,8 @@ export function describeOp(op: Op, content?: SiteContent | null): string {
         : `El ${DAY_LABEL[op.day]} cerrado`;
     case "toggle_section":
       return `${op.visible ? "Muestro" : "Oculto"} la sección ${op.section}`;
+    case "add_product":
+      return `Agrego “${op.name}” en ${op.category} a $${op.price}`;
   }
 }
 
@@ -283,6 +286,7 @@ export function describeOp(op: Op, content?: SiteContent | null): string {
 export function describePointer(pointer: string, content?: SiteContent | null): string {
   if (TEXT_LABEL[pointer]) return TEXT_LABEL[pointer];
   const parts = pointer.split("/").filter(Boolean);
+  if (parts[0] === "products" && parts.length === 2) return "Producto nuevo";
   if (parts[0] === "products" && parts.length >= 3) {
     const idx = Number(parts[1]);
     const p = content?.products?.[idx];

@@ -52,6 +52,17 @@ export function setPointer(doc: unknown, pointer: string, value: unknown): void 
   (cur as Record<string, unknown>)[last] = value;
 }
 
+/** Removes an array item (by index) or an object key. */
+export function removePointer(doc: unknown, pointer: string): void {
+  const keys = parsePointer(pointer);
+  const last = keys.pop();
+  if (last === undefined) throw new Error('No se puede borrar la raíz');
+  const parent = keys.length ? getPointer(doc, joinPointer(...keys)) : doc;
+  if (Array.isArray(parent)) parent.splice(Number(last), 1);
+  else if (parent && typeof parent === 'object') delete (parent as Record<string, unknown>)[last];
+  else throw new Error(`La ruta ${pointer} no existe`);
+}
+
 export function deepClone<T>(value: T): T {
   return structuredClone(value);
 }
