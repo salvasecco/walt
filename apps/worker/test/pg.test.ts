@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createFakeProvider } from '@dale/ai';
@@ -13,7 +13,7 @@ import { FakeSiteRepo } from '../src/site/repo.js';
 import { PgStore, type Db } from '../src/store/pg.js';
 import { notImplementedAgent } from './helpers.js';
 
-const MIGRATION = fileURLToPath(new URL('../../../supabase/migrations/0001_init.sql', import.meta.url));
+const MIGRATIONS = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url));
 
 function pgliteDb(pg: PGlite): Db {
   type Q = { query: PGlite['query'] };
@@ -34,7 +34,7 @@ describe('PgStore sobre la migración real (PGlite)', () => {
 
   beforeAll(async () => {
     pg = new PGlite();
-    await pg.exec(readFileSync(MIGRATION, 'utf8'));
+    for (const f of readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
     await pg.query('insert into factories (id, name, assistant_name) values ($1, $2, $3)', [SEED_IDS.agency, 'Estudio Faro', assistantName('Estudio Faro')]);
     await pg.query(
       `insert into projects (id, factory_id, name, client_name, repo_owner, repo_name, site_url) values ($1, $2, 'Panadería Mabel', 'Mabel', 'salvasecco', 'dale-demo', 'https://sitio.example')`,
