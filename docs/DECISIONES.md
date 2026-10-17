@@ -102,3 +102,11 @@
 - `PANEL_URL` (opcional, `process.env`) agrega el botón "Ver en el panel" a los avisos de la agencia.
 - Fase 2, opciones: si la IA devuelve dos `options` (sin `ops`) y las dos pasan el gate en `auto`, se arman dos borradores con captura y un botón `opt:{short}:{i}` cada uno; elegir aprueba y publica esa opción y descarta la otra. Las opciones se guardan en `requests.gate.options`. Si alguna no pasa en `auto`, sigue el camino normal.
 - Al arrancar, el worker pasa a `derivado` los pedidos que quedaron en recibido, interpretando, cotizando, publicando o agente_trabajando (un reinicio los cortó), con su aviso al cliente y a la agencia: así ningún pedido queda colgado aunque `run-worker.sh` lo reinicie.
+
+## Integración con credenciales reales (17/10)
+
+- **Supabase solo por HTTPS.** La red bloquea 5432 y 6543 hacia afuera. El worker usa `SupabaseStore` (supabase-js con la service role), `publish_version` va por `rpc`, y seed y `demo:reset` también usan supabase-js. Las migraciones se aplican a mano en el SQL Editor; `pnpm db:migrate` solo comprueba por REST y copia el SQL. `PgStore` queda para las pruebas con PGlite contra la migración real.
+- **Sin transacciones por REST.** `redeemInvite` usa compare-and-swap sobre `uses`; `demo:reset` borra en orden hijo → padre.
+- **Salida estructurada con ops planas.** La API rechazó el esquema exacto de `Interpretation` ("compiled grammar is too large"). Las ops viajan como un objeto plano con todos los campos requeridos y nulables, y `fromWire` las vuelve a la unión antes de validar con zod.
+- **Contraste en el gate.** Un cambio de color que deja el texto con contraste menor a 4.5:1 (WCAG AA) contra el fondo va a la agencia. El prompt pide tintes claros para el fondo.
+- **GITHUB_TOKEN** sale de `gh auth token` (acceso a todos los repos de la cuenta); reemplazar por uno fine-grained si hace falta.

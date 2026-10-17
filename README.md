@@ -57,7 +57,8 @@ Requisitos: Node 24 y pnpm 12.
 pnpm install
 cp .env.example ~/.dale/.env     # completar fuera del repo; nunca se sube
 pnpm check                       # prueba cada credencial sin mostrarla
-pnpm db:migrate && pnpm seed     # base y datos de la panadería; el seed imprime los links de invitación
+pnpm db:migrate                  # dice qué migración pegar en el SQL Editor (la red solo deja salir el 443)
+pnpm seed                        # datos de la panadería por HTTPS; imprime los links de invitación
 scripts/run-worker.sh            # worker con reinicio automático, log en logs/worker.log
 pnpm dev:panel                   # panel en http://localhost:3000
 ```

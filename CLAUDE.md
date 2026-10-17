@@ -10,7 +10,7 @@ Dale: asistente de una agencia que recibe pedidos de cambios web por Telegram, l
 | `pnpm typecheck` | `tsc` de los scripts + `pnpm -r typecheck` |
 | `pnpm test` | `pnpm -r test` (vitest) |
 | `pnpm check` | Prueba cada credencial sin mostrarla. `pnpm check --md` da la tabla para `docs/ESTADO.md` |
-| `pnpm db:migrate` | Aplica `supabase/migrations/*.sql` con `SUPABASE_DB_URL` (registra en `_migrations`). `--status` lista |
+| `pnpm db:migrate` | La red solo deja salir el 443: las migraciones se pegan a mano en el SQL Editor de Supabase. Comprueba por REST qué está aplicado; `--copy 0001` copia una migración al portapapeles. Nada usa `SUPABASE_DB_URL` |
 | `pnpm seed` | Seed idempotente: agencia, proyecto de la panadería, reglas v1, versión viva e invitaciones |
 | `pnpm demo:reset` | Deja el proyecto de la panadería como nuevo (no toca el repo del sitio) |
 | `pnpm dry-run "<pedido>" [--approve] [--undo] [--project <id>]` | Pipeline real del worker sin Telegram, en consola, con tiempos. `--approve` aprueba y publica; `--undo` además vuelve atrás |
