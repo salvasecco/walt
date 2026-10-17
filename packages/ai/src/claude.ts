@@ -229,7 +229,7 @@ export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
         InterpretationSchema,
       );
       // Ops only make sense for a change; never trust them elsewhere.
-      const interpretation = value.kind === 'cambio' ? value : { ...value, ops: [] };
+      const interpretation = value.kind === 'cambio' ? value : { ...value, ops: [], options: undefined };
       return { interpretation, usage: sumUsage(usage) };
     },
     async answerConsulta({ inventory, text, assistantName }) {

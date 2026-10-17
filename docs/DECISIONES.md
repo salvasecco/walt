@@ -92,3 +92,4 @@
 - Captura: Chromium de Playwright reutilizado entre capturas, 390×844 con `deviceScaleFactor: 2`, `networkidle`, 25 s. Sin captura o con `SCREENSHOTS=off` se manda el link de la vista previa.
 - Textos del worker que no están en `@dale/core/copy` (rechazo de la agencia, conflicto al revertir, avisos a la agencia, límite de pedidos) viven en `apps/worker/src/texts.ts` hasta que la 90 los mueva a core.
 - `PANEL_URL` (opcional, `process.env`) agrega el botón "Ver en el panel" a los avisos de la agencia.
+- Fase 2, opciones: si la IA devuelve dos `options` (sin `ops`) y las dos pasan el gate en `auto`, se arman dos borradores con captura y un botón `opt:{short}:{i}` cada uno; elegir aprueba y publica esa opción y descarta la otra. Las opciones se guardan en `requests.gate.options`. Si alguna no pasa en `auto`, sigue el camino normal.

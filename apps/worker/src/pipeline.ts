@@ -2,6 +2,7 @@ import type { AiProvider } from '@dale/ai';
 import {
   asClause,
   buildInventory,
+  containsCode,
   buttons as B,
   copy,
   costUsd,
@@ -361,6 +362,25 @@ export class Worker {
       );
     }
 
+    // Phase 2: two concrete readings of an ambiguous change → two previews and a button each.
+    if (
+      interpretation.kind === 'cambio' &&
+      interpretation.ops.length === 0 &&
+      (interpretation.options?.length ?? 0) >= 2 &&
+      contract &&
+      live &&
+      !containsCode(req.raw_text)
+    ) {
+      const autoPublishedThisMonth = await store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now()));
+      const viable = interpretation.options!.slice(0, 2).map((o) => ({
+        label: o.label,
+        gate: runGate({ config: contract.config, content: live.content, schema: contract.schema, ops: o.ops, rules, secrets: this.d.secrets, autoPublishedThisMonth }),
+      }));
+      if (viable.every((v) => v.gate.outcome === 'auto' && v.gate.changes.length > 0)) {
+        return this.flowOptions(req, contact, ctx, interpretation, viable);
+      }
+    }
+
     const decision = decide(interpretation, gate, rules, {
       rawText: req.raw_text,
       projectMode: ctx.project.mode,
@@ -444,6 +464,60 @@ export class Worker {
       }),
     );
     await this.d.store.updateRequest(req.id, { status: 'esperando_cliente' });
+  }
+
+  private async flowOptions(
+    req: RequestRow,
+    contact: ContactRow,
+    ctx: Ctx,
+    it: Interpretation,
+    options: { label: string; gate: GateResult }[],
+  ): Promise<void> {
+    await this.event(req, 'decidido', 'ok', 0, { categoria: 'permitido', carril: 'contenido', opciones: options.map((o) => o.label) });
+    await this.d.store.updateRequest(req.id, { category: 'permitido', lane: 'contenido', gate: { outcome: 'auto', reasons: [] } });
+    await this.say(contact, req.id, { text: copy.entendido(it.summary) });
+    const drafts: string[] = [];
+    for (const [i, o] of options.entries()) {
+      const { photo, previewUrl } = await this.draftAndCapture(req, o.gate, ctx);
+      const fresh = (await this.d.store.getRequest(req.id))!;
+      drafts.push(fresh.draft_version_id!);
+      const label = o.label.slice(0, 30);
+      await this.step(req, 'enviado', () =>
+        this.say(contact, req.id, {
+          text: `${extra.opcion(i + 1, label)}${photo ? '' : `\n${extra.linkVistaPrevia(previewUrl)}`}`,
+          photo,
+          buttons: [[{ text: label, data: `opt:${req.short_id}:${i}` }]],
+        }),
+      );
+    }
+    await this.say(contact, req.id, { text: extra.elegiUna(), buttons: [[{ text: B.noEraEso, data: `no:${req.short_id}` }]] });
+    await this.d.store.updateRequest(req.id, {
+      status: 'esperando_cliente',
+      draft_version_id: null,
+      gate: { outcome: 'auto', reasons: [], options: options.map((o, i) => ({ label: o.label, draftVersionId: drafts[i], changes: o.gate.changes })) },
+    });
+  }
+
+  private async chooseOption(req: RequestRow, index: number, via: Via): Promise<void> {
+    const it = req.interpretation as Interpretation | null;
+    const opts = (req.gate as { options?: { label: string; draftVersionId: string; changes: Change[] }[] } | null)?.options;
+    const option = it?.options?.[index];
+    const meta = opts?.[index];
+    if (!option || !meta) return;
+    for (const [i, o] of (opts ?? []).entries()) {
+      if (i === index) continue;
+      const v = await this.d.store.getVersion(o.draftVersionId);
+      if (v?.status === 'borrador') await this.d.store.updateVersion(v.id, { status: 'descartada' });
+    }
+    await this.d.store.updateRequest(req.id, {
+      ops: option.ops,
+      changes: meta.changes,
+      draft_version_id: meta.draftVersionId,
+      interpretation: { ...it, ops: option.ops, summary: `${it!.summary}: ${option.label}` },
+    });
+    await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'aprobado', via });
+    await this.event(req, 'aprobado_cliente', 'ok', 0, { via, opcion: option.label });
+    await this.publish(req.id, 'cliente', via);
   }
 
   private async flowRiesgosoContenido(
@@ -572,6 +646,7 @@ export class Worker {
       switch (action) {
         case 'ok':
           if (req.status !== 'esperando_cliente') return;
+          if (((req.ops as Op[] | null) ?? []).length === 0) return await this.sayTo(req.contact_id, req.id, { text: extra.elegiUna() });
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'aprobado', via });
           await this.event(req, 'aprobado_cliente', 'ok', 0, { via });
           return await this.publish(req.id, 'cliente', via);
@@ -579,6 +654,10 @@ export class Worker {
           if (req.status !== 'esperando_cliente') return;
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'rechazado', via });
           await this.discardDraft(req);
+          for (const o of (req.gate as { options?: { draftVersionId: string }[] } | null)?.options ?? []) {
+            const v = await this.d.store.getVersion(o.draftVersionId);
+            if (v?.status === 'borrador') await this.d.store.updateVersion(v.id, { status: 'descartada' });
+          }
           await this.d.store.updateRequest(req.id, { status: 'descartado' });
           if (req.contact_id) this.awaitingCorrection.set(req.contact_id, req.id);
           return await this.sayTo(req.contact_id, req.id, { text: copy.noEraEso() });
@@ -610,6 +689,12 @@ export class Worker {
             return await this.publish(req.id, 'agencia', via);
           }
           return;
+        case 'opt': {
+          if (req.status !== 'esperando_cliente') return;
+          const index = Number(data.split(':')[2]);
+          if (!Number.isInteger(index)) return;
+          return await this.chooseOption(req, index, via);
+        }
         case 'qok':
         case 'qno':
           return await this.answerQuote(req, action === 'qok');

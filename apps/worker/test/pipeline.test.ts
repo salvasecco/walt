@@ -323,3 +323,26 @@ describe('acceso y límites (SPEC §9, §12)', () => {
     expect(lastReq(h).cost_usd).toBe(2);
   });
 });
+
+describe('fase 2: opciones para pedidos ambiguos', () => {
+  it('dos vistas previas con un botón cada una; elegir publica esa', async () => {
+    const h = await harness();
+    await h.say('poné el fondo más oscuro');
+    const req = lastReq(h);
+    expect(req.status).toBe('esperando_cliente');
+    const opts = h.channel.sent.filter((m) => m.buttons?.flat().some((b) => 'data' in b && b.data.startsWith('opt:')));
+    expect(opts.map((m) => m.text.split('\n')[0])).toEqual(['Opción 1: Crema tostado', 'Opción 2: Gris piedra']);
+    expect(h.store.versions.filter((v) => v.status === 'borrador')).toHaveLength(2);
+
+    await h.say('sí');
+    expect(h.last()).toMatch(/Elegí la que va/);
+
+    await h.press(`opt:${req.short_id}:1`);
+    const live = h.store.versions.find((v) => v.status === 'viva')!;
+    expect((live.content as { theme: { background: string } }).theme.background).toBe('#E7E5E4');
+    expect(h.store.versions.filter((v) => v.status === 'descartada')).toHaveLength(1);
+    expect(h.store.requests[0]!.status).toBe('publicado');
+    await h.press(`undo:${req.short_id}`);
+    expect((h.store.versions.find((v) => v.status === 'viva')!.content as { theme: { background: string } }).theme.background).toBe('#FFF7ED');
+  });
+});

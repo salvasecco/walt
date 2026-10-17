@@ -12,6 +12,8 @@ export const extra = {
   charla: () => 'Acá estoy. Contame qué querés cambiar de tu web y lo preparo.',
   presupuestoAceptado: (agencia: string) => `¡Genial! Le aviso a ${agencia} para arrancar.`,
   presupuestoAhoraNo: () => 'Dale, queda para más adelante.',
+  opcion: (n: number, label: string) => `Opción ${n}: ${label}`,
+  elegiUna: () => 'Lo entendí de dos formas. Elegí la que va y la publico.',
   linkVistaPrevia: (url: string) => `Vista previa: ${url}`,
   limitePedidos: () => 'Me mandaste muchos pedidos seguidos. Dame unos minutos y lo veo.',
   // To the agency.
