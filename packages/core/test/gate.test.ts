@@ -36,6 +36,20 @@ describe('runGate', () => {
     expect(gate([{ type: 'set_color', token: 'background', value: '#7C3AED' }], { rules }).outcome).toBe('bloqueado');
   });
 
+  describe('contraste del texto', () => {
+    it('un fondo violeta claro pasa solo', () => {
+      expect(gate([{ type: 'set_color', token: 'background', value: '#EDE9FE' }]).outcome).toBe('auto');
+    });
+    it('un fondo violeta pleno deja el texto ilegible y va a la agencia', () => {
+      const r = gate([{ type: 'set_color', token: 'background', value: '#7C3AED' }]);
+      expect(r.outcome).toBe('agencia');
+      expect(r.reasons.join(' ')).toMatch(/contraste/);
+    });
+    it('cambiar el color principal no mira el contraste del texto', () => {
+      expect(gate([{ type: 'set_color', token: 'primary', value: '#7C3AED' }]).outcome).toBe('auto');
+    });
+  });
+
   describe('límite de precio', () => {
     it('justo en el límite (30%) pasa', () => {
       expect(gate([{ type: 'set_price', productId: 'pan-flauta', value: 104 }]).outcome).toBe('auto');

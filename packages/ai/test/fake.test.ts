@@ -46,7 +46,7 @@ describe('proveedor falso: casos de la demo (SPEC §1)', () => {
 
   it('el fondo violeta es un color válido', async () => {
     const r = await run('poné el fondo violeta');
-    expect(r.gate?.changes[0]).toMatchObject({ pointer: '/theme/background', after: '#7C3AED' });
+    expect(r.gate?.changes[0]).toMatchObject({ pointer: '/theme/background', after: '#EDE9FE' });
   });
 
   it('responde la consulta con lo que dice la web', async () => {

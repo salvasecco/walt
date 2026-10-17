@@ -8,6 +8,7 @@ import {
   copy,
   costUsd,
   interpretationJsonSchema,
+  parseInterpretation,
   InterpretationSchema,
   inviteToken,
   loadEnv,
@@ -48,6 +49,27 @@ describe('Interpretation', () => {
     expect(interpretationJsonSchema.required).toEqual(
       expect.arrayContaining(['kind', 'summary', 'confidence', 'ops', 'needsCode', 'unexpressedParts']),
     );
+  });
+  it('la forma plana del cable vuelve a la unión de ops', () => {
+    const nulls = Object.fromEntries(
+      ['path', 'productId', 'value', 'filter', 'percent', 'amount', 'rounding', 'available', 'token', 'enabled', 'text',
+        'discountPercent', 'startsAt', 'endsAt', 'day', 'open', 'close', 'section', 'visible'].map((k) => [k, null]),
+    );
+    const wire = {
+      kind: 'cambio', summary: 'x', confidence: 0.9, needsCode: false, codeInstruction: null, unexpressedParts: [], options: null,
+      ops: [
+        { ...nulls, type: 'set_price', productId: 'pan-flauta', value: 95 },
+        { ...nulls, type: 'set_hours', day: 'dom', open: null, close: null },
+        { ...nulls, type: 'adjust_prices', filter: { all: true, category: null, productIds: null }, percent: 10, rounding: 'nearest_5' },
+        { ...nulls, type: 'set_banner', enabled: true, text: 'Black Friday', discountPercent: 25, endsAt: '2026-10-18T23:59:00-03:00' },
+      ],
+    };
+    expect(parseInterpretation(wire).ops).toEqual([
+      { type: 'set_price', productId: 'pan-flauta', value: 95 },
+      { type: 'set_hours', day: 'dom', open: null, close: null },
+      { type: 'adjust_prices', filter: { all: true }, percent: 10, rounding: 'nearest_5' },
+      { type: 'set_banner', enabled: true, text: 'Black Friday', discountPercent: 25, startsAt: null, endsAt: '2026-10-18T23:59:00-03:00' },
+    ]);
   });
   it('valida con zod', () => {
     expect(() =>

@@ -25,6 +25,21 @@ const COLORS: Record<string, string> = {
   beige: '#F5F5DC',
 };
 
+/** Light tints for backgrounds, so the dark text stays readable (same rule as the interpret prompt). */
+const BACKGROUND_TINTS: Record<string, string> = {
+  violeta: '#EDE9FE',
+  morado: '#EDE9FE',
+  lila: '#F5F3FF',
+  rojo: '#FEE2E2',
+  azul: '#DBEAFE',
+  celeste: '#E0F2FE',
+  verde: '#DCFCE7',
+  amarillo: '#FEF9C3',
+  naranja: '#FFEDD5',
+  rosa: '#FCE7F3',
+  gris: '#F3F4F6',
+};
+
 const DAY_WORDS: Record<string, string> = {
   lunes: 'lun',
   martes: 'mar',
@@ -197,7 +212,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
   if ((colorWord || hex) && /(fondo|color|principal|acento|boton)/.test(t)) {
     const token = /fondo/.test(t) ? 'background' : /acento/.test(t) ? 'accent' : 'primary';
     if (inv.colors.some((c) => c.token === token)) {
-      const value = (hex ?? COLORS[colorWord!]!).toUpperCase();
+      const value = (hex ?? (token === 'background' ? BACKGROUND_TINTS[colorWord!] : undefined) ?? COLORS[colorWord!]!).toUpperCase();
       const label = token === 'background' ? 'el fondo' : token === 'accent' ? 'el color de acento' : 'el color principal';
       return base({
         kind: 'cambio',

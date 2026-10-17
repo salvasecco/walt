@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AnthropicBedrockMantle } from '@anthropic-ai/bedrock-sdk';
 import {
+  fromWire,
   interpretationJsonSchema,
   InterpretationSchema,
   type Interpretation,
@@ -148,6 +149,7 @@ async function structured<T>(
   transport: ModelTransport,
   req: ModelRequest,
   schema: z.ZodType<T>,
+  normalize: (raw: unknown) => unknown = (raw) => raw,
 ): Promise<{ value: T; usage: Usage[] }> {
   const usage: Usage[] = [];
   let lastError: Error | undefined;
@@ -160,7 +162,7 @@ async function structured<T>(
       continue;
     }
     try {
-      const parsed = schema.safeParse(parseJson(res.text));
+      const parsed = schema.safeParse(normalize(parseJson(res.text)));
       if (parsed.success) return { value: parsed.data, usage };
       lastError = new AiOutputError(`La salida no valida: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`);
     } catch (err) {
@@ -227,6 +229,7 @@ export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
           timeoutMs: INTERPRET_TIMEOUT_MS,
         },
         InterpretationSchema,
+        fromWire,
       );
       // Ops only make sense for a change; never trust them elsewhere.
       const interpretation = value.kind === 'cambio' ? value : { ...value, ops: [], options: undefined };

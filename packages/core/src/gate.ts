@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import type { DaleConfig } from './config.ts';
 import { inventoryPointers } from './config.ts';
 import { applyOps, OpSchema, OP_LABELS, OpValidationError, type Change, type Op } from './ops.ts';
+import { getPointer } from './pointer.ts';
 import { policyFor, type Policy, type Rules } from './rules.ts';
 
 const require = createRequire(import.meta.url);
@@ -75,6 +76,22 @@ function isPricePointer(config: DaleConfig, pointer: string): boolean {
   return !!p && pointer.startsWith(`${p.path}/`) && pointer.endsWith(`/${p.price}`);
 }
 
+/** WCAG contrast ratio between two #RRGGBB colors (1 to 21). */
+export function contrastRatio(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const [r, g, bl] = [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * bl!;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+/** Minimum contrast between text and background before a color change needs the agency (WCAG AA). */
+export const MIN_TEXT_CONTRAST = 4.5;
+
 function hasAtMostTwoDecimals(n: number): boolean {
   return Math.abs(Math.round(n * 100) - n * 100) < 1e-6;
 }
@@ -133,6 +150,19 @@ export function runGate(input: GateInput): GateResult {
       if (typeof n !== 'number' || !(n > 0) || !hasAtMostTwoDecimals(n)) {
         raise('bloqueado', 'Los precios tienen que ser positivos y con hasta 2 decimales');
       }
+    }
+  }
+
+  // 4b. Readability: a color change can't leave the text unreadable on the background without the agency.
+  const bgPath = config.colors.background;
+  // The text color is usually not editable: take it from the token or from the background's sibling `text`.
+  const textPath = config.colors.text ?? bgPath?.replace(/[^/]+$/, 'text');
+  if (bgPath && textPath && changes.some((c) => c.pointer === bgPath || c.pointer === textPath)) {
+    const bg = getPointer(next, bgPath);
+    const fg = getPointer(next, textPath);
+    if (typeof bg === 'string' && typeof fg === 'string' && COLOR.test(bg) && COLOR.test(fg)) {
+      const ratio = contrastRatio(bg, fg);
+      if (ratio < MIN_TEXT_CONTRAST) raise('agencia', `El texto queda con poco contraste sobre el fondo (${ratio.toFixed(1)}:1, mínimo ${MIN_TEXT_CONTRAST}:1)`);
     }
   }
 
