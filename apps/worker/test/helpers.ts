@@ -70,7 +70,9 @@ export interface Harness {
   textsTo(chat: number): string[];
 }
 
-export async function harness(opts: { ai?: AiProvider; agent?: AgentLane; repo?: FakeSiteRepo; store?: Store } = {}): Promise<Harness> {
+export async function harness(
+  opts: { ai?: AiProvider; agent?: AgentLane; repo?: FakeSiteRepo; store?: Store; transcribe?: (audio: Buffer, mime: string) => Promise<string> } = {},
+): Promise<Harness> {
   const store = new MemoryStore();
   seedMemory(store, { agencyName: 'Estudio Faro', siteUrl: 'https://sitio.example', repo: 'salvasecco/dale-demo', content: bakeryContent() });
   const client = await store.ensureContact({ project_id: SEED_IDS.project, role: 'cliente', display_name: 'Mabel', telegram_chat_id: CLIENT_CHAT });
@@ -89,6 +91,7 @@ export async function harness(opts: { ai?: AiProvider; agent?: AgentLane; repo?:
     defaultSiteUrl: 'http://localhost:3001',
     now: () => new Date('2026-10-17T17:00:00Z'),
     log: (l) => logs.push(l),
+    transcribe: opts.transcribe ?? null,
   });
   const h: Harness = {
     store,

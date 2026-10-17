@@ -44,7 +44,9 @@ export const copy = {
   colaLlena: () => 'Estoy con mucho trabajo. En un ratito lo veo.',
   noHabilitado: () => 'Este chat no está habilitado. Pedile el link a tu agencia.',
   soloTexto: () => 'Por ahora describímelo con palabras.',
-  audioSinTranscripcion: () => 'Por ahora mandámelo escrito.',
+  audioSinTranscripcion: () => 'Todavía no puedo escuchar audios: falta configurar la transcripción. ¿Me lo escribís?',
+  audioNoEntendido: () => 'No pude entender el audio. ¿Me lo escribís?',
+  transcripcion: (texto: string) => `🎙️ ${texto}`,
   invitacionInvalida: () => 'Ese link no es válido o ya venció. Pedile uno nuevo a tu agencia.',
   /** To the agency, in its Telegram. */
   agenciaAprobacion: (cliente: string, resumen: string, razon: string) =>

@@ -1,5 +1,5 @@
 import * as agentLane from '@dale/agent';
-import { createAi, type AiProvider } from '@dale/ai';
+import { createAi, createTranscriber, type AiProvider } from '@dale/ai';
 import { redact, type DaleEnv } from '@dale/core';
 import { bakeryContent } from '@dale/core/fixtures';
 import { noScreenshots, PlaywrightScreenshotter, type Screenshotter } from './capture.js';
@@ -21,6 +21,8 @@ export interface BuildOptions {
   repo?: SiteRepo;
   screenshots?: Screenshotter;
   agent?: AgentLane;
+  /** Voice transcriber; default from OPENAI_API_KEY (null = no audios). */
+  transcribe?: WorkerDeps['transcribe'];
   log?: (l: string) => void;
   onEvent?: WorkerDeps['onEvent'];
 }
@@ -83,7 +85,7 @@ export async function buildApp(env: DaleEnv, opts: BuildOptions = {}): Promise<A
     secrets: env.secrets,
     defaultSiteUrl: env.DEMO_SITE_URL ?? LOCAL_SITE_URL,
     panelUrl: env.PANEL_URL,
-    canTranscribe: ai.name !== 'fake' && !!env.OPENAI_API_KEY,
+    transcribe: opts.transcribe !== undefined ? opts.transcribe : createTranscriber(env),
     log,
     onEvent: opts.onEvent,
   });

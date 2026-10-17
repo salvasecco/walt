@@ -271,20 +271,58 @@ export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
   };
 }
 
-/** Optional voice notes: OpenAI transcription API (not a Claude call). */
-export async function transcribeWithOpenAi(apiKey: string, audio: Buffer, mime: string): Promise<string> {
-  const form = new FormData();
-  const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mpeg') ? 'mp3' : mime.includes('mp4') ? 'm4a' : 'webm';
-  form.append('file', new Blob([new Uint8Array(audio)], { type: mime }), `audio.${ext}`);
-  form.append('model', 'gpt-4o-mini-transcribe');
-  form.append('language', 'es');
-  const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-    signal: AbortSignal.timeout(45_000),
-  });
+/** Newest OpenAI transcription model (Oct 2026 docs); `gpt-4o-mini-transcribe` is the fallback. */
+export const TRANSCRIBE_MODEL = 'gpt-transcribe';
+export const TRANSCRIBE_FALLBACK_MODEL = 'gpt-4o-mini-transcribe';
+const TRANSCRIBE_PROMPT = 'Mensaje de voz en español rioplatense de una persona que pide cambios en la web de su negocio (precios, productos, horarios, colores, textos).';
+
+/** File extension the transcription API expects for a mime type (Telegram voice notes are OGG/Opus). */
+export function audioExtension(mime: string): string {
+  const m = mime.toLowerCase();
+  if (m.includes('ogg') || m.includes('opus')) return 'ogg';
+  if (m.includes('mpeg') || m.includes('mp3')) return 'mp3';
+  if (m.includes('mp4') || m.includes('m4a') || m.includes('aac')) return 'm4a';
+  if (m.includes('wav')) return 'wav';
+  return 'webm';
+}
+
+/**
+ * Voice notes: OpenAI transcription API (not a Claude call), in Spanish. Tries `gpt-transcribe`
+ * (`languages[]=es`); if the API rejects that request (4xx other than auth or rate limits, e.g. a
+ * format it does not take), retries once with `gpt-4o-mini-transcribe` (`language=es`).
+ */
+export async function transcribeWithOpenAi(
+  apiKey: string,
+  audio: Buffer,
+  mime: string,
+  opts: { fetch?: typeof fetch; timeoutMs?: number } = {},
+): Promise<string> {
+  const doFetch = opts.fetch ?? fetch;
+  const call = async (model: string) => {
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(audio)], { type: mime }), `audio.${audioExtension(mime)}`);
+    form.append('model', model);
+    if (model === TRANSCRIBE_MODEL) form.append('languages[]', 'es');
+    else form.append('language', 'es');
+    form.append('prompt', TRANSCRIBE_PROMPT);
+    return doFetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 45_000),
+    });
+  };
+  let res = await call(TRANSCRIBE_MODEL);
+  if (!res.ok && res.status >= 400 && res.status < 500 && ![401, 403, 429].includes(res.status)) {
+    res = await call(TRANSCRIBE_FALLBACK_MODEL);
+  }
   if (!res.ok) throw new Error(`La transcripción falló (HTTP ${res.status})`);
   const body = (await res.json()) as { text?: string };
   return (body.text ?? '').trim();
+}
+
+/** A transcriber when OPENAI_API_KEY is set, else null (the bot asks for text). Independent of LLM_PROVIDER. */
+export function createTranscriber(env: { OPENAI_API_KEY?: string }): ((audio: Buffer, mime: string) => Promise<string>) | null {
+  const key = env.OPENAI_API_KEY;
+  return key ? (audio, mime) => transcribeWithOpenAi(key, audio, mime) : null;
 }

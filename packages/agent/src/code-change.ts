@@ -108,11 +108,20 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
   const work = realpathSync(mkdtempSync(join(tmpdir(), 'dale-code-')));
   const authEnv = deps.host.gitAuthEnv();
   const g = (args: string[], cwd: string) => git(args, { cwd, home: work, authEnv, secrets });
+  const timings = { clone: 0, agent: 0, pr: 0, preview: 0 };
+  let mark = performance.now();
+  const lap = (k: keyof typeof timings) => {
+    const now = performance.now();
+    timings[k] = Math.round(now - mark);
+    mark = now;
+  };
+  let turns: number | undefined;
   try {
     await g(['clone', '--quiet', '--depth', '50', '--branch', input.repo.defaultBranch, '--', deps.host.remoteUrl(input.repo), 'repo'], work);
     const dir = realpathSync(join(work, 'repo'));
     await g(['checkout', '--quiet', '-b', branch], dir);
     log(`clonado ${input.repo.owner}/${input.repo.name} en la rama ${branch}`);
+    lap('clone');
 
     const timeoutMs = input.timeoutMs ?? 300_000;
     const ac = new AbortController();
@@ -128,11 +137,13 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
         timedOut,
       ]);
       summary = out.summary;
+      turns = out.turns;
       log(`agente listo${out.turns ? ` en ${out.turns} turnos` : ''}${out.costUsd !== undefined ? `, USD ${out.costUsd.toFixed(4)}` : ''}`);
     } finally {
       clearTimeout(timer);
       ac.abort();
     }
+    lap('agent');
 
     await g(['add', '-A'], dir);
     const files = parseRaw(await g(['diff', '--cached', '--raw', '-z', '--no-renames'], dir));
@@ -162,6 +173,7 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
     ].join('\n');
     const pr = await deps.host.createPullRequest(input.repo, { head: branch, base: input.repo.defaultBranch, title, body: redact(body, secrets) });
     log(`PR #${pr.number}: ${pr.url}`);
+    lap('pr');
 
     const previewUrl = await findPreviewUrlWith(
       { repo: input.repo, sha: commitSha, prNumber: pr.number, timeoutMs: deps.previewTimeoutMs ?? 240_000 },
@@ -170,6 +182,7 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
     );
     if (previewUrl) log(`vista previa: ${previewUrl}`);
     else log('sin vista previa: la agencia revisa el PR');
+    lap('preview');
 
     return {
       branch,
@@ -180,6 +193,8 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
       changedFiles: files.map((f) => f.path),
       ...(previewUrl ? { previewUrl } : {}),
       logs,
+      timings,
+      ...(turns !== undefined ? { turns } : {}),
     };
   } finally {
     rmSync(work, { recursive: true, force: true });

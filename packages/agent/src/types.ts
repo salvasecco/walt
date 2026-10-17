@@ -24,4 +24,8 @@ export interface RunCodeChangeResult {
   changedFiles: string[];
   previewUrl?: string;
   logs: string[];
+  /** Milliseconds per phase: clone, agent (model editing), pr (diff review + commit + push + PR), preview (waiting for it). */
+  timings?: { clone: number; agent: number; pr: number; preview: number };
+  /** Agent turns used, when the runner reports them. */
+  turns?: number;
 }

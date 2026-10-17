@@ -11,6 +11,7 @@
     "db:migrate": "tsx scripts/db-migrate.ts",
     "seed": "tsx scripts/seed.ts",
     "dry-run": "pnpm --filter @dale/worker dry-run",
+    "voice-test": "tsx scripts/voice-test.ts",
     "eval": "pnpm --filter @dale/eval eval",
     "e2e": "tsx scripts/e2e.ts",
     "test": "pnpm -r test",

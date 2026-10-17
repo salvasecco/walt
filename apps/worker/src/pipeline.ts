@@ -62,8 +62,8 @@ export interface WorkerDeps {
   secrets: string[];
   /** Fallback site URL when the project has none. */
   defaultSiteUrl: string;
-  /** True when voice notes can be transcribed (OPENAI_API_KEY and a real provider). */
-  canTranscribe?: boolean;
+  /** Voice note transcriber (OPENAI_API_KEY). Without it, audios get a "write it" answer. */
+  transcribe?: ((audio: Buffer, mime: string) => Promise<string>) | null;
   /** Optional panel URL for the "Ver en el panel" button. */
   panelUrl?: string;
   now?: () => Date;
@@ -176,7 +176,8 @@ export class Worker {
           await this.say(contact, null, { text: copy.soloTexto() });
           return;
         case 'voice': {
-          if (!(await this.canTranscribe())) {
+          const transcribe = this.d.transcribe;
+          if (!transcribe) {
             await this.d.store.addMessage({ contact_id: contact.id, direction: 'entrada', text: null, media: { tipo: 'audio' } });
             await this.say(contact, null, { text: copy.audioSinTranscripcion() });
             return;
@@ -184,23 +185,26 @@ export class Worker {
           // Rate limit before downloading and transcribing, so audios cannot run up costs.
           const since = new Date(this.now().getTime() - LIMITS.windowMs).toISOString();
           if ((await this.d.store.countRequestsSince(contact.id, since)) >= LIMITS.perChat) {
+            await this.d.store.addMessage({ contact_id: contact.id, direction: 'entrada', text: null, media: { tipo: 'audio' } });
             await this.say(contact, null, { text: copy.limitePedidos() });
             return;
           }
-          let text: string;
+          let text = '';
+          let mime = '';
+          const t0 = performance.now();
           try {
-            const { data, mime } = await u.download();
-            text = await withTimeout(this.d.ai.transcribe(data, mime), TIMEOUTS.ai, 'Transcripción');
+            const audio = await u.download();
+            mime = audio.mime;
+            text = (await withTimeout(transcribe(audio.data, audio.mime), TIMEOUTS.ai, 'Transcripción')).trim();
           } catch (err) {
             this.log(`[audio] ${this.redact(errMsg(err))}`);
-            await this.say(contact, null, { text: copy.audioSinTranscripcion() });
-            return;
           }
           if (!text) {
-            await this.say(contact, null, { text: copy.audioSinTranscripcion() });
+            await this.d.store.addMessage({ contact_id: contact.id, direction: 'entrada', text: null, media: { tipo: 'audio', mime } });
+            await this.say(contact, null, { text: copy.audioNoEntendido() });
             return;
           }
-          return await this.handleText(contact, text, { audio: true });
+          return await this.handleText(contact, text, { tipo: 'audio', mime, transcripcion: true, transcripcionMs: Math.round(performance.now() - t0) });
         }
         case 'text':
           return await this.handleText(contact, u.text);
@@ -209,10 +213,6 @@ export class Worker {
       this.log(`[entrada] ${this.redact(errMsg(err))}`);
       await this.d.channel.send(u.chatId, { text: copy.derivado() }).catch(() => {});
     }
-  }
-
-  private async canTranscribe(): Promise<boolean> {
-    return !!this.d.canTranscribe;
   }
 
   private async handleStart(chatId: number, fromName: string, token?: string): Promise<void> {
@@ -238,21 +238,26 @@ export class Worker {
   private async handleText(contact: ContactRow, rawText: string, media?: Record<string, unknown>): Promise<void> {
     const text = rawText.slice(0, LIMITS.maxText);
     const reply = normalizeReply(text);
+    const fromAudio = media?.tipo === 'audio';
+    // A voice note: the client sees what was understood ("🎙️ …"), saved as an outgoing message.
+    const echo = (requestId: string | null) => (fromAudio ? this.say(contact, requestId, { text: copy.transcripcion(text) }) : Promise.resolve());
 
     // Step 3: a short answer to an open request is not a new request.
     if (YES.test(reply) || NO.test(reply) || BACK.test(reply)) {
-      const handled = await this.tryQuickReply(contact, text, reply);
+      const handled = await this.tryQuickReply(contact, text, reply, media, echo);
       if (handled) return;
     }
 
     const since = new Date(this.now().getTime() - LIMITS.windowMs).toISOString();
     if ((await this.d.store.countRequestsSince(contact.id, since)) >= LIMITS.perChat) {
       await this.d.store.addMessage({ contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
+      await echo(null);
       await this.say(contact, null, { text: copy.limitePedidos() });
       return;
     }
     if (this.fast.size >= LIMITS.queueMax) {
       await this.d.store.addMessage({ contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
+      await echo(null);
       await this.say(contact, null, { text: copy.colaLlena() });
       return;
     }
@@ -262,6 +267,7 @@ export class Worker {
     const t0 = performance.now();
     const req = await this.createRequest(contact, text, parent);
     await this.d.store.addMessage({ request_id: req.id, contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
+    await echo(req.id);
     await this.say(contact, req.id, { text: copy.recibido() });
     await this.event(req, 'recibido', 'ok', Math.round(performance.now() - t0), parent ? { correccionDe: parent } : null);
     const queued = this.fast.push(() => this.processRequest(req.id));
@@ -284,17 +290,25 @@ export class Worker {
     }
   }
 
-  private async tryQuickReply(contact: ContactRow, text: string, reply: string): Promise<boolean> {
+  private async tryQuickReply(
+    contact: ContactRow,
+    text: string,
+    reply: string,
+    media?: Record<string, unknown>,
+    echo: (requestId: string | null) => Promise<void> = async () => {},
+  ): Promise<boolean> {
     if (BACK.test(reply)) {
       const last = await this.d.store.latestRequestOfContact(contact.id, ['publicado']);
       if (!last) return false;
-      await this.d.store.addMessage({ request_id: last.id, contact_id: contact.id, direction: 'entrada', text });
+      await this.d.store.addMessage({ request_id: last.id, contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
+      await echo(last.id);
       this.fast.push(() => this.handleCallback(contact, `undo:${last.short_id}`, 'telegram'));
       return true;
     }
     const open = await this.d.store.latestRequestOfContact(contact.id, ['esperando_cliente']);
     if (!open) return false;
-    await this.d.store.addMessage({ request_id: open.id, contact_id: contact.id, direction: 'entrada', text });
+    await this.d.store.addMessage({ request_id: open.id, contact_id: contact.id, direction: 'entrada', text, media: media ?? null });
+    await echo(open.id);
     const data = YES.test(reply) ? `ok:${open.short_id}` : `no:${open.short_id}`;
     this.fast.push(() => this.handleCallback(contact, data, 'telegram'));
     return true;
@@ -918,9 +932,15 @@ export class Worker {
         TIMEOUTS.agent + 30_000,
         'Agente',
       );
-      await this.event(req, 'agente_inicio', 'ok', Math.round(performance.now() - t0), { archivos: res.changedFiles });
-      await this.event(req, 'agente_pr', 'ok', null, { pr: res.prUrl, numero: res.prNumber });
-      if (res.previewUrl) await this.event(req, 'agente_preview', 'ok', null, { url: res.previewUrl });
+      const tm = res.timings;
+      await this.event(req, 'agente_inicio', 'ok', tm ? tm.clone + tm.agent : Math.round(performance.now() - t0), {
+        archivos: res.changedFiles,
+        ...(tm ? { clonMs: tm.clone, agenteMs: tm.agent } : {}),
+        ...(res.turns !== undefined ? { turnos: res.turns } : {}),
+      });
+      await this.event(req, 'agente_pr', 'ok', tm?.pr ?? null, { pr: res.prUrl, numero: res.prNumber });
+      if (res.previewUrl) await this.event(req, 'agente_preview', 'ok', tm?.preview ?? null, { url: res.previewUrl });
+      for (const l of res.logs) this.log(`[agente #${req.short_id}] ${this.redact(l)}`);
       req = await this.d.store.updateRequest(req.id, { status: 'agente_listo', pr_url: res.prUrl, pr_number: res.prNumber, preview_url: res.previewUrl ?? null });
       const links: Button[] = [];
       if (res.previewUrl) links.push({ text: B.verPreview, url: res.previewUrl });

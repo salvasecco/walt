@@ -384,6 +384,48 @@ describe('acceso y límites (SPEC §9, §12)', () => {
     expect(h.last()).toBe(copy.soloTexto());
     await h.worker.handle({ kind: 'voice', chatId: CLIENT_CHAT, fromName: 'x', download: async () => ({ data: Buffer.from(''), mime: 'audio/ogg' }) });
     expect(h.last()).toBe(copy.audioSinTranscripcion());
+    expect(h.store.requests).toHaveLength(0);
+    const inbound = h.store.messages.filter((m) => m.direction === 'entrada').at(-1)!;
+    expect(inbound.media).toMatchObject({ tipo: 'audio' });
+  });
+
+  it('audio con transcripción: muestra "🎙️ …" y sigue el pipeline normal', async () => {
+    const seen: string[] = [];
+    let said = ' subí el pan flauta a 95 ';
+    const h = await harness({
+      transcribe: async (data, mime) => {
+        seen.push(`${mime}:${data.length}`);
+        return said;
+      },
+    });
+    await h.worker.handle({ kind: 'voice', chatId: CLIENT_CHAT, fromName: 'x', download: async () => ({ data: Buffer.from('OggS'), mime: 'audio/ogg' }) });
+    await h.worker.idle();
+    expect(seen).toEqual(['audio/ogg:4']);
+    const texts = h.textsTo(CLIENT_CHAT);
+    expect(texts[0]).toBe(copy.transcripcion('subí el pan flauta a 95'));
+    expect(texts[1]).toBe(copy.recibido());
+    const req = lastReq(h);
+    expect(req.raw_text).toBe('subí el pan flauta a 95');
+    expect(req.status).toBe('esperando_cliente');
+    const msgs = h.store.messages.filter((m) => m.request_id === req.id);
+    expect(msgs.find((m) => m.direction === 'entrada')).toMatchObject({ text: 'subí el pan flauta a 95', media: { tipo: 'audio', mime: 'audio/ogg' } });
+    expect(msgs.some((m) => m.direction === 'salida' && m.text === '🎙️ subí el pan flauta a 95')).toBe(true);
+    // A voice "dale" answers the open preview like the button.
+    said = 'dale';
+    await h.worker.handle({ kind: 'voice', chatId: CLIENT_CHAT, fromName: 'x', download: async () => ({ data: Buffer.from('OggS'), mime: 'audio/ogg' }) });
+    await h.worker.idle();
+    expect(lastReq(h).status).toBe('publicado');
+    expect(h.textsTo(CLIENT_CHAT)).toContain('🎙️ dale');
+  });
+
+  it('audio que no se entiende o falla la transcripción: pide que lo escriba', async () => {
+    const h = await harness({ transcribe: async () => '' });
+    await h.worker.handle({ kind: 'voice', chatId: CLIENT_CHAT, fromName: 'x', download: async () => ({ data: Buffer.from('x'), mime: 'audio/ogg' }) });
+    expect(h.last()).toBe(copy.audioNoEntendido());
+    const h2 = await harness({ transcribe: async () => { throw new Error('HTTP 500'); } });
+    await h2.worker.handle({ kind: 'voice', chatId: CLIENT_CHAT, fromName: 'x', download: async () => ({ data: Buffer.from('x'), mime: 'audio/ogg' }) });
+    expect(h2.last()).toBe(copy.audioNoEntendido());
+    expect(h2.store.requests).toHaveLength(0);
   });
 
   it('textos truncados a 2000 caracteres', async () => {
