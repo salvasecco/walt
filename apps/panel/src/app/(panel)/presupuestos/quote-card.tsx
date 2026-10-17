@@ -30,7 +30,7 @@ export function QuoteCard({ row }: { row: QuoteRow }) {
       router.refresh();
     });
   return (
-    <Surface className="flex flex-col gap-4 p-5">
+    <Surface id={`q-${q.id}`} className="flex scroll-mt-24 flex-col gap-4 p-5 target:border-foreground/40">
       <div className="flex flex-wrap items-center gap-2">
         <Chip tone={TONE[q.status]}>
           {q.status}

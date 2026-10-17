@@ -20,7 +20,6 @@ export const COLUMN_LABEL: Record<Column, string> = {
 /** Bloqueados y derivados cuentan solo si son de los últimos 7 días (y no hubo un publicado después). */
 export const RECENT_MS = 7 * 86_400_000;
 
-const NEEDS_AGENCY: RequestStatus[] = ["esperando_agencia", "agente_listo"];
 const IN_PROGRESS: RequestStatus[] = ["recibido", "interpretando", "cotizando", "agente_trabajando", "publicando"];
 const HANDED_OFF: RequestStatus[] = ["derivado", "bloqueado"];
 

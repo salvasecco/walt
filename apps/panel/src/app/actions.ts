@@ -17,6 +17,14 @@ export type ActionResult<T = undefined> =
   | { ok: false; error: string };
 
 const DEMO_MSG = "Datos de ejemplo: no se guardó nada. Conectá Supabase para que llegue al worker.";
+const SAMPLE_MSG = "Es un pedido de ejemplo: no se manda al worker.";
+
+/** Pedidos de ejemplo (migración 0003): nunca llegan al worker. Sin la columna, nada es de ejemplo. */
+async function isSampleRequest(requestId: string | null): Promise<boolean> {
+  if (!requestId) return false;
+  const { data, error } = await supabaseAdmin().from("requests").select("is_sample").eq("id", requestId).maybeSingle();
+  return !error && !!data?.is_sample;
+}
 
 // ── Entrada ────────────────────────────────────────────────────────────────
 
@@ -35,7 +43,7 @@ export async function login(_prev: { error?: string } | undefined, form: FormDat
     path: "/",
     maxAge,
   });
-  const desde = String(form.get("desde") ?? "/");
+  const desde = String(form.get("desde") || "/atencion");
   redirect(safeRedirect(desde));
 }
 
@@ -54,6 +62,7 @@ export async function sendCommand(
   try {
     await requireAuth();
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
+    if (await isSampleRequest(requestId)) return { ok: true, demo: true, message: SAMPLE_MSG };
     const { error } = await supabaseAdmin()
       .from("commands")
       .insert({ type, request_id: requestId, payload: { via: "panel", actor: "agencia", ...payload }, status: "pendiente" });
@@ -288,6 +297,8 @@ export async function saveQuote(
     if (!(fields.amount_usd > 0) || !(fields.eta_days > 0)) return { ok: false, error: "Monto y días tienen que ser mayores a cero." };
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
     const db = supabaseAdmin();
+    const { data: owner } = await db.from("quotes").select("request_id").eq("id", quoteId).maybeSingle();
+    if (send && (await isSampleRequest(owner?.request_id ?? null))) return { ok: true, demo: true, message: SAMPLE_MSG };
     const { data: q, error } = await db
       .from("quotes")
       .update({

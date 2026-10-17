@@ -1,8 +1,11 @@
 // Datos de ejemplo: SOLO en desarrollo y sin Supabase. Se muestran con la etiqueta "datos de ejemplo".
 // Reproducen los casos de la demo (SPEC §1) sobre la Panadería Mabel (SPEC §14).
+import { buildSampleClientRows, MABEL_CLIENT } from "./sample-clients.mts";
 import type {
   Approval,
   Category,
+  Client,
+  Contact,
   Change,
   ContentVersion,
   DaleEvent,
@@ -411,6 +414,8 @@ const uuid = (n: number, prefix = "aaaaaaaa") =>
   `${prefix}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
 export type SampleData = {
+  clients: Client[];
+  contacts: Contact[];
   projects: Project[];
   rules: Rules[];
   requests: DaleRequest[];
@@ -435,15 +440,8 @@ export function buildSample(now = Date.now()): SampleData {
     site_url: null,
     created_at: new Date(now - 86_400_000 * 3).toISOString(),
   };
-  const project2: Project = {
-    ...project,
-    id: uuid(2, "bbbbbbbb"),
-    name: "Ferretería Don Julio",
-    client_name: "Julio",
-    repo_name: "ferreteria-web",
-    mode: "codigo",
-    created_at: new Date(now - 86_400_000 * 10).toISOString(),
-  };
+  project.client_id = MABEL_CLIENT.id;
+  project.is_sample = false;
   const rules: Rules[] = [1, 2, 3].map((v) => ({
     id: uuid(v, "cccccccc"),
     project_id: SEED_PROJECT_ID,
@@ -613,7 +611,18 @@ export function buildSample(now = Date.now()): SampleData {
   });
   requests[0].live_version_id = uuid(999, "eeeeeeee");
 
-  return { projects: [project, project2], rules, requests, events, messages, versions, approvals, quotes };
+  // Clientes de ejemplo: los mismos que inserta `pnpm seed` con is_sample = true.
+  const extra = buildSampleClientRows({ now, factoryId: SEED_FACTORY_ID, agencyName: "Estudio Faro" });
+  const clients: Client[] = [{ ...MABEL_CLIENT, factory_id: SEED_FACTORY_ID, created_at: project.created_at }, ...extra.clients];
+  for (const r of extra.requests) requests.push(r as unknown as DaleRequest);
+  for (const e of extra.events) events.push({ ...e, id: evId++ });
+  messages.push(...extra.messages);
+  approvals.push(...extra.approvals);
+  quotes.push(...extra.quotes);
+  const contacts: Contact[] = extra.contacts.map((c) => ({ id: c.id, project_id: c.project_id, display_name: c.display_name, role: c.role, created_at: c.created_at }));
+  requests.sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  return { clients, contacts, projects: [project, ...extra.projects], rules, requests, events, messages, versions, approvals, quotes };
 }
 
 /** Guion para animar el recorrido en En vivo con datos de ejemplo. */
