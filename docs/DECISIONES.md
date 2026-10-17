@@ -51,3 +51,22 @@
 - Revert de código: clon de la rama principal, `git revert` del squash (con `-m 1` si fuera un merge con dos padres) y commit `dale: revert #{short_id}`.
 - Vista previa: primero los deployments de GitHub del commit (estado success, `environment_url` https); si no, statuses con link a `*.vercel.app`. Sondeo cada 10 s hasta 4 min.
 - `@dale/core` importa sus módulos con extensión `.ts` (no `.js`): Turbopack y webpack de Next no mapean `.js`→`.ts` en un paquete transpilado. El panel necesita `allowImportingTsExtensions` en su tsconfig.
+
+## 02-panel
+
+- Next.js 16.4 (App Router, Turbopack) con Tailwind 4 y shadcn/ui (estilo base-nova, Base UI). Sin Cache Components: el panel es todo datos en vivo, así que el layout del panel va con `dynamic = "force-dynamic"`.
+- Tema único oscuro (no hay modo claro): es un centro de control y se proyecta. Tokens en `globals.css` (`--dale-*`) y colores `cyan-neon`, `violet-neon`, etc. en Tailwind.
+- Del paquete `@dale/core` el panel importa solo **tipos** (`import type` desde `@dale/core/browser`). El código de core usa imports con `.js` que Turbopack no resuelve a `.ts`; las constantes (categorías, estados, tipos de operación, ids del seed) se repiten en `apps/panel/src/lib/types.ts` atadas con `satisfies` a los tipos de core.
+- Entrada: cookie `dale_panel` = `v1.<exp>.<hmac-sha256>` con clave derivada de `PANEL_PASSWORD` (cambiar la contraseña invalida las sesiones), 7 días, httpOnly. El `proxy.ts` la verifica y cada acción de servidor la vuelve a verificar. Sin `PANEL_PASSWORD`: abierto en desarrollo, cerrado en producción.
+- `next.config.ts` carga `~/.dale/.env` en local (solo completa variables que falten; en Vercel no). El panel lee `SUPABASE_URL`/`SUPABASE_ANON_KEY` del servidor y se las pasa al navegador para realtime: no hace falta `NEXT_PUBLIC_*` (se aceptan igual).
+- Lecturas del panel del lado del servidor con service role; realtime en el navegador con anon (requests, events, messages, content_versions).
+- Datos de ejemplo: solo si no hay Supabase y `NODE_ENV !== production`, con la etiqueta "datos de ejemplo" visible en todas las pantallas. En producción sin Supabase se muestra "Falta conectar la base". En En vivo, con datos de ejemplo, una simulación reproduce un pedido paso a paso para ver el recorrido.
+- Acciones → `commands`: aprobar, rechazar, publicar (agente listo), revertir, reintentar_commit (`payload.version_id`), enviar_presupuesto (`payload.quote_id`). Todas llevan `payload.via = "panel"` y `actor = "agencia"`.
+- Escrituras directas que no son comandos (no hay tipo de comando para ellas): guardar reglas inserta en `rules` (versión = última + 1, reintenta ante choque de unique); conectar un repo inserta en `projects` + reglas v1 por defecto; las invitaciones insertan en `invites` (5 usos, 7 días, cliente y agencia); editar un presupuesto hace update en `quotes` y "Enviar al cliente" además inserta `enviar_presupuesto`.
+- Conectar un repo: la prueba corre en el servidor contra la API de GitHub con `GITHUB_TOKEN` (sin token, solo repos públicos, y se avisa). Modo contenido si `dale.config.json` existe en la rama y tiene `version: 1` y `content`; si no, modo código. El nuevo proyecto va a la primera factory (o la del seed).
+- QR de invitación: SVG generado en el servidor con `qrcode`, link `https://t.me/{TELEGRAM_BOT_USERNAME}?start={token}`.
+- Captura en Aprobaciones: si algún mensaje del pedido trae `media.url` se muestra esa imagen; si no, el sitio en un iframe con `?preview=<draft_version_id>`; si no hay URL del sitio, un render mínimo del contenido con los cambios aplicados.
+- La URL del sitio de un proyecto es `projects.site_url`; para el proyecto del seed, si está vacía, `DEMO_SITE_URL`.
+- "Resuelto sin la agencia" = pedidos del día con categoría permitido, consulta o charla sobre los que tienen categoría. "Tiempo medio a publicado" = desde `requests.created_at` hasta el evento `publicado` ok. Día en America/Montevideo.
+- Lo que piden: sugerencias cuando un proyecto repite un tipo de operación 3 veces o más en 30 días; "repetidos" agrupa textos normalizados (sin tildes, números como `#`).
+- Para instalar en el workspace hubo que agregar `sharp: false` y `unrs-resolver: false` a `allowBuilds` del `pnpm-workspace.yaml` raíz (pnpm 12 falla si quedan builds sin decidir).

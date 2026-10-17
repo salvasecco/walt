@@ -13,7 +13,7 @@ import type { LiveSnapshot } from "@/lib/data";
 import { buildJourney, timeToPublish } from "@/lib/journey";
 import { CATEGORY_TONE, OPEN_STATUSES, TZ, clock, ms, relative, toneText } from "@/lib/labels";
 import { supabaseBrowser } from "@/lib/supabase/browser";
-import type { ContentVersion, DaleEvent, DaleRequest, Message } from "@/lib/types";
+import { SEED_PROJECT_ID, type ContentVersion, type DaleEvent, type DaleRequest, type Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -126,7 +126,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
     };
   }, [requests, events, now]);
 
-  const effectiveSite = project?.site_url || siteUrl;
+  const effectiveSite = project?.site_url || (active?.project_id === SEED_PROJECT_ID ? siteUrl : "");
   // Con datos de ejemplo los borradores no existen en la base: se muestra el sitio publicado.
   const waitingDraft = !sample && active && active.draft_version_id && (active.status === "esperando_cliente" || active.status === "esperando_agencia");
   const iframeSrc = effectiveSite

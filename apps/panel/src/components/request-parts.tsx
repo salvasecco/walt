@@ -47,11 +47,11 @@ export function ChangesDiff({ changes, content, big }: { changes: Change[]; cont
       {changes.map((c) => {
         const d = describeChange(c, content);
         return (
-          <li key={c.pointer} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+          <li key={c.pointer} className="flex flex-col gap-1 rounded-xl sm:grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3 border border-white/[0.06] bg-white/[0.02] px-3 py-2">
             <span className={cn("truncate text-muted-foreground", big ? "text-base" : "text-sm")} title={c.pointer}>
               {d.label}
             </span>
-            <span className={cn("flex items-center gap-2 font-mono tnum", big ? "text-lg" : "text-sm")}>
+            <span className={cn("flex flex-wrap items-center gap-2 font-mono tnum break-all", big ? "text-lg" : "text-sm")}>
               <span className="text-rose-neon/80 line-through decoration-rose-neon/50">{d.before}</span>
               <ArrowRight className="size-4 text-muted-foreground" />
               <span className="font-semibold text-emerald-neon">{d.after}</span>
