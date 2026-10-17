@@ -14,7 +14,7 @@
     "eval": "pnpm --filter @dale/eval eval",
     "e2e": "tsx scripts/e2e.ts",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "start:worker": "pnpm --filter @dale/worker start",
     "dev:panel": "pnpm --filter @dale/panel dev",
     "demo:reset": "tsx scripts/demo-reset.ts"
