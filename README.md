@@ -74,7 +74,31 @@ Modos falsos para desarrollar sin credenciales: `LLM_PROVIDER=fake`, `GITHUB_MOD
 
 ## Qué es real y qué falta
 
-ESTADO_PENDIENTE
+Estado al 2026-10-17. Todo lo de abajo está en `main`; `pnpm typecheck` y `pnpm test` en verde (core 98, ai 25 + 8 que piden la clave, agent 17, eval 12, worker 43).
+
+**Real y probado**
+- Sitio demo en producción (https://dale-demo.vercel.app): lee la versión viva de Supabase en cada request, con vista previa por `?preview=<id>` y refresco por realtime. Hoy, sin Supabase conectado, muestra el archivo local (`data-content-source="file"` en el HTML).
+- Panel en producción (https://dale-panel.vercel.app): las 7 pantallas. Sin `PANEL_PASSWORD` queda cerrado y sin Supabase dice "Falta conectar la base"; no muestra datos inventados en producción.
+- `@dale/core`: operaciones con tipo, reglas versionadas, gate y `decide` sin IA, con pruebas.
+- Worker: el pipeline completo de SPEC §9 (permitido, riesgoso de contenido y de código, fuera de alcance con presupuesto, consulta, bloqueado, derivado), publicar y volver atrás, comandos del panel, límites (5 pedidos cada 10 min por chat, cola de 20, textos de 2.000), `update_id` repetidos, y al arrancar pasa a derivado lo que un reinicio dejó a medias. Probado con pruebas y con `pnpm e2e` en memoria.
+- Capturas del celular con Playwright contra el sitio real (~1,5 s).
+- Carril de código (`@dale/agent`): hook de rutas, archivos protegidos, entorno mínimo, revisión del diff, PR, vista previa, merge y revert. Probado contra un repo git local.
+- `scripts/run-worker.sh`: reinicia el worker si se cae (probado con `kill -9`).
+
+**Todavía no probado con credenciales reales** (al cierre no había ninguna secreta cargada en `~/.dale/.env`)
+- La interpretación con Claude (`claude-sonnet-5-5`): el proveedor está hecho, pero no corrió ni una vez contra la API. **Ningún número de calidad de la IA de este README sale del modelo real.**
+- Telegram (grammY, polling y webhook), Supabase (migración, seed, realtime del panel y del sitio), commits en GitHub y el agente con PR real.
+- Evaluación: solo corrió con el proveedor falso, que es un juego de expresiones regulares y no mide la IA. Con ese proveedor: 30 casos sintéticos, categoría 86,7 %, operaciones exactas 53,8 %, 0 falsos permitidos, **0 cambios prohibidos aplicados**. Para la corrida real: `pnpm eval --provider anthropic` (reporte en `eval/report.md`).
+
+**Simulado:** nada en la demo. Los modos falsos (`LLM_PROVIDER=fake`, `GITHUB_MODE=fake`, `TELEGRAM_MODE=console`, base en memoria) existen solo para desarrollar y probar, y cada comando dice cuándo los usa.
+
+**Pendiente**
+- Cargar las credenciales y correr: `pnpm db:migrate && pnpm seed`, `pnpm e2e --strict`, `pnpm eval --provider anthropic`, y los scripts `sync-vercel-env.sh` del sitio y del panel.
+- Worker en Railway con webhook: no hay CLI de Railway; el worker corre en una compu con `scripts/run-worker.sh` y polling.
+- CI: está en `ci/github-actions.yml`; para activarlo, `gh auth refresh -s workflow` y moverlo a `.github/workflows/ci.yml`.
+- Las capturas van por Telegram pero no se suben a ningún lado: el panel muestra el sitio en un iframe en su lugar.
+- Vistas previas del agente en repos de terceros con secretos en Preview: apagar los builds de `dale/*` hasta la aprobación (ver `docs/DECISIONES.md`).
+- Cobro, auth por agencia con RLS por `factory_id`, WhatsApp, más tipos de operación.
 
 **Alcance:** cambios de textos, precios, disponibilidad, colores, horarios y carteles en una web que cumple el contrato de contenido (`dale.config.json`, SPEC §6); cambios de código con PR en cualquier repo de GitHub, aprobados por la agencia.
 
