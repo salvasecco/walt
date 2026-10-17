@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { authMode } from "@/lib/auth";
 import { LoginForm } from "./login-form";
@@ -20,7 +21,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/entrar">) 
           </p>
         ) : mode === "abierto" ? (
           <p className="mt-6 rounded-xl border border-white/10 p-3 text-sm text-muted-foreground">
-            En desarrollo y sin <code className="font-mono">PANEL_PASSWORD</code>, el panel está abierto. <a href="/" className="text-cyan-neon underline">Entrar</a>
+            En desarrollo y sin <code className="font-mono">PANEL_PASSWORD</code>, el panel está abierto. <Link href="/" className="text-cyan-neon underline">Entrar</Link>
           </p>
         ) : (
           <LoginForm desde={typeof desde === "string" ? desde : "/"} />

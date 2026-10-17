@@ -17,7 +17,7 @@ export function ConnectRepo({ hasToken }: { hasToken: boolean }) {
   const [saving, startSave] = useTransition();
   const router = useRouter();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    let v = e.target.value;
+    const v = e.target.value;
     // Acepta pegar "owner/repo" o la URL de GitHub en el campo owner.
     if (k === "owner") {
       const m = v.match(/(?:github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);

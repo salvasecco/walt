@@ -26,5 +26,6 @@ export function CountUp({ value, format = (n) => String(Math.round(n)) }: { valu
     prev.current = value;
     return () => controls.stop();
   }, [value, format, reduce]);
-  return <span ref={ref}>{format(reduce ? value : prev.current)}</span>;
+  // El texto inicial es el valor final (SSR y sin animación); el efecto anima desde el anterior.
+  return <span ref={ref}>{format(value)}</span>;
 }

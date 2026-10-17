@@ -105,6 +105,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
   const project = active ? initial.projects.find((p) => p.id === active.project_id) : undefined;
   const live = versions.find((v) => v.project_id === (active?.project_id ?? initial.projects[0]?.id)) ?? null;
   const nodes = useMemo(() => (active ? buildJourney(active, events) : []), [active, events]);
+  const activePublish = active ? timeToPublish(active, events) : null;
   const conversation = useMemo(
     () => (active ? messages.filter((m) => m.request_id === active.id).sort((a, b) => (a.at < b.at ? -1 : 1)) : []),
     [messages, active],
@@ -274,7 +275,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
                 <span>reglas v{active.rules_version ?? "—"}</span>
                 <span>costo ${Number(active.cost_usd ?? 0).toFixed(4)}</span>
                 <span>llegó {clock(active.created_at, true)}</span>
-                {timeToPublish(active, events) != null && <span className="text-emerald-neon">publicado en {ms(timeToPublish(active, events))}</span>}
+                {activePublish != null && <span className="text-emerald-neon">publicado en {ms(activePublish)}</span>}
               </div>
             </Glass>
 
