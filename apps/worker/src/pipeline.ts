@@ -176,6 +176,12 @@ export class Worker {
             await this.say(contact, null, { text: copy.audioSinTranscripcion() });
             return;
           }
+          // Rate limit before downloading and transcribing, so audios cannot run up costs.
+          const since = new Date(this.now().getTime() - LIMITS.windowMs).toISOString();
+          if ((await this.d.store.countRequestsSince(contact.id, since)) >= LIMITS.perChat) {
+            await this.say(contact, null, { text: copy.limitePedidos() });
+            return;
+          }
           let text: string;
           try {
             const { data, mime } = await u.download();
@@ -653,6 +659,9 @@ export class Worker {
     if (!req) return;
     if (actor && actor.project_id !== req.project_id) return;
     const isAgency = !actor || actor.role === 'agencia';
+    // Client buttons only work for the contact who made the request (the panel acts as the agency).
+    const isOwner = !actor || actor.id === req.contact_id;
+    if (['ok', 'no', 'undo', 'opt', 'qok', 'qno'].includes(action) && !isOwner) return;
     try {
       switch (action) {
         case 'ok':

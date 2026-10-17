@@ -69,6 +69,17 @@ describe('permitido: borrador, aprobación, publicación y vuelta atrás', () =>
     expect(h.store.versions.filter((v) => v.status === 'viva')).toHaveLength(1);
   });
 
+  it('otro contacto del mismo proyecto no puede apretar los botones del pedido ajeno', async () => {
+    const h = await harness();
+    await h.say('subí el pan flauta a 95');
+    const req = lastReq(h);
+    const other = await h.store.ensureContact({ project_id: SEED_IDS.project, role: 'cliente', display_name: 'Otro', telegram_chat_id: 777 });
+    await h.worker.handleCallback(other, `ok:${req.short_id}`, 'telegram');
+    await h.worker.idle();
+    expect((await h.store.getRequest(req.id))!.status).toBe('esperando_cliente');
+    expect(livePrice(h.store, 'pan-flauta')).toBe(80);
+  });
+
   it('un doble toque en Dale publica una sola vez', async () => {
     const h = await harness();
     await h.say('subí el pan flauta a 95');
