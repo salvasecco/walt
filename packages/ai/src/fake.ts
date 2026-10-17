@@ -178,6 +178,19 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     }
   }
 
+  // Ambiguous (phase 2): "poné el fondo más oscuro" → two options.
+  if (/fondo mas oscuro/.test(t) && inv.colors.some((c) => c.token === 'background')) {
+    return base({
+      kind: 'cambio',
+      summary: 'Oscurezco el fondo',
+      confidence: 0.7,
+      options: [
+        { label: 'Crema tostado', ops: [{ type: 'set_color', token: 'background', value: '#F5E6D3' }] },
+        { label: 'Gris piedra', ops: [{ type: 'set_color', token: 'background', value: '#E7E5E4' }] },
+      ],
+    });
+  }
+
   // Color: "poné el fondo violeta"
   const colorWord = Object.keys(COLORS).find((c) => t.includes(normalize(c)));
   const hex = raw.match(/#[0-9a-f]{6}\b/i)?.[0];
