@@ -30,6 +30,16 @@ export const DEFAULT_PROTECTED_GLOBS = [
   '.npmrc',
   '.claude/**',
   '**/.claude/**',
+  // Files that run code or change resolution at install/build time.
+  '.yarnrc*',
+  'pnpm-workspace.yaml',
+  '.babelrc*',
+  'babel.config.*',
+  'instrumentation.*',
+  '**/instrumentation.*',
+  '.gitattributes',
+  '**/.gitattributes',
+  '.gitmodules',
 ];
 
 export interface AgentDeps {
