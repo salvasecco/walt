@@ -14,7 +14,7 @@ Un asistente al que los clientes de una agencia le piden cambios chicos de su we
 | Derivado | Cualquier falla o timeout | "Se lo pasé a tu equipo". Ningún pedido queda colgado |
 
 - **Sitio demo:** https://dale-demo.vercel.app (Panadería Mabel, repo `salvasecco/dale-demo`)
-- **Panel:** PANEL_URL_PENDIENTE
+- **Panel:** https://dale-panel.vercel.app (entrada con `PANEL_PASSWORD`)
 - **Especificación:** [`docs/SPEC.md`](docs/SPEC.md) · decisiones en [`docs/DECISIONES.md`](docs/DECISIONES.md) · estado en [`docs/ESTADO.md`](docs/ESTADO.md) · guion en [`docs/DEMO.md`](docs/DEMO.md)
 
 ## Arquitectura
