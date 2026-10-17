@@ -41,3 +41,12 @@
 - `content/site.schema.json` del sitio (generado desde su zod) es más permisivo que el fixture de core (descuento hasta 100, textos sin tope): todo lo que pasa el gate lo acepta el sitio. `site.json` y `dale.config.json` son iguales en los dos repos.
 - `scripts/run-worker.sh` reinicia el worker si se cae (espera 2 s, hasta 30 s si muere enseguida) y guarda todo en `logs/worker.log` (ignorado por git).
 - `demo:reset` con `GITHUB_MODE=real` también commitea el fixture en `content/site.json` del repo del sitio si difiere (`--keep-repo` lo evita), para que el historial de git coincida con la versión viva.
+- `@dale/agent`: las cuatro funciones del SPEC leen `loadEnv()` y aceptan un último argumento opcional con dependencias (`host`, `runner`) para pruebas y para el worker. `runCodeChangeWith`/`mergeChangeWith`/`revertChangeWith`/`findPreviewUrlWith` son las versiones explícitas.
+- `@dale/agent` con `GITHUB_MODE=fake` usa `LocalHost`: repos bare y PRs en JSON en `$TMPDIR/dale-fake-github/<owner>/<repo>.git`.
+- Hook del agente: resuelve la ruta contra el clon (nunca contra el cwd del proceso), hace `lstat` de cada componente y niega cualquier symlink; además `realpath` del ancestro existente. Los protegidos se comparan sin distinguir mayúsculas. Se niega leer y escribir protegidos, y `.git/**` siempre. Glob/Grep: sin patrones absolutos ni `..`.
+- Protegidos por defecto, además de los del SPEC: `**/*.lock`, `**/.github/**`, `**/middleware.*`, `**/proxy.*`, `vercel.json`, `.npmrc` y `.claude/**`.
+- El agente corre con `settingSources: []` (no carga hooks ni settings del repo clonado), `permissionMode: 'dontAsk'`, solo Read/Edit/Write/Glob/Grep, 40 turnos, y `env` mínimo: PATH, HOME y TMPDIR temporales y las variables del proveedor. En Bedrock, `CLAUDE_CODE_USE_BEDROCK=1` y el modelo con prefijo `anthropic.`.
+- git corre con config aislada (`GIT_CONFIG_GLOBAL=/dev/null`, sin hooks) y el token va como header `http.extraheader` por variables `GIT_CONFIG_*`: nunca en la URL ni en `.git/config`.
+- Revisión del diff: solo cuentan las líneas agregadas. Además del SPEC rechaza `new Function(`, binarios, symlinks nuevos, rutas con `..`, más de 30 archivos y un diff vacío.
+- Revert de código: clon de la rama principal, `git revert` del squash (con `-m 1` si fuera un merge con dos padres) y commit `dale: revert #{short_id}`.
+- Vista previa: primero los deployments de GitHub del commit (estado success, `environment_url` https); si no, statuses con link a `*.vercel.app`. Sondeo cada 10 s hasta 4 min.
