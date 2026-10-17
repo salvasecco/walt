@@ -38,3 +38,6 @@
 - `check-env` prueba el modelo con `models.retrieve` (no gasta tokens). Con Bedrock solo verifica que estén las credenciales.
 - `apps/worker/src/dry-run.ts` es una versión mínima (interpretar → gate → decidir sobre el fixture, sin base) para que `pnpm dry-run` ande desde el día uno; 01 lo reemplaza por el pipeline real.
 - `@dale/ai` trae la interfaz y el proveedor `fake`; `anthropic` y `bedrock` tiran "no implementado" hasta que los haga 01.
+- `content/site.schema.json` del sitio (generado desde su zod) es más permisivo que el fixture de core (descuento hasta 100, textos sin tope): todo lo que pasa el gate lo acepta el sitio. `site.json` y `dale.config.json` son iguales en los dos repos.
+- `scripts/run-worker.sh` reinicia el worker si se cae (espera 2 s, hasta 30 s si muere enseguida) y guarda todo en `logs/worker.log` (ignorado por git).
+- `demo:reset` con `GITHUB_MODE=real` también commitea el fixture en `content/site.json` del repo del sitio si difiere (`--keep-repo` lo evita), para que el historial de git coincida con la versión viva.

@@ -5,9 +5,9 @@
 | base | 00-base | listo | main | Monorepo, `@dale/core` completo con pruebas, migración 0001 (probada en PGlite), check-env, seed, demo:reset, CLAUDE.md. Falta: migrar y sembrar Supabase cuando esté `SUPABASE_DB_URL`; activar CI (`ci/github-actions.yml`) |
 | worker + ai | 01-worker | pendiente | 01-worker | — |
 | panel | 02-panel | pendiente | 02-panel | — |
-| sitio | 03-sitio | pendiente | main (dale-demo) | — |
+| sitio | 03-sitio | hecho | main (dale-demo) | Sitio demo hecho, en https://dale-demo.vercel.app; hoy lee el archivo local (`data-content-source="file"`). Falta conectar Supabase: `cd ../dale-demo && ./scripts/sync-vercel-env.sh`. `content/site.json` y `dale.config.json` iguales a los fixtures de core (verificado por 90) |
 | agente + eval | 04-agente-eval | pendiente | 04-agente-eval | — |
-| integración | 90-integracion | pendiente | main | — |
+| integración | 90-integracion | en curso | main | Preparado: `scripts/run-worker.sh`, `demo:reset` también reinicia el repo del sitio, README, `docs/DEMO.md`. Esperando ramas 01, 04 y 02 para mergear |
 
 ## Credenciales (`pnpm check`, 2026-10-17)
 
