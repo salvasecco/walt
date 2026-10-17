@@ -123,6 +123,7 @@ export const STEP_LABEL: Record<string, string> = {
   agente_inicio: "Agente",
   agente_pr: "PR",
   agente_preview: "Vista previa",
+  en_la_web: "En la web",
   presupuesto: "Presupuesto",
   respondido: "Respondido",
   bloqueado: "Bloqueado",
