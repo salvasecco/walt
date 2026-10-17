@@ -1,70 +1,63 @@
 /**
- * Code lane with the Claude Agent SDK (SPEC §11). Interface only: 04-agente-eval implements it.
+ * Code lane with the Claude Agent SDK (SPEC §11).
+ *
+ * The four public functions keep the SPEC signatures and read their configuration
+ * from `loadEnv()`: GITHUB_MODE picks GitHub (octokit) or the local fake host, and
+ * LLM_PROVIDER picks the model for the agent. Each takes an optional last argument
+ * with explicit dependencies, for tests and for the worker.
  */
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadEnv, type DaleEnv } from '@dale/core';
+import {
+  findPreviewUrlWith,
+  mergeChangeWith,
+  revertChangeWith,
+  runCodeChangeWith,
+  type AgentDeps,
+} from './code-change.js';
+import { GitHubHost, LocalHost, type CodeHost } from './hosts.js';
+import { createClaudeAgentRunner } from './runner.js';
+import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.js';
 
-export interface RepoRef {
-  owner: string;
-  name: string;
-  defaultBranch: string;
+export type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.js';
+export { DEFAULT_PROTECTED_GLOBS, DiffRejectedError, runCodeChangeWith, mergeChangeWith, revertChangeWith, findPreviewUrlWith } from './code-change.js';
+export type { AgentDeps } from './code-change.js';
+export { GitHubHost, LocalHost, isVercelAppUrl, type CodeHost } from './hosts.js';
+export { createClaudeAgentRunner, guardHook, agentPrompt, type AgentRunner, type AgentRunInput, type AgentRunOutput } from './runner.js';
+export { checkPath, evaluateToolUse, AGENT_TOOLS, ALWAYS_PROTECTED } from './guard.js';
+export { reviewDiff, addedLines } from './review.js';
+export { buildAgentEnv, agentModelId } from './agent-env.js';
+
+/** Folder of the fake GitHub (GITHUB_MODE=fake): bare repos and PR lists. */
+export const FAKE_GITHUB_DIR = join(tmpdir(), 'dale-fake-github');
+
+export function createHost(env: DaleEnv): CodeHost {
+  if (env.GITHUB_MODE === 'real') return new GitHubHost(env.GITHUB_TOKEN ?? '');
+  return new LocalHost(FAKE_GITHUB_DIR);
 }
 
-export interface RunCodeChangeInput {
-  repo: RepoRef;
-  requestId: string;
-  shortId: string;
-  /** The brief written for the agent, never the client's raw text. */
-  instruction: string;
-  protectedGlobs?: string[];
-  /** Default 300000. */
-  timeoutMs?: number;
+/** Dependencies from the environment: GitHub or local host, Claude Agent SDK runner. */
+export function createAgentDeps(env: DaleEnv = loadEnv()): AgentDeps {
+  return { host: createHost(env), runner: createClaudeAgentRunner(env), secrets: env.secrets };
 }
 
-export interface RunCodeChangeResult {
-  branch: string;
-  commitSha: string;
-  prNumber: number;
-  prUrl: string;
-  diff: string;
-  changedFiles: string[];
-  previewUrl?: string;
-  logs: string[];
+export async function runCodeChange(input: RunCodeChangeInput, deps?: AgentDeps): Promise<RunCodeChangeResult> {
+  return runCodeChangeWith(input, deps ?? createAgentDeps());
 }
 
-export const DEFAULT_PROTECTED_GLOBS = [
-  'package.json',
-  '**/package.json',
-  'pnpm-lock.yaml',
-  'package-lock.json',
-  'yarn.lock',
-  'bun.lockb',
-  '**/*.config.*',
-  '.github/**',
-  '.env*',
-  '**/.env*',
-  'next.config.*',
-  'middleware.*',
-  'proxy.*',
-];
-
-export class NotImplementedError extends Error {
-  constructor(what: string) {
-    super(`${what}: no implementado todavía (lo hace 04-agente-eval)`);
-    this.name = 'NotImplementedError';
-  }
+export async function mergeChange(input: { repo: RepoRef; prNumber: number }, host?: CodeHost): Promise<{ mergeSha: string }> {
+  return mergeChangeWith(input, host ?? createHost(loadEnv()));
 }
 
-export async function runCodeChange(_input: RunCodeChangeInput): Promise<RunCodeChangeResult> {
-  throw new NotImplementedError('runCodeChange');
+export async function revertChange(
+  input: { repo: RepoRef; mergeSha: string; shortId: string },
+  host?: CodeHost,
+): Promise<{ revertSha: string }> {
+  const env = loadEnv();
+  return revertChangeWith(input, host ?? createHost(env), env.secrets);
 }
 
-export async function mergeChange(_input: { repo: RepoRef; prNumber: number }): Promise<{ mergeSha: string }> {
-  throw new NotImplementedError('mergeChange');
-}
-
-export async function revertChange(_input: { repo: RepoRef; mergeSha: string; shortId: string }): Promise<{ revertSha: string }> {
-  throw new NotImplementedError('revertChange');
-}
-
-export async function findPreviewUrl(_input: { repo: RepoRef; sha: string; timeoutMs?: number }): Promise<string | undefined> {
-  throw new NotImplementedError('findPreviewUrl');
+export async function findPreviewUrl(input: { repo: RepoRef; sha: string; timeoutMs?: number }, host?: CodeHost): Promise<string | undefined> {
+  return findPreviewUrlWith(input, host ?? createHost(loadEnv()));
 }
