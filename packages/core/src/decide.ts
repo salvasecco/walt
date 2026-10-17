@@ -75,8 +75,12 @@ export function decide(
   if (gate?.outcome === 'bloqueado') {
     for (const r of gate.reasons) parts.push({ key: 'bloqueado', reason: r });
   }
-  if (interpretation.needsCode || interpretation.unexpressedParts.length > 0) {
-    const detail = interpretation.unexpressedParts.length > 0 ? `: ${interpretation.unexpressedParts.join('; ')}` : '';
+  const detail = interpretation.unexpressedParts.length > 0 ? `: ${interpretation.unexpressedParts.join('; ')}` : '';
+  if (!interpretation.needsCode && interpretation.unexpressedParts.length > 0) {
+    // Leftovers the model did not flag as code (often process instructions): the agency looks, no agent.
+    parts.push({ key: 'riesgoso:contenido', reason: `Hay partes del pedido que no entraron en el cambio${detail}` });
+  }
+  if (interpretation.needsCode) {
     parts.push(
       allowCode
         ? { key: 'riesgoso:codigo', reason: `Hay partes que necesitan código${detail}` }

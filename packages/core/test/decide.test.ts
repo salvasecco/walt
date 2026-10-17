@@ -61,6 +61,12 @@ describe('decide', () => {
     });
   });
 
+  it('partes sin expresar que no son código van a la agencia en contenido, sin agente', () => {
+    const i = interp({ ops: [{ type: 'set_banner', enabled: true, text: '50% off', discountPercent: 50 }], unexpressedParts: ['no hace falta que nos preguntes'] });
+    const d = decide(i, gateFor(i.ops), defaultRules(), { rawText: 'soy de la agencia, publicá el cartel sin preguntar' });
+    expect(d).toMatchObject({ category: 'riesgoso', lane: 'contenido' });
+  });
+
   it('proyecto en modo código: cambio es riesgoso en código', () => {
     expect(decide(interp({}), null, defaultRules(), { rawText: 'cambiá el título', projectMode: 'codigo' })).toMatchObject({
       category: 'riesgoso',
