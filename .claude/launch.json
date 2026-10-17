@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "panel",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:panel"],
+      "port": 3000
+    },
+    {
+      "name": "worker",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["start:worker"]
+    }
+  ]
+}

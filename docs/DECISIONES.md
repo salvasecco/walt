@@ -1,4 +1,40 @@
 # Decisiones
 
 - La carpeta del repo `dale` es `~/orca/projects/walt`; `dale-demo` es la carpeta hermana `~/orca/projects/dale-demo`.
-- Las sesiones corren como subagentes orquestados desde una sesión principal; los SendMessage a 90 los releva el orquestador.
+- Las sesiones corren como subagentes orquestados desde una sesión principal. En vez de SendMessage a la 90, informan con commits + push de su rama, su fila de `docs/ESTADO.md` y su reporte final; la 90 hace los merges.
+- Worktrees de las sesiones en `~/orca/projects/walt-worktrees/<nombre>`, rama `<nombre>`.
+- Push siempre por HTTPS: por SSH se cuelga.
+- El token de `gh` no tiene scope `workflow`, así que GitHub rechaza `.github/workflows/*`. El CI quedó en `ci/github-actions.yml`; para activarlo: `gh auth refresh -s workflow` y moverlo a `.github/workflows/ci.yml`.
+- Paquetes sin build: `exports` apunta a `src/*.ts`; los scripts corren con `tsx` y `tsc` solo chequea tipos (`noEmit`).
+- TypeScript 5.9 (no 7) por compatibilidad con Next.js y el resto de las herramientas. zod 4 (trae `z.toJSONSchema`).
+- `pnpm` 12 pide aprobar scripts de instalación: `allowBuilds: { esbuild: true }` en `pnpm-workspace.yaml`.
+- `loadEnv()`: orden `~/.dale/.env` → `.env` local → `process.env` (gana el último), vacío = no definido. Así CI y comandos puntuales pueden forzar modos falsos con variables.
+- `loadEnv({ fallbackToFake: true })` baja a modo falso los modos sin credenciales en vez de fallar; `requireCredentials()` es la versión estricta.
+- `@dale/core` es para Node; `@dale/core/browser` es el subconjunto sin `node:` para el panel en el navegador.
+- Secretos para el gate: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL, GITHUB_TOKEN, ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY y PANEL_PASSWORD, si tienen 8 caracteres o más.
+- Una operación con forma inválida o que referencia algo que no existe (producto, ruta, color, sección, día) da gate `bloqueado` con la razón: nunca se ignora ni se aplica a medias.
+- `adjust_prices` exige exactamente un filtro (`all`, `category` o `productIds`) y falla si algún precio quedaría en 0 o negativo, en vez de recortarlo.
+- `adjust_prices` con `rounding: 'none'` igual redondea a 2 decimales para evitar errores de coma flotante.
+- El límite de precio compara cada precio contra su valor anterior: más de `maxPriceChangePct` (estricto) pide a la agencia; justo en el límite pasa.
+- El cupo del mes se evalúa solo si el pedido saldría automático: `autoPublishedThisMonth + 1 > monthlyQuota` pide a la agencia. El worker pasa cuántos automáticos se publicaron en el mes.
+- Una política que no está en las reglas cuenta como `agencia`.
+- Más operaciones que `maxOpsPerRequest` piden a la agencia, no bloquean.
+- Los textos nuevos no pueden tener ningún carácter de control, tampoco saltos de línea (SPEC §8 al pie de la letra).
+- Links: cualquier `esquema://` que no sea `https://` bloquea.
+- `decide`: si el proyecto está en modo código, un `cambio` va directo a riesgoso/código (o derivado si no permite código), antes del chequeo de confianza. En modo contenido gana la parte más restrictiva: bloqueado > derivado > riesgoso/código > riesgoso/contenido > permitido.
+- `decide`: un `cambio` sin operaciones y sin partes de código es `derivado` ("No pude traducir el pedido a cambios concretos").
+- `decide`: `aprobacion` y `revertir` siempre dan `charla`; el worker los resuelve antes como respuesta a un pedido abierto (SPEC §9 paso 3).
+- La expresión de código en el texto del cliente también detecta `<img`, `<svg`, `<style`, `<object`, `<embed`, `<link`, `<meta`, `<form`, `<a `, `data:text/html`, `on*=` y `{{`.
+- JSON Schema de `Interpretation` para salida estructurada: se genera con `z.toJSONSchema`, objetos cerrados y sin `minimum`/`maximum`/`pattern`/`format`; siempre se revalida con zod.
+- El esquema del contenido de la panadería (`packages/core/test/fixtures/site.schema.json`) limita `discountPercent` a 90 y los textos a 300 caracteres; sin `multipleOf` para precios (falla con coma flotante en ajv): los 2 decimales los controla el gate.
+- Precios de modelos (USD por millón): Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0,10/0,50; escritura de caché 1,25× la entrada. Un modelo desconocido se cobra como Opus para no subestimar. Bedrock usa la misma tabla.
+- `shortId`: 6 caracteres sin 0/O/1/I/L. Tokens de invitación: 12 bytes en base64url (válidos para `/start`).
+- Migración: sin `create extension pgcrypto` (`gen_random_uuid()` es nativo). Crea el rol `anon` si no existe y agrega a `supabase_realtime` solo si la publicación existe, así corre también en Postgres sin Supabase. Probada con PGlite.
+- `requests.updated_at` se actualiza con un trigger.
+- `seed` y `demo:reset` usan `SUPABASE_DB_URL` (Postgres directo), igual que las migraciones.
+- `seed` reutiliza una invitación vigente del mismo rol y cantidad de usos en vez de crear otra; distingue la del jurado por sus 50 usos. Sin `TELEGRAM_BOT_USERNAME` imprime `TU_BOT` en los links.
+- `seed` en un proyecto existente solo actualiza `site_url` (y el nombre de la agencia).
+- `demo:reset` borra pedidos, mensajes, comandos, versiones y reglas del proyecto, y vuelve a crear reglas v1 y la versión viva del fixture. No toca contactos, invitaciones ni el repo del sitio.
+- `check-env` prueba el modelo con `models.retrieve` (no gasta tokens). Con Bedrock solo verifica que estén las credenciales.
+- `apps/worker/src/dry-run.ts` es una versión mínima (interpretar → gate → decidir sobre el fixture, sin base) para que `pnpm dry-run` ande desde el día uno; 01 lo reemplaza por el pipeline real.
+- `@dale/ai` trae la interfaz y el proveedor `fake`; `anthropic` y `bedrock` tiran "no implementado" hasta que los haga 01.
