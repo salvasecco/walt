@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "content": "content/site.json",
+  "schema": "content/site.schema.json",
+  "currency": "UYU",
+  "texts": {
+    "/hero/title": "Título principal",
+    "/hero/subtitle": "Subtítulo",
+    "/hero/cta": "Texto del botón principal",
+    "/brand/tagline": "Frase de la marca",
+    "/about/text": "Texto de quiénes somos"
+  },
+  "colors": {
+    "primary": "/theme/primary",
+    "accent": "/theme/accent",
+    "background": "/theme/background"
+  },
+  "products": { "path": "/products", "id": "id", "name": "name", "price": "price", "category": "category", "available": "available" },
+  "banner": "/banner",
+  "hours": "/hours",
+  "sections": "/sections"
+}

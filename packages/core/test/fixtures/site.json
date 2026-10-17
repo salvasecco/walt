@@ -1,0 +1,26 @@
+{
+  "brand": { "name": "Panadería Mabel", "tagline": "Pan de masa madre, todos los días" },
+  "theme": { "primary": "#B45309", "accent": "#F59E0B", "background": "#FFF7ED", "text": "#1C1917" },
+  "hero": { "title": "El pan de siempre, recién salido", "subtitle": "Horneamos todos los días desde las 6 de la mañana", "cta": "Pedí por WhatsApp" },
+  "banner": { "enabled": false, "text": "", "discountPercent": null, "startsAt": null, "endsAt": null },
+  "products": [
+    { "id": "pan-flauta", "name": "Pan flauta", "category": "panes", "price": 80, "available": true },
+    { "id": "pan-masa-madre", "name": "Pan de masa madre", "category": "panes", "price": 220, "available": true },
+    { "id": "baguette", "name": "Baguette", "category": "panes", "price": 90, "available": true },
+    { "id": "medialunas", "name": "Medialunas, la docena", "category": "facturas", "price": 260, "available": true },
+    { "id": "bizcochos", "name": "Bizcochos surtidos, la docena", "category": "facturas", "price": 240, "available": true },
+    { "id": "croissant", "name": "Croissant de manteca", "category": "facturas", "price": 75, "available": true },
+    { "id": "chaja", "name": "Torta chajá, la porción", "category": "tortas", "price": 180, "available": true },
+    { "id": "alfajor-maicena", "name": "Alfajor de maicena", "category": "dulces", "price": 45, "available": true },
+    { "id": "cafe", "name": "Café", "category": "bebidas", "price": 90, "available": true }
+  ],
+  "hours": [
+    { "day": "lun", "open": "07:00", "close": "20:00" }, { "day": "mar", "open": "07:00", "close": "20:00" },
+    { "day": "mie", "open": "07:00", "close": "20:00" }, { "day": "jue", "open": "07:00", "close": "20:00" },
+    { "day": "vie", "open": "07:00", "close": "20:00" }, { "day": "sab", "open": "07:00", "close": "20:00" },
+    { "day": "dom", "open": "08:00", "close": "13:00" }
+  ],
+  "about": { "title": "Quiénes somos", "text": "Una panadería de barrio en Montevideo. Masa madre, manteca de verdad y mucho tiempo de horno." },
+  "contact": { "whatsapp": "https://wa.me/59899000000", "address": "Av. Siempre Viva 742, Montevideo", "instagram": "https://instagram.com/panaderiamabel" },
+  "sections": { "about": true, "hours": true, "contact": true }
+}

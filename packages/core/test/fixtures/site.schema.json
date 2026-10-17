@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dale.local/site.schema.json",
+  "title": "Contenido del sitio de Panadería Mabel",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["brand", "theme", "hero", "banner", "products", "hours", "about", "contact", "sections"],
+  "$defs": {
+    "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "time": { "type": ["string", "null"], "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+    "isoDate": { "type": ["string", "null"], "format": "date-time" },
+    "shortText": { "type": "string", "maxLength": 300 }
+  },
+  "properties": {
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "tagline"],
+      "properties": {
+        "name": { "$ref": "#/$defs/shortText", "minLength": 1 },
+        "tagline": { "$ref": "#/$defs/shortText" }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "accent", "background", "text"],
+      "properties": {
+        "primary": { "$ref": "#/$defs/color" },
+        "accent": { "$ref": "#/$defs/color" },
+        "background": { "$ref": "#/$defs/color" },
+        "text": { "$ref": "#/$defs/color" }
+      }
+    },
+    "hero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "subtitle", "cta"],
+      "properties": {
+        "title": { "$ref": "#/$defs/shortText", "minLength": 1 },
+        "subtitle": { "$ref": "#/$defs/shortText" },
+        "cta": { "$ref": "#/$defs/shortText", "minLength": 1 }
+      }
+    },
+    "banner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "text", "discountPercent", "startsAt", "endsAt"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "text": { "$ref": "#/$defs/shortText" },
+        "discountPercent": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 90 },
+        "startsAt": { "$ref": "#/$defs/isoDate" },
+        "endsAt": { "$ref": "#/$defs/isoDate" }
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "category", "price", "available"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "name": { "$ref": "#/$defs/shortText", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "price": { "type": "number", "exclusiveMinimum": 0 },
+          "available": { "type": "boolean" }
+        }
+      }
+    },
+    "hours": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["day", "open", "close"],
+        "properties": {
+          "day": { "enum": ["lun", "mar", "mie", "jue", "vie", "sab", "dom"] },
+          "open": { "$ref": "#/$defs/time" },
+          "close": { "$ref": "#/$defs/time" }
+        }
+      }
+    },
+    "about": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "text"],
+      "properties": {
+        "title": { "$ref": "#/$defs/shortText" },
+        "text": { "$ref": "#/$defs/shortText" }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["whatsapp", "address", "instagram"],
+      "properties": {
+        "whatsapp": { "type": "string", "pattern": "^https://" },
+        "address": { "$ref": "#/$defs/shortText" },
+        "instagram": { "type": "string", "pattern": "^https://" }
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" },
+      "properties": {
+        "about": { "type": "boolean" },
+        "hours": { "type": "boolean" },
+        "contact": { "type": "boolean" }
+      }
+    }
+  }
+}
