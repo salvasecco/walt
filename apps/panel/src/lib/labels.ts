@@ -287,7 +287,10 @@ export function describePointer(pointer: string, content?: SiteContent | null): 
     return `${p?.name ?? `Producto ${idx + 1}`} · ${field}`;
   }
   if (parts[0] === "theme") return COLOR_LABEL[parts[1]] ?? `Color ${parts[1]}`;
-  if (parts[0] === "banner") return `Cartel · ${parts[1] ?? ""}`.trim();
+  if (parts[0] === "banner") {
+    const f: Record<string, string> = { enabled: "activo", text: "texto", discountPercent: "descuento %", startsAt: "desde", endsAt: "hasta" };
+    return parts[1] ? `Cartel · ${f[parts[1]] ?? parts[1]}` : "Cartel";
+  }
   if (parts[0] === "hours" && parts.length >= 3) {
     const h = content?.hours?.[Number(parts[1])];
     return `Horario ${h ? DAY_LABEL[h.day] : parts[1]} · ${parts[2] === "open" ? "abre" : "cierra"}`;
@@ -300,7 +303,11 @@ export function formatValue(v: unknown, pointer = ""): string {
   if (v === null || v === undefined) return "—";
   if (typeof v === "boolean") return v ? "sí" : "no";
   if (typeof v === "number") return pointer.includes("price") ? money(v) : String(v);
-  if (typeof v === "string") return v;
+  if (typeof v === "string") {
+    if (!v) return "—";
+    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) return dateTime(v);
+    return v;
+  }
   return JSON.stringify(v);
 }
 
@@ -310,4 +317,19 @@ export function describeChange(c: Change, content?: SiteContent | null) {
     before: formatValue(c.before, c.pointer),
     after: formatValue(c.after, c.pointer),
   };
+}
+
+/** Aplica `changes` sobre una copia del contenido, para previsualizar sin el sitio. */
+export function applyChangesPreview<T>(content: T, changes: Change[] | null | undefined): T {
+  const copy = structuredClone(content) as unknown;
+  for (const c of changes ?? []) {
+    const parts = c.pointer.split("/").filter(Boolean).map((p) => p.replace(/~1/g, "/").replace(/~0/g, "~"));
+    let node = copy as Record<string, unknown>;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (node == null || typeof node !== "object") break;
+      node = node[parts[i]] as Record<string, unknown>;
+    }
+    if (node && typeof node === "object") node[parts[parts.length - 1]] = c.after;
+  }
+  return copy as T;
 }

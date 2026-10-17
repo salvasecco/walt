@@ -1,7 +1,8 @@
 // Tipos del panel. Los enums, operaciones y cambios vienen de @dale/core (SPEC §5 y §7);
 // las filas se refinan acá con los jsonb tipados que el panel muestra.
+// Solo se importan TIPOS de @dale/core: su código usa imports con extensión .js que Turbopack no resuelve
+// a .ts, así que las constantes se repiten acá y `satisfies` las ata a los tipos de core.
 import type { Category, Change, CommandType, Op, OpType, Policy, RequestStatus } from "@dale/core/browser";
-import { CATEGORIES as CORE_CATEGORIES, OP_TYPES as CORE_OP_TYPES, REQUEST_STATUSES, SEED_IDS } from "@dale/core/browser";
 
 export type { Category, Change, CommandType, Op, OpType, Policy, RequestStatus };
 
@@ -175,8 +176,47 @@ export type SiteContent = {
   [key: string]: unknown;
 };
 
-export const OP_TYPES: readonly OpType[] = CORE_OP_TYPES;
-export const CATEGORIES: readonly Category[] = CORE_CATEGORIES;
-export const STATUSES: readonly RequestStatus[] = REQUEST_STATUSES;
-export const SEED_FACTORY_ID = SEED_IDS.agency;
-export const SEED_PROJECT_ID = SEED_IDS.project;
+export const OP_TYPES = [
+  "set_text",
+  "set_price",
+  "adjust_prices",
+  "set_availability",
+  "set_color",
+  "set_hours",
+  "set_banner",
+  "toggle_section",
+] as const satisfies readonly OpType[];
+
+export const CATEGORIES = [
+  "permitido",
+  "riesgoso",
+  "fuera_de_alcance",
+  "consulta",
+  "bloqueado",
+  "charla",
+  "derivado",
+] as const satisfies readonly Category[];
+
+export const STATUSES = [
+  "recibido",
+  "interpretando",
+  "respondido",
+  "cotizando",
+  "cotizado",
+  "esperando_cliente",
+  "esperando_agencia",
+  "agente_trabajando",
+  "agente_listo",
+  "publicando",
+  "publicado",
+  "revertido",
+  "rechazado",
+  "bloqueado",
+  "derivado",
+  "descartado",
+  "charla",
+] as const satisfies readonly RequestStatus[];
+
+// Ids fijos del seed (SPEC §5).
+export const SEED_FACTORY_ID = "22222222-2222-4222-8222-222222222222";
+export const SEED_PROJECT_ID = "11111111-1111-4111-8111-111111111111";

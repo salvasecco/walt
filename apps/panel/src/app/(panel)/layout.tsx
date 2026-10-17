@@ -8,6 +8,9 @@ import { dataMode, env } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { buildSample } from "@/lib/sample";
 
+// Datos en vivo: nunca se prerenderiza.
+export const dynamic = "force-dynamic";
+
 async function pendingCount(): Promise<number> {
   const mode = dataMode();
   if (mode === "ejemplo") return buildSample().requests.filter((r) => r.status === "esperando_agencia" || r.status === "agente_listo").length;
