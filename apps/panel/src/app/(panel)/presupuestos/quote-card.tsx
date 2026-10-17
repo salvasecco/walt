@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { saveQuote } from "@/app/actions";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Chip, IdTag, Surface } from "@/components/ui-dale";
+import { Chip, IdTag, Surface } from "@/components/ui-walt";
 import { Button } from "@/components/ui/button";
 import type { QuoteRow } from "@/lib/data";
 import { dateTime } from "@/lib/labels";

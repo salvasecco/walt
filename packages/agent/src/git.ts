@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { redact } from '@dale/core';
+import { redact } from '@walt/core';
 
 /**
  * Thin wrapper over the git CLI. Runs with an isolated config (no user or system
@@ -17,7 +17,7 @@ export interface GitOptions {
   timeoutMs?: number;
 }
 
-export const DALE_AUTHOR = { name: 'Dale', email: 'dale-bot@users.noreply.github.com' };
+export const WALT_AUTHOR = { name: 'Walt', email: 'walt-bot@users.noreply.github.com' };
 
 export function gitEnv(home: string, authEnv: Record<string, string> = {}): Record<string, string> {
   return {
@@ -27,10 +27,10 @@ export function gitEnv(home: string, authEnv: Record<string, string> = {}): Reco
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_TERMINAL_PROMPT: '0',
     GIT_ASKPASS: 'echo',
-    GIT_AUTHOR_NAME: DALE_AUTHOR.name,
-    GIT_AUTHOR_EMAIL: DALE_AUTHOR.email,
-    GIT_COMMITTER_NAME: DALE_AUTHOR.name,
-    GIT_COMMITTER_EMAIL: DALE_AUTHOR.email,
+    GIT_AUTHOR_NAME: WALT_AUTHOR.name,
+    GIT_AUTHOR_EMAIL: WALT_AUTHOR.email,
+    GIT_COMMITTER_NAME: WALT_AUTHOR.name,
+    GIT_COMMITTER_EMAIL: WALT_AUTHOR.email,
     ...authEnv,
   };
 }

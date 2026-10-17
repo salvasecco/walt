@@ -1,5 +1,5 @@
 /**
- * Browser-safe subset of @dale/core (no node: imports): types, config, ops, rules,
+ * Browser-safe subset of @walt/core (no node: imports): types, config, ops, rules,
  * decide, interpretation, copy, pricing and ids. `runGate`, `loadEnv` and fixtures are server-only.
  */
 export * from './types.ts';

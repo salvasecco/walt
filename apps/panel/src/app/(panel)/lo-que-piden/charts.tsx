@@ -18,7 +18,7 @@ export function HBar({ data, unit }: { data: { name: string; value: number }[]; 
             formatter={(v) => [`${v} ${unit}`, ""]}
             separator=""
           />
-          <Bar dataKey="value" fill="var(--dale-info)" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive animationDuration={250}>
+          <Bar dataKey="value" fill="var(--walt-info)" radius={[0, 4, 4, 0]} maxBarSize={18} isAnimationActive animationDuration={250}>
             <LabelList dataKey="value" position="right" fill="#ededed" fontSize={12} className="tnum" />
           </Bar>
         </BarChart>

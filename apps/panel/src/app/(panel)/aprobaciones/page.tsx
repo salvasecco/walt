@@ -5,7 +5,7 @@ import { CommandButton } from "@/components/command-button";
 import { NotConfigured } from "@/components/not-configured";
 import { PreviewFrame } from "@/components/preview-frame";
 import { ChangesDiff, GateReasons, OpsList } from "@/components/request-parts";
-import { CategoryChip, Chip, EmptyState, IdTag, Surface, PageHeader, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
+import { CategoryChip, Chip, EmptyState, IdTag, Surface, PageHeader, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-walt";
 import { getPendingApprovals, NotConfiguredError } from "@/lib/data";
 import { dataMode, env } from "@/lib/env";
 import { relative } from "@/lib/labels";

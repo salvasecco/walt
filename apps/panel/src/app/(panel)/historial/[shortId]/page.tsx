@@ -6,7 +6,7 @@ import { CommandButton } from "@/components/command-button";
 import { Journey } from "@/components/journey";
 import { NotConfigured } from "@/components/not-configured";
 import { ChangesDiff, GateReasons, OpsList, Phone } from "@/components/request-parts";
-import { CategoryChip, Chip, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
+import { CategoryChip, Chip, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-walt";
 import { buttonVariants } from "@/components/ui/button";
 import { getRequestDetail, NotConfiguredError } from "@/lib/data";
 import { dataMode, env } from "@/lib/env";

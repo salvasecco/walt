@@ -1,5 +1,5 @@
-import { createFakeProvider, type AiProvider } from '@dale/ai';
-import { copy, SEED_IDS, type Category, type RequestStatus } from '@dale/core';
+import { createFakeProvider, type AiProvider } from '@walt/ai';
+import { copy, SEED_IDS, type Category, type RequestStatus } from '@walt/core';
 import { describe, expect, it } from 'vitest';
 import { CommandPoller } from '../src/commands.js';
 import { FakeSiteRepo } from '../src/site/repo.js';
@@ -56,7 +56,7 @@ describe('permitido: borrador, aprobación, publicación y vuelta atrás', () =>
     expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('publicado');
     expect(livePrice(h.store, 'pan-flauta')).toBe(95);
     expect(h.last()).toBe(copy.publicado());
-    expect(h.repo.commits.at(-1)!.message).toMatch(new RegExp(`^dale: .* \\(#${req.short_id}\\)$`));
+    expect(h.repo.commits.at(-1)!.message).toMatch(new RegExp(`^walt: .* \\(#${req.short_id}\\)$`));
     // The previewed draft is the version that went live.
     expect(h.store.versions.find((v) => v.status === 'viva')!.id).toBe(req.draft_version_id);
     expect(h.store.approvals).toEqual([expect.objectContaining({ actor: 'cliente', decision: 'aprobado', via: 'telegram' })]);
@@ -65,7 +65,7 @@ describe('permitido: borrador, aprobación, publicación y vuelta atrás', () =>
     expect(livePrice(h.store, 'pan-flauta')).toBe(80);
     expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('revertido');
     expect(h.last()).toBe(copy.revertido());
-    expect(h.repo.commits.at(-1)!.message).toBe(`dale: revert #${req.short_id}`);
+    expect(h.repo.commits.at(-1)!.message).toBe(`walt: revert #${req.short_id}`);
     expect(h.store.versions.filter((v) => v.status === 'viva')).toHaveLength(1);
   });
 
@@ -250,7 +250,7 @@ describe('fuera de alcance, consulta, bloqueado y derivado', () => {
   });
 });
 
-describe('riesgoso de código: cola lenta y @dale/agent', () => {
+describe('riesgoso de código: cola lenta y @walt/agent', () => {
   const needsCode = aiWith((t) =>
     t.includes('mapa') ? { kind: 'cambio', summary: 'Agrego un mapa en contacto', ops: [], needsCode: true, codeInstruction: 'Agregar un mapa embebido en la sección de contacto', unexpressedParts: ['un mapa'], confidence: 0.9 } : null,
   );

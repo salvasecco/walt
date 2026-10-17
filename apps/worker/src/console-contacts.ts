@@ -1,4 +1,4 @@
-import { SEED_IDS, type ContactRow } from '@dale/core';
+import { SEED_IDS, type ContactRow } from '@walt/core';
 import type { Store } from './store/types.js';
 
 /** Fixed chat ids of the console channel (real Telegram chats never use them). */

@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import type { DaleConfig } from './config.ts';
+import type { WaltConfig } from './config.ts';
 import { inventoryPointers } from './config.ts';
 import { applyOps, OpSchema, OP_LABELS, OpValidationError, type Change, type Op } from './ops.ts';
 import { getPointer } from './pointer.ts';
@@ -20,7 +20,7 @@ export interface GateResult {
 }
 
 export interface GateInput {
-  config: DaleConfig;
+  config: WaltConfig;
   /** Current content (live version). */
   content: unknown;
   /** JSON Schema (draft 2020-12) of the content. */
@@ -71,7 +71,7 @@ export function checkText(value: string, secrets: string[] = []): string[] {
   return reasons;
 }
 
-function isPricePointer(config: DaleConfig, pointer: string): boolean {
+function isPricePointer(config: WaltConfig, pointer: string): boolean {
   const p = config.products;
   return !!p && pointer.startsWith(`${p.path}/`) && pointer.endsWith(`/${p.price}`);
 }
@@ -107,7 +107,7 @@ export interface ContrastPair {
  * background (3:1, large text) and button text on the button (4.5:1). The text color is taken from
  * its token or from the background's sibling `text`; a pair is only checked when both colors exist.
  */
-export function contrastPairs(config: DaleConfig): ContrastPair[] {
+export function contrastPairs(config: WaltConfig): ContrastPair[] {
   const c = config.colors;
   const bg = c.background;
   const text = c.text ?? bg?.replace(/[^/]+$/, 'text');

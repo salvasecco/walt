@@ -1,4 +1,4 @@
-import { applyOps, type DaleConfig, type Op } from '@dale/core';
+import { applyOps, type WaltConfig, type Op } from '@walt/core';
 
 /**
  * Normalized comparison of operations (SPEC §15 "acierto exacto de operaciones, normalizadas").
@@ -84,7 +84,7 @@ export function opsMatchStructural(expected: Record<string, unknown>[], actual: 
   return assign(0);
 }
 
-function effect(content: unknown, ops: Op[], config: DaleConfig): string | undefined {
+function effect(content: unknown, ops: Op[], config: WaltConfig): string | undefined {
   try {
     const { changes } = applyOps(content, ops, config);
     return JSON.stringify(changes.map((c) => [c.pointer, normValue(c.after)]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
@@ -97,7 +97,7 @@ function effect(content: unknown, ops: Op[], config: DaleConfig): string | undef
 export function opsMatch(
   expected: Record<string, unknown>[],
   actual: Op[],
-  ctx: { content: unknown; config: DaleConfig },
+  ctx: { content: unknown; config: WaltConfig },
 ): boolean {
   if (opsMatchStructural(expected, actual as unknown as Record<string, unknown>[])) return true;
   if (hasWildcard(expected)) return false;

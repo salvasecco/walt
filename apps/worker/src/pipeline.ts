@@ -1,4 +1,4 @@
-import type { AiProvider } from '@dale/ai';
+import type { AiProvider } from '@walt/ai';
 import {
   asClause,
   buildInventory,
@@ -30,8 +30,8 @@ import {
   type Turn,
   type Usage,
   type Via,
-} from '@dale/core';
-import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from '@dale/agent';
+} from '@walt/core';
+import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from '@walt/agent';
 import type { Screenshotter } from './capture.js';
 import type { Button, Channel, Incoming, OutMessage } from './channel/types.js';
 import { Queue, withTimeout } from './queue.js';
@@ -886,7 +886,7 @@ export class Worker {
     await this.sayTo(req.contact_id, req.id, { text: actor === 'agencia' ? copy.aprobadoAgencia(ctx.agencyName) : copy.publicado(), buttons: undo });
     if (actor === 'agencia' && via === 'telegram') await this.notifyAgency(ctx, req.id, { text: copy.agenciaPublicado(req.short_id) });
 
-    this.commitLater(req, ctx.project, versionId, `dale: ${summary} (#${req.short_id})`);
+    this.commitLater(req, ctx.project, versionId, `walt: ${summary} (#${req.short_id})`);
   }
 
   /** Commits after answering, in order, without holding the queue (SPEC §9.7: the version is already live). */
@@ -954,7 +954,7 @@ export class Worker {
     req = await store.updateRequest(req.id, { status: 'revertido', live_version_id: v.id });
     await this.event(req, 'revertido', 'ok', Math.round(performance.now() - t0), { version: v.id });
     await this.sayTo(req.contact_id, req.id, { text: copy.revertido() });
-    this.commitLater(req, ctx.project, v.id, `dale: revert #${req.short_id}`);
+    this.commitLater(req, ctx.project, v.id, `walt: revert #${req.short_id}`);
   }
 
   // ───────────────────────── carril de código ─────────────────────────
@@ -1064,7 +1064,7 @@ export class Worker {
         if (!version) throw new Error('No existe la versión');
         const project = (await this.d.store.getProject(version.project_id))!;
         const owner = req ?? (version.request_id ? await this.d.store.getRequest(version.request_id) : null);
-        const message = owner ? `dale: ${(owner.interpretation as Interpretation | null)?.summary ?? 'cambio'} (#${owner.short_id})` : 'dale: publicación';
+        const message = owner ? `walt: ${(owner.interpretation as Interpretation | null)?.summary ?? 'cambio'} (#${owner.short_id})` : 'walt: publicación';
         const ok = owner
           ? await this.commit(owner, project, versionId, message)
           : await this.commitWithoutRequest(project, versionId, message);

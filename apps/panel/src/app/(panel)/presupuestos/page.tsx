@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Receipt } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
-import { EmptyState, PageHeader, SampleBadge } from "@/components/ui-dale";
+import { EmptyState, PageHeader, SampleBadge } from "@/components/ui-walt";
 import { getQuotes, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { QuoteCard } from "./quote-card";

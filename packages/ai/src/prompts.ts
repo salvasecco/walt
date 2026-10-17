@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Inventory, Turn } from '@dale/core';
+import type { Inventory, Turn } from '@walt/core';
 
 const DIR = fileURLToPath(new URL('../prompts/', import.meta.url));
 const cache = new Map<string, string>();

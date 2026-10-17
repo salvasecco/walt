@@ -20,7 +20,7 @@ function run(cmd: string, a: string[], quiet = false): boolean {
 }
 
 if (!file) {
-  const dir = mkdtempSync(join(tmpdir(), 'dale-voz-'));
+  const dir = mkdtempSync(join(tmpdir(), 'walt-voz-'));
   const aiff = join(dir, 'voz.aiff');
   if (!run('say', ['-v', 'Paulina', '-o', aiff, text]) && !run('say', ['-o', aiff, text])) {
     console.error('No pude generar el audio con `say` (¿macOS?). Pasá uno con --file.');
@@ -35,5 +35,5 @@ if (!file) {
   console.log(`🎙️ audio generado: "${text}" → ${file}`);
 }
 
-const r = spawnSync('pnpm', ['--filter', '@dale/worker', 'dry-run', '--audio', file, ...flags], { stdio: 'inherit' });
+const r = spawnSync('pnpm', ['--filter', '@walt/worker', 'dry-run', '--audio', file, ...flags], { stdio: 'inherit' });
 process.exit(r.status ?? 1);

@@ -6,8 +6,8 @@ import type {
   Approval,
   Category,
   ContentVersion,
-  DaleEvent,
-  DaleRequest,
+  WaltEvent,
+  WaltRequest,
   Message,
   Project,
   Quote,
@@ -34,8 +34,8 @@ function must<T>(res: { data: T | null; error: { message: string } | null }): T 
 
 export type LiveSnapshot = {
   projects: Project[];
-  requests: DaleRequest[];
-  events: DaleEvent[];
+  requests: WaltRequest[];
+  events: WaltEvent[];
   messages: Message[];
   liveVersions: ContentVersion[];
   agencyName: string;
@@ -58,7 +58,7 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   const since = new Date(Date.now() - 36 * 3_600_000).toISOString();
   const [projects, allRequests, liveVersions] = await Promise.all([
     db.from("projects").select("*").order("created_at").then(must<Project[]>),
-    db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(60).then(must<DaleRequest[]>),
+    db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(60).then(must<WaltRequest[]>),
     db.from("content_versions").select("*").eq("status", "viva").then(must<ContentVersion[]>),
   ]);
   // En vivo es la pantalla de la demo: sin los clientes de ejemplo (migración 0003).
@@ -66,7 +66,7 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   const ids = requests.map((r) => r.id);
   const [events, messages] = ids.length
     ? await Promise.all([
-        db.from("events").select("*").in("request_id", ids).order("id").then(must<DaleEvent[]>),
+        db.from("events").select("*").in("request_id", ids).order("id").then(must<WaltEvent[]>),
         db.from("messages").select("*").in("request_id", ids).order("at").then(must<Message[]>),
       ])
     : [[], []];
@@ -79,7 +79,7 @@ export async function getProjects(): Promise<Project[]> {
 }
 
 export async function getRequests(filter: { category?: Category; status?: RequestStatus; q?: string } = {}) {
-  let rows: DaleRequest[];
+  let rows: WaltRequest[];
   let projects: Project[];
   if (mode() === "ejemplo") {
     const s = buildSample();
@@ -92,7 +92,7 @@ export async function getRequests(filter: { category?: Category; status?: Reques
     let q = db.from("requests").select("*").order("created_at", { ascending: false }).limit(300);
     if (filter.category) q = q.eq("category", filter.category);
     if (filter.status) q = q.eq("status", filter.status);
-    [rows, projects] = await Promise.all([q.then(must<DaleRequest[]>), getProjects()]);
+    [rows, projects] = await Promise.all([q.then(must<WaltRequest[]>), getProjects()]);
   }
   if (filter.q) {
     const needle = filter.q.toLowerCase();
@@ -104,9 +104,9 @@ export async function getRequests(filter: { category?: Category; status?: Reques
 }
 
 export type RequestDetail = {
-  request: DaleRequest;
+  request: WaltRequest;
   project: Project | null;
-  events: DaleEvent[];
+  events: WaltEvent[];
   messages: Message[];
   approvals: Approval[];
   versions: ContentVersion[];
@@ -131,11 +131,11 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
     };
   }
   const db = supabaseAdmin();
-  const request = await db.from("requests").select("*").eq("short_id", shortId).maybeSingle().then(must<DaleRequest | null>);
+  const request = await db.from("requests").select("*").eq("short_id", shortId).maybeSingle().then(must<WaltRequest | null>);
   if (!request) return null;
   const [project, events, messages, approvals, versions, liveVersion, quote] = await Promise.all([
     db.from("projects").select("*").eq("id", request.project_id).maybeSingle().then(must<Project | null>),
-    db.from("events").select("*").eq("request_id", request.id).order("id").then(must<DaleEvent[]>),
+    db.from("events").select("*").eq("request_id", request.id).order("id").then(must<WaltEvent[]>),
     db.from("messages").select("*").eq("request_id", request.id).order("at").then(must<Message[]>),
     db.from("approvals").select("*").eq("request_id", request.id).order("at").then(must<Approval[]>),
     db.from("content_versions").select("*").eq("request_id", request.id).order("created_at").then(must<ContentVersion[]>),
@@ -146,7 +146,7 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
 }
 
 export type PendingApproval = {
-  request: DaleRequest;
+  request: WaltRequest;
   project: Project | null;
   liveVersion: ContentVersion | null;
   screenshot: string | null;
@@ -154,7 +154,7 @@ export type PendingApproval = {
 
 export async function getPendingApprovals(): Promise<PendingApproval[]> {
   const statuses: RequestStatus[] = ["esperando_agencia", "agente_listo"];
-  let requests: DaleRequest[];
+  let requests: WaltRequest[];
   let projects: Project[];
   let versions: ContentVersion[];
   let messages: Message[] = [];
@@ -166,7 +166,7 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
   } else {
     const db = supabaseAdmin();
     [requests, projects, versions] = await Promise.all([
-      db.from("requests").select("*").in("status", statuses).order("created_at").then(must<DaleRequest[]>),
+      db.from("requests").select("*").in("status", statuses).order("created_at").then(must<WaltRequest[]>),
       getProjects(),
       db.from("content_versions").select("*").eq("status", "viva").then(must<ContentVersion[]>),
     ]);
@@ -200,11 +200,11 @@ export async function getRules(projectId: string): Promise<Rules[]> {
     .then(must<Rules[]>);
 }
 
-export type QuoteRow = { quote: Quote; request: DaleRequest | null; project: Project | null };
+export type QuoteRow = { quote: Quote; request: WaltRequest | null; project: Project | null };
 
 export async function getQuotes(): Promise<QuoteRow[]> {
   let quotes: Quote[];
-  let requests: DaleRequest[];
+  let requests: WaltRequest[];
   let projects: Project[];
   if (mode() === "ejemplo") {
     const s = buildSample();
@@ -214,7 +214,7 @@ export async function getQuotes(): Promise<QuoteRow[]> {
     quotes = await db.from("quotes").select("*").order("created_at", { ascending: false }).then(must<Quote[]>);
     const ids = quotes.map((q) => q.request_id).filter((x): x is string => !!x);
     [requests, projects] = await Promise.all([
-      ids.length ? db.from("requests").select("*").in("id", ids).then(must<DaleRequest[]>) : Promise.resolve([]),
+      ids.length ? db.from("requests").select("*").in("id", ids).then(must<WaltRequest[]>) : Promise.resolve([]),
       getProjects(),
     ]);
   }
@@ -232,7 +232,7 @@ export async function getInsightsData(days = 30) {
   const db = supabaseAdmin();
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
   const [requests, projects] = await Promise.all([
-    db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(2000).then(must<DaleRequest[]>),
+    db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(2000).then(must<WaltRequest[]>),
     getProjects(),
   ]);
   return { requests, projects };

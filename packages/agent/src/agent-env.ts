@@ -1,4 +1,4 @@
-import type { DaleEnvValues } from '@dale/core';
+import type { WaltEnvValues } from '@walt/core';
 
 /**
  * Minimal environment for the agent process (SPEC §11.2): only what the model
@@ -7,7 +7,7 @@ import type { DaleEnvValues } from '@dale/core';
  * (no GITHUB_TOKEN, no Supabase keys, no Telegram token).
  */
 export type AgentEnvSource = Pick<
-  DaleEnvValues,
+  WaltEnvValues,
   'LLM_PROVIDER' | 'ANTHROPIC_API_KEY' | 'AWS_REGION' | 'AWS_ACCESS_KEY_ID' | 'AWS_SECRET_ACCESS_KEY'
 >;
 
@@ -17,7 +17,7 @@ export function buildAgentEnv(src: AgentEnvSource, opts: { home: string; path?: 
     HOME: opts.home,
     TMPDIR: opts.home,
     LANG: 'C.UTF-8',
-    CLAUDE_AGENT_SDK_CLIENT_APP: 'dale-agent/0.1',
+    CLAUDE_AGENT_SDK_CLIENT_APP: 'walt-agent/0.1',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     DISABLE_AUTOUPDATER: '1',
   };
@@ -39,7 +39,7 @@ export function buildAgentEnv(src: AgentEnvSource, opts: { home: string; path?: 
 }
 
 /** Bedrock wants the `anthropic.` prefix; first-party ids go as they are. */
-export function agentModelId(provider: DaleEnvValues['LLM_PROVIDER'], model: string): string {
+export function agentModelId(provider: WaltEnvValues['LLM_PROVIDER'], model: string): string {
   if (provider === 'bedrock' && !model.includes('anthropic.')) return `anthropic.${model}`;
   return model;
 }

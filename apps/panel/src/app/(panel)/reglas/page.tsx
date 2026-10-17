@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
-import { Chip, EmptyState, Surface, Mono, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-dale";
+import { Chip, EmptyState, Surface, Mono, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-walt";
 import { getProjects, getRules, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { DEFAULT_RULES } from "@/lib/sample";

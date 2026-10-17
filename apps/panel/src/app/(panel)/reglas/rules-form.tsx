@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { saveRules } from "@/app/actions";
-import { Surface, PanelTitle } from "@/components/ui-dale";
+import { Surface, PanelTitle } from "@/components/ui-walt";
 import { Button } from "@/components/ui/button";
 import { OP_LABEL, POLICY_LABEL, clock, toneDot, POLICY_TONE } from "@/lib/labels";
 import { OP_TYPES, type OpType, type Policy, type Rules } from "@/lib/types";

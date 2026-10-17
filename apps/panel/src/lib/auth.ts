@@ -2,11 +2,11 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { env } from "./env";
 
-export const SESSION_COOKIE = "dale_panel";
+export const SESSION_COOKIE = "walt_panel";
 const MAX_AGE_S = 60 * 60 * 24 * 7;
 
 function key() {
-  return createHash("sha256").update(`dale-panel:${env.panelPassword}`).digest();
+  return createHash("sha256").update(`walt-panel:${env.panelPassword}`).digest();
 }
 
 function sign(payload: string) {

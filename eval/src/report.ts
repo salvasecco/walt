@@ -131,7 +131,7 @@ function categoryTable(s: Summary): string {
 export function renderMarkdown(report: Report): string {
   const m = report.meta;
   const lines: string[] = [
-    '# Evaluación de Dale',
+    '# Evaluación de Walt',
     '',
     `- Fecha: ${m.date}`,
     `- Proveedor: **${m.provider}**, modelo \`${m.model}\``,

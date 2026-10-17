@@ -49,22 +49,22 @@
 }
 
 :root {
-  /* Dale: centro de control. Tema único oscuro, neutral y plano.
+  /* Walt: centro de control. Tema único oscuro, neutral y plano.
      Superficies en 3 niveles, bordes de 1px de baja opacidad; el color es solo semántico. */
-  --dale-bg: #0a0a0a;
-  --dale-surface: #121212;
-  --dale-surface-2: #18181b;
-  --dale-surface-3: #1f1f23;
-  --dale-line: rgb(255 255 255 / 0.08);
-  --dale-line-strong: rgb(255 255 255 / 0.14);
-  --dale-faint: #5c5c66;
+  --walt-bg: #0a0a0a;
+  --walt-surface: #121212;
+  --walt-surface-2: #18181b;
+  --walt-surface-3: #1f1f23;
+  --walt-line: rgb(255 255 255 / 0.08);
+  --walt-line-strong: rgb(255 255 255 / 0.14);
+  --walt-faint: #5c5c66;
 
   /* Acentos semánticos */
-  --dale-ok: #3ecf8e;
-  --dale-warn: #f0a83a;
-  --dale-danger: #f2706b;
-  --dale-info: #5b9cf5;
-  --dale-code: #a48bf5;
+  --walt-ok: #3ecf8e;
+  --walt-warn: #f0a83a;
+  --walt-danger: #f2706b;
+  --walt-info: #5b9cf5;
+  --walt-code: #a48bf5;
 
   --background: #0a0a0a;
   --foreground: #ededed;
@@ -102,17 +102,17 @@
 }
 
 @theme inline {
-  --color-ok: var(--dale-ok);
-  --color-warn: var(--dale-warn);
-  --color-danger: var(--dale-danger);
-  --color-info: var(--dale-info);
-  --color-code: var(--dale-code);
-  --color-surface: var(--dale-surface);
-  --color-surface-2: var(--dale-surface-2);
-  --color-surface-3: var(--dale-surface-3);
-  --color-line: var(--dale-line);
-  --color-line-strong: var(--dale-line-strong);
-  --color-faint: var(--dale-faint);
+  --color-ok: var(--walt-ok);
+  --color-warn: var(--walt-warn);
+  --color-danger: var(--walt-danger);
+  --color-info: var(--walt-info);
+  --color-code: var(--walt-code);
+  --color-surface: var(--walt-surface);
+  --color-surface-2: var(--walt-surface-2);
+  --color-surface-3: var(--walt-surface-3);
+  --color-line: var(--walt-line);
+  --color-line-strong: var(--walt-line-strong);
+  --color-faint: var(--walt-faint);
 }
 
 @layer base {
@@ -121,11 +121,11 @@
   }
   html {
     @apply font-sans;
-    background: var(--dale-bg);
+    background: var(--walt-bg);
   }
   body {
     @apply text-foreground;
-    background-color: var(--dale-bg);
+    background-color: var(--walt-bg);
   }
   ::selection {
     background: rgb(255 255 255 / 0.18);

@@ -1,6 +1,6 @@
 "use client";
 
-import { DotLabel } from "@/components/ui-dale";
+import { DotLabel } from "@/components/ui-walt";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HEALTH_LABEL, HEALTH_RULE, type Health } from "@/lib/client-health";
 import type { Tone } from "@/lib/labels";

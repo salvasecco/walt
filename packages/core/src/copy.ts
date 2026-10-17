@@ -83,7 +83,7 @@ export const copy = {
     `El cliente pidió volver atrás #${shortId}, pero esos valores cambiaron después (${pointers}). Revisalo en el panel.`,
 } as const;
 
-/** Assistant name shown to clients: never "Dale" nor "Claude". */
+/** Assistant name shown to clients: never "Walt" nor "Claude". */
 export function assistantName(agencyName: string): string {
   return `el asistente de ${agencyName}`;
 }

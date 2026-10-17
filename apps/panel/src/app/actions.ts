@@ -149,7 +149,7 @@ export async function testRepoConnection(input: { owner: string; repo: string; b
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "dale-panel",
+      "User-Agent": "walt-panel",
     };
     const authenticated = !!env.githubToken;
     if (authenticated) headers.Authorization = `Bearer ${env.githubToken}`;
@@ -165,7 +165,7 @@ export async function testRepoConnection(input: { owner: string; repo: string; b
     if (authenticated && meta.permissions && !meta.permissions.push) notes.push("El token puede leer pero no escribir en este repo.");
 
     const c = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/dale.config.json?ref=${encodeURIComponent(branch)}`,
+      `https://api.github.com/repos/${owner}/${repo}/contents/walt.config.json?ref=${encodeURIComponent(branch)}`,
       { headers, cache: "no-store", signal: AbortSignal.timeout(10_000) },
     );
     let hasConfig = false;
@@ -183,13 +183,13 @@ export async function testRepoConnection(input: { owner: string; repo: string; b
         hasConfig = cfg.version === 1 && typeof cfg.content === "string";
         configSummary = hasConfig
           ? `Contenido en ${cfg.content}: ${Object.keys(cfg.texts ?? {}).length} textos, ${Object.keys(cfg.colors ?? {}).length} colores${cfg.products ? ", productos" : ""}.`
-          : "dale.config.json existe pero no tiene version 1 y content.";
+          : "walt.config.json existe pero no tiene version 1 y content.";
         if (!hasConfig) notes.push(configSummary);
       } catch {
-        notes.push("dale.config.json no es JSON válido.");
+        notes.push("walt.config.json no es JSON válido.");
       }
     } else if (c.status !== 404) {
-      notes.push(`No se pudo leer dale.config.json (GitHub ${c.status}).`);
+      notes.push(`No se pudo leer walt.config.json (GitHub ${c.status}).`);
     }
     return {
       ok: true,

@@ -12,7 +12,7 @@ import {
   type QuoteRow,
   type RequestRow,
   type Rules,
-} from '@dale/core';
+} from '@walt/core';
 import type { NewEvent, NewMessage, NewQuote, NewRequest, NewVersion, RedeemResult, Store } from './types.js';
 
 const now = () => new Date().toISOString();
@@ -240,7 +240,7 @@ export function seedMemory(store: MemoryStore, s: MemorySeed): void {
     repo_name: name,
     default_branch: 'main',
     mode: 'contenido',
-    config_path: 'dale.config.json',
+    config_path: 'walt.config.json',
     site_url: s.siteUrl,
     created_at: at,
   });

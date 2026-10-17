@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnv } from '@dale/core';
+import { loadEnv } from '@walt/core';
 import { connect, runMain, schemaStatus } from './lib/db.js';
 
 const dir = fileURLToPath(new URL('../supabase/migrations/', import.meta.url));

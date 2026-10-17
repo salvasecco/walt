@@ -236,12 +236,12 @@ export function buildSampleClientRows(opts: { now: number; factoryId: string; ag
     projects: [
       {
         id: SAMPLE_IDS.projectFerreteria, factory_id: factoryId, client_id: SAMPLE_IDS.clientFerreteria, name: "Ferretería Don Raúl", client_name: "Raúl",
-        repo_owner: "ejemplo", repo_name: "ferreteria-don-raul", default_branch: "main", mode: "contenido", config_path: "dale.config.json",
+        repo_owner: "ejemplo", repo_name: "ferreteria-don-raul", default_branch: "main", mode: "contenido", config_path: "walt.config.json",
         site_url: null, is_sample: true, created_at: iso(now - 86_400_000 * 120),
       },
       {
         id: SAMPLE_IDS.projectPereira, factory_id: factoryId, client_id: SAMPLE_IDS.clientPereira, name: "Estudio Jurídico Pereira", client_name: "Dra. Pereira",
-        repo_owner: "ejemplo", repo_name: "estudio-pereira", default_branch: "main", mode: "contenido", config_path: "dale.config.json",
+        repo_owner: "ejemplo", repo_name: "estudio-pereira", default_branch: "main", mode: "contenido", config_path: "walt.config.json",
         site_url: null, is_sample: true, created_at: iso(now - 86_400_000 * 90),
       },
     ],

@@ -1,8 +1,8 @@
-// Tipos del panel. Los enums, operaciones y cambios vienen de @dale/core (SPEC §5 y §7);
+// Tipos del panel. Los enums, operaciones y cambios vienen de @walt/core (SPEC §5 y §7);
 // las filas se refinan acá con los jsonb tipados que el panel muestra.
-// Solo se importan TIPOS de @dale/core: su código usa imports con extensión .js que Turbopack no resuelve
+// Solo se importan TIPOS de @walt/core: su código usa imports con extensión .js que Turbopack no resuelve
 // a .ts, así que las constantes se repiten acá y `satisfies` las ata a los tipos de core.
-import type { Category, Change, CommandType, Op, OpType, Policy, RequestStatus } from "@dale/core/browser";
+import type { Category, Change, CommandType, Op, OpType, Policy, RequestStatus } from "@walt/core/browser";
 
 export type { Category, Change, CommandType, Op, OpType, Policy, RequestStatus };
 
@@ -81,7 +81,7 @@ export type Rules = {
   created_at: string;
 };
 
-export type DaleRequest = {
+export type WaltRequest = {
   id: string;
   short_id: string;
   project_id: string;
@@ -111,7 +111,7 @@ export type DaleRequest = {
   updated_at: string | null;
 };
 
-export type DaleEvent = {
+export type WaltEvent = {
   id: number;
   request_id: string;
   step: string;

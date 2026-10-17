@@ -1,4 +1,4 @@
-import { redact } from '@dale/core';
+import { redact } from '@walt/core';
 import type { Worker } from './pipeline.js';
 import type { Store } from './store/types.js';
 

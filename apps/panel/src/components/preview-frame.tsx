@@ -1,5 +1,5 @@
 import { applyChangesPreview } from "@/lib/labels";
-import type { ContentVersion, DaleRequest } from "@/lib/types";
+import type { ContentVersion, WaltRequest } from "@/lib/types";
 import { SiteMock } from "./site-mock";
 
 /** Vista previa de un pedido: captura si existe; si no, el sitio con ?preview=; si no, el contenido simulado. */
@@ -11,7 +11,7 @@ export function PreviewFrame({
   sample,
   className,
 }: {
-  request: DaleRequest;
+  request: WaltRequest;
   siteUrl: string | null;
   liveVersion: ContentVersion | null;
   screenshot?: string | null;

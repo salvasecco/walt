@@ -106,29 +106,29 @@ describe('copy', () => {
     const a = assistantName('Estudio Faro');
     expect(a).toBe('el asistente de Estudio Faro');
     expect(copy.bienvenida(a)).toMatch(/^¡Hola! Soy el asistente de Estudio Faro\./);
-    expect(copy.bienvenida(a)).not.toMatch(/Dale|Claude/);
+    expect(copy.bienvenida(a)).not.toMatch(/Walt|Claude/);
     expect(copy.presupuesto('Estudio Faro', 'Reservas online', 450, 7)).toBe('Presupuesto de Estudio Faro: Reservas online. USD 450, 7 días.');
     expect(copy.derivado()).toBe('No pude hacerlo solo, se lo pasé a tu equipo. Te escriben en breve.');
   });
 });
 
 describe('env', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'dale-env-'));
+  const dir = mkdtempSync(join(tmpdir(), 'walt-env-'));
   const home = join(dir, 'home.env');
   writeFileSync(
     home,
     ['TELEGRAM_MODE=polling', 'LLM_PROVIDER=anthropic', 'ANTHROPIC_API_KEY=', 'GITHUB_TOKEN=ghp_1234567890abcdef', 'PANEL_PASSWORD=corta', 'DEMO_AGENCY_NAME=Estudio Faro'].join('\n'),
   );
-  const local = mkdtempSync(join(tmpdir(), 'dale-local-'));
+  const local = mkdtempSync(join(tmpdir(), 'walt-local-'));
   writeFileSync(join(local, '.env'), 'DEMO_AGENCY_NAME=Agencia Local\nSCREENSHOTS=on\n');
 
-  it('lee ~/.dale/.env, después .env local, después overrides; vacío es no definido', () => {
+  it('lee ~/.walt/.env, después .env local, después overrides; vacío es no definido', () => {
     const env = loadEnv({ homeFile: home, cwd: local, overrides: { SCREENSHOTS: 'off', ANTHROPIC_API_KEY: '' } });
     expect(env.DEMO_AGENCY_NAME).toBe('Agencia Local');
     expect(env.SCREENSHOTS).toBe('off');
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(env.MODEL_INTERPRET).toBe('claude-sonnet-5-5');
-    expect(env.DEMO_REPO).toBe('salvasecco/dale-demo');
+    expect(env.DEMO_REPO).toBe('salvasecco/walt-demo');
   });
 
   it('expone los secretos de 8+ caracteres', () => {

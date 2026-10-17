@@ -6,8 +6,8 @@
  * Goes through supabase-js with the service role (HTTPS only).
  * Usage: pnpm seed
  */
-import { assistantName, DEFAULT_RULES, inviteToken, loadEnv, SEED_IDS, type Role } from '@dale/core';
-import { bakeryContent } from '@dale/core/fixtures';
+import { assistantName, DEFAULT_RULES, inviteToken, loadEnv, SEED_IDS, type Role } from '@walt/core';
+import { bakeryContent } from '@walt/core/fixtures';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildSampleClientRows, MABEL_CLIENT, SAMPLE_PROJECT_IDS } from '../apps/panel/src/lib/sample-clients.mts';
 import { connect, must, runMain, schemaStatus } from './lib/db.js';
@@ -46,7 +46,7 @@ runMain('seed', async () => {
         repo_name: repo,
         default_branch: 'main',
         mode: 'contenido',
-        config_path: 'dale.config.json',
+        config_path: 'walt.config.json',
         site_url: siteUrl,
       }),
       'projects',

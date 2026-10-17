@@ -36,7 +36,7 @@ function sh(cwd: string, ...args: string[]): string {
 }
 
 beforeAll(() => {
-  base = realpathSync(mkdtempSync(join(tmpdir(), 'dale-agent-test-')));
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'walt-agent-test-')));
   // Sample site repo, pushed to a bare "remote" served by LocalHost.
   const seed = join(base, 'seed');
   mkdirSync(join(seed, 'src'), { recursive: true });
@@ -210,20 +210,20 @@ describe('runCodeChange con un repo local', () => {
       { tool: 'Edit', input: { file_path: 'src/footer.tsx', old_string: '</footer>;', new_string: '</footer></>;' } },
     ]);
     const res = await runCodeChangeWith(input('ABC234'), { host, runner, previewPollMs: 10, previewTimeoutMs: 100 });
-    expect(res.branch).toBe('dale/ABC234');
+    expect(res.branch).toBe('walt/ABC234');
     expect(res.changedFiles).toEqual(['src/footer.tsx']);
     expect(res.diff).toContain('Envío gratis');
     expect(res.prNumber).toBe(1);
     expect(res.previewUrl).toBe(`https://demo-git-${res.commitSha.slice(0, 7)}.vercel.app`);
     expect(res.logs.filter((l) => l.startsWith('bloqueado'))).toHaveLength(2);
-    expect(sh(host.remoteUrl(repo), 'log', '-1', '--format=%s', 'dale/ABC234').trim()).toMatch(/^dale: .*\(#ABC234\)$/);
-    expect(host.listPullRequests(repo)[0]).toMatchObject({ head: 'dale/ABC234', base: 'main', state: 'open' });
+    expect(sh(host.remoteUrl(repo), 'log', '-1', '--format=%s', 'walt/ABC234').trim()).toMatch(/^walt: .*\(#ABC234\)$/);
+    expect(host.listPullRequests(repo)[0]).toMatchObject({ head: 'walt/ABC234', base: 'main', state: 'open' });
 
     const { mergeSha } = await mergeChangeWith({ repo, prNumber: res.prNumber }, host);
     expect(sh(host.remoteUrl(repo), 'show', 'main:src/footer.tsx')).toContain('Envío gratis');
 
     const { revertSha } = await revertChangeWith({ repo, mergeSha, shortId: 'ABC234' }, host);
-    expect(sh(host.remoteUrl(repo), 'log', '-1', '--format=%H %s', 'main').trim()).toBe(`${revertSha} dale: revert #ABC234`);
+    expect(sh(host.remoteUrl(repo), 'log', '-1', '--format=%H %s', 'main').trim()).toBe(`${revertSha} walt: revert #ABC234`);
     expect(sh(host.remoteUrl(repo), 'show', 'main:src/footer.tsx')).toBe(FOOTER);
   });
 
@@ -265,7 +265,7 @@ describe('runCodeChange con un repo local', () => {
   it('un diff con process.env se rechaza y no se sube nada', async () => {
     const runner = scripted([{ tool: 'Write', input: { file_path: 'src/key.ts', content: 'export const k = process.env.GITHUB_TOKEN;\n' } }]);
     await expect(runCodeChangeWith(input('ENV234'), { host, runner, previewTimeoutMs: 0 })).rejects.toBeInstanceOf(DiffRejectedError);
-    expect(sh(host.remoteUrl(repo), 'branch', '--list', 'dale/ENV234').trim()).toBe('');
+    expect(sh(host.remoteUrl(repo), 'branch', '--list', 'walt/ENV234').trim()).toBe('');
   });
 
   it('si el agente se saltea el hook, la revisión igual frena package.json', async () => {
@@ -314,8 +314,8 @@ describe('vista previa desde el comentario de vercel[bot]', () => {
   it('toma el link de Preview a vercel.app y nada más', async () => {
     const { vercelPreviewFromComment } = await import('../src/index.js');
     const body =
-      '| [dale-demo](https://vercel.com/x/dale-demo) | [Ready](https://vercel.com/x/dale-demo/abc) | [Preview](https://dale-demo-git-dale-uzptza-x-projects.vercel.app) | now |';
-    expect(vercelPreviewFromComment(body)).toBe('https://dale-demo-git-dale-uzptza-x-projects.vercel.app');
+      '| [walt-demo](https://vercel.com/x/walt-demo) | [Ready](https://vercel.com/x/walt-demo/abc) | [Preview](https://walt-demo-git-walt-uzptza-x-projects.vercel.app) | now |';
+    expect(vercelPreviewFromComment(body)).toBe('https://walt-demo-git-walt-uzptza-x-projects.vercel.app');
     expect(vercelPreviewFromComment('[Preview](https://evil.example.com/x.vercel.app)')).toBeUndefined();
     expect(vercelPreviewFromComment('sin links')).toBeUndefined();
   });

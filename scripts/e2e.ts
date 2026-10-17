@@ -8,7 +8,7 @@
  *
  * Usage: pnpm e2e [--strict]   (--strict fails if the model, the base or the site are not real)
  */
-import { loadEnv, redact, SEED_IDS } from '@dale/core';
+import { loadEnv, redact, SEED_IDS } from '@walt/core';
 import { buildApp } from '../apps/worker/src/app.ts';
 import { ConsoleChannel } from '../apps/worker/src/channel/console.ts';
 

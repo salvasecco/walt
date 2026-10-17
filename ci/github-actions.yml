@@ -22,5 +22,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm --filter @dale/panel lint
+      - run: pnpm --filter @walt/panel lint
       - run: pnpm -r test

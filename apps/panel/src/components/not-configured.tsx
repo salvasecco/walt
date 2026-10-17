@@ -1,4 +1,4 @@
-import { ErrorState } from "./ui-dale";
+import { ErrorState } from "./ui-walt";
 
 export function NotConfigured() {
   return (

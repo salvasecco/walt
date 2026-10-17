@@ -5,7 +5,7 @@ import { ArrowLeft, FolderGit2, MessageSquare, Receipt } from "lucide-react";
 import { HealthBadge } from "@/components/health-badge";
 import { NotConfigured } from "@/components/not-configured";
 import { QuotaMeter } from "@/components/quota-meter";
-import { CategoryChip, Chip, DotLabel, IdTag, Mono, PanelTitle, SampleBadge, StatusChip, Surface } from "@/components/ui-dale";
+import { CategoryChip, Chip, DotLabel, IdTag, Mono, PanelTitle, SampleBadge, StatusChip, Surface } from "@/components/ui-walt";
 import { getClientDetail, type ClientDetail } from "@/lib/agency";
 import { COLUMN_LABEL, KIND_LABEL } from "@/lib/attention";
 import { NotConfiguredError } from "@/lib/data";
@@ -185,7 +185,7 @@ export default async function ClientePage({ params }: PageProps<"/clientes/[id]"
                       <span className="break-words whitespace-pre-wrap">{m.text ?? "(sin texto)"}</span>
                     </div>
                     <span className="px-1 text-[11px] text-faint tnum">
-                      {m.direction === "entrada" ? (m.contact_name ?? "Cliente") : "Dale"}
+                      {m.direction === "entrada" ? (m.contact_name ?? "Cliente") : "Walt"}
                       {d.projects.length > 1 && m.project_name ? ` · ${m.project_name}` : ""} · {dateTime(m.at)}
                     </span>
                   </li>

@@ -1,4 +1,4 @@
-import type { CommandRow, ContactRow, ContentVersionRow, FactoryRow, ProjectRow, QuoteRow, RequestRow, Rules } from '@dale/core';
+import type { CommandRow, ContactRow, ContentVersionRow, FactoryRow, ProjectRow, QuoteRow, RequestRow, Rules } from '@walt/core';
 import type { NewEvent, NewMessage, NewQuote, NewRequest, NewVersion, RedeemResult, Store } from './types.js';
 
 /** Minimal SQL client: postgres.js (`sql.unsafe`) in production, PGlite in tests. */

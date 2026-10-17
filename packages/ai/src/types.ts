@@ -1,4 +1,4 @@
-import type { Interpretation, Inventory, QuoteDraft, QuoteSummary, Turn, Usage } from '@dale/core';
+import type { Interpretation, Inventory, QuoteDraft, QuoteSummary, Turn, Usage } from '@walt/core';
 
 export interface InterpretInput {
   inventory: Inventory;

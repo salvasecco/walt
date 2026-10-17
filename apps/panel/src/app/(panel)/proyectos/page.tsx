@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { FolderGit2, Globe, GitBranch } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
-import { Chip, EmptyState, Surface, Mono, PageHeader, SampleBadge } from "@/components/ui-dale";
+import { Chip, EmptyState, Surface, Mono, PageHeader, SampleBadge } from "@/components/ui-walt";
 import { getProjects, NotConfiguredError } from "@/lib/data";
 import { dataMode, env } from "@/lib/env";
 import { dateTime } from "@/lib/labels";

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { query, type HookCallback } from '@anthropic-ai/claude-agent-sdk';
-import { redact, type DaleEnvValues } from '@dale/core';
+import { redact, type WaltEnvValues } from '@walt/core';
 import { agentModelId, buildAgentEnv } from './agent-env.js';
 import { AGENT_TOOLS, evaluateToolUse } from './guard.js';
 
@@ -39,7 +39,7 @@ export function guardHook(root: string, protectedGlobs: string[], log: (line: st
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: `Dale lo bloquea: ${d.reason}`,
+        permissionDecisionReason: `Walt lo bloquea: ${d.reason}`,
       },
     };
   };
@@ -59,14 +59,14 @@ export function agentPrompt(instruction: string): string {
 }
 
 type RunnerEnv = Pick<
-  DaleEnvValues,
+  WaltEnvValues,
   'LLM_PROVIDER' | 'ANTHROPIC_API_KEY' | 'AWS_REGION' | 'AWS_ACCESS_KEY_ID' | 'AWS_SECRET_ACCESS_KEY' | 'MODEL_AGENT'
 > & { secrets?: string[] };
 
 /** Runner with the Claude Agent SDK (SPEC §11.2). */
 export function createClaudeAgentRunner(env: RunnerEnv): AgentRunner {
   return async ({ cwd, instruction, protectedGlobs, signal, maxTurns, log, model }) => {
-    const home = mkdtempSync(join(tmpdir(), 'dale-agent-home-'));
+    const home = mkdtempSync(join(tmpdir(), 'walt-agent-home-'));
     const secrets = env.secrets ?? [];
     try {
       const abortController = new AbortController();

@@ -29,7 +29,7 @@ export class GitHubHost implements CodeHost {
   private readonly octokit: Octokit;
   constructor(private readonly token: string) {
     if (!token) throw new Error('Falta GITHUB_TOKEN para GitHub');
-    this.octokit = new Octokit({ auth: token, userAgent: 'dale-agent' });
+    this.octokit = new Octokit({ auth: token, userAgent: 'walt-agent' });
   }
   remoteUrl(repo: RepoRef): string {
     return `https://github.com/${repo.owner}/${repo.name}.git`;
@@ -159,7 +159,7 @@ export class LocalHost implements CodeHost {
     const pr = prs.find((p) => p.number === prNumber);
     if (!pr) throw new Error(`No existe el PR #${prNumber}`);
     if (pr.state !== 'open') throw new Error(`El PR #${prNumber} ya está mergeado`);
-    const work = mkdtempSync(join(tmpdir(), 'dale-merge-'));
+    const work = mkdtempSync(join(tmpdir(), 'walt-merge-'));
     try {
       const o = { cwd: work, home: work };
       await git(['clone', '--quiet', '--branch', pr.base, this.remoteUrl(repo), 'repo'], o);

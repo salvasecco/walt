@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { getPointer, joinPointer } from './pointer.ts';
 
-/** `dale.config.json` contract (SPEC §6). */
-export const DaleConfigSchema = z.object({
+/** `walt.config.json` contract (SPEC §6). */
+export const WaltConfigSchema = z.object({
   version: z.literal(1),
   content: z.string().min(1),
   schema: z.string().min(1),
@@ -23,7 +23,7 @@ export const DaleConfigSchema = z.object({
   hours: z.string().startsWith('/').optional(),
   sections: z.string().startsWith('/').optional(),
 });
-export type DaleConfig = z.infer<typeof DaleConfigSchema>;
+export type WaltConfig = z.infer<typeof WaltConfigSchema>;
 
 export const DAYS = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'] as const;
 export type Day = (typeof DAYS)[number];
@@ -76,21 +76,21 @@ export interface Inventory {
   sections: InventorySection[] | null;
 }
 
-export function parseConfig(raw: unknown): DaleConfig {
-  return DaleConfigSchema.parse(raw);
+export function parseConfig(raw: unknown): WaltConfig {
+  return WaltConfigSchema.parse(raw);
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-export function getProducts(config: DaleConfig, content: unknown): Record<string, unknown>[] {
+export function getProducts(config: WaltConfig, content: unknown): Record<string, unknown>[] {
   if (!config.products) return [];
   const list = getPointer(content, config.products.path);
   return Array.isArray(list) ? list.map(asRecord) : [];
 }
 
-export function buildInventory(config: DaleConfig, content: unknown): Inventory {
+export function buildInventory(config: WaltConfig, content: unknown): Inventory {
   const texts: InventoryText[] = Object.entries(config.texts).map(([path, label]) => ({
     path,
     label,
@@ -152,7 +152,7 @@ export function buildInventory(config: DaleConfig, content: unknown): Inventory 
  * Every JSON pointer that content-mode operations may change. Used by the gate as defense in depth:
  * a change outside this set is blocked even if an operation produced it.
  */
-export function inventoryPointers(config: DaleConfig, content: unknown): Set<string> {
+export function inventoryPointers(config: WaltConfig, content: unknown): Set<string> {
   const out = new Set<string>();
   for (const path of Object.keys(config.texts)) out.add(path);
   for (const path of Object.values(config.colors)) out.add(path);

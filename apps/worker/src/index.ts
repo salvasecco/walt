@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import { describeEnv, loadEnv, missingCredentials, redact } from '@dale/core';
+import { describeEnv, loadEnv, missingCredentials, redact } from '@walt/core';
 import { buildApp } from './app.js';
 import { ConsoleChannel } from './channel/console.js';
 import { TelegramChannel } from './channel/telegram.js';

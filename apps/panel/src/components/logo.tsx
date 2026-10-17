@@ -8,7 +8,7 @@ export function Logo({ className }: { className?: string }) {
           </svg>
         </div>
         <div className="leading-none">
-          <div className="text-sm font-semibold tracking-tight">Dale</div>
+          <div className="text-sm font-semibold tracking-tight">Walt</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">Centro de control</div>
         </div>
       </div>

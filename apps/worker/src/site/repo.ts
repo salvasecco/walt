@@ -2,12 +2,12 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { parseConfig, type DaleConfig, type ProjectRow } from '@dale/core';
-import { bakeryConfig, bakerySchema } from '@dale/core/fixtures';
+import { parseConfig, type WaltConfig, type ProjectRow } from '@walt/core';
+import { bakeryConfig, bakerySchema } from '@walt/core/fixtures';
 import { Octokit } from '@octokit/rest';
 
 export interface Contract {
-  config: DaleConfig;
+  config: WaltConfig;
   schema: object;
 }
 
@@ -16,7 +16,7 @@ export interface SiteRepo {
   readonly mode: 'real' | 'fake';
   loadContract(project: ProjectRow): Promise<Contract>;
   /** Commits the content JSON in the default branch. Returns the commit sha. */
-  commitContent(project: ProjectRow, config: DaleConfig, content: unknown, message: string): Promise<string>;
+  commitContent(project: ProjectRow, config: WaltConfig, content: unknown, message: string): Promise<string>;
 }
 
 export function serializeContent(content: unknown): string {
@@ -25,13 +25,13 @@ export function serializeContent(content: unknown): string {
 
 /**
  * GITHUB_MODE=fake: the contract is the bakery fixture and commits are written to a local
- * folder (`~/.dale/fake-github/<owner>/<repo>`), with a `commits.log`.
+ * folder (`~/.walt/fake-github/<owner>/<repo>`), with a `commits.log`.
  */
 export class FakeSiteRepo implements SiteRepo {
   readonly mode = 'fake' as const;
   readonly commits: { repo: string; path: string; message: string; sha: string }[] = [];
   constructor(
-    private readonly root: string | null = join(homedir(), '.dale', 'fake-github'),
+    private readonly root: string | null = join(homedir(), '.walt', 'fake-github'),
     private readonly failWith: string | null = null,
   ) {}
 
@@ -39,7 +39,7 @@ export class FakeSiteRepo implements SiteRepo {
     return { config: bakeryConfig(), schema: bakerySchema() };
   }
 
-  async commitContent(project: ProjectRow, config: DaleConfig, content: unknown, message: string): Promise<string> {
+  async commitContent(project: ProjectRow, config: WaltConfig, content: unknown, message: string): Promise<string> {
     if (this.failWith) throw new Error(this.failWith);
     const body = serializeContent(content);
     const sha = createHash('sha1').update(`${Date.now()}:${message}:${body}`).digest('hex');
@@ -105,7 +105,7 @@ export class GitHubSiteRepo implements SiteRepo {
     return contract;
   }
 
-  async commitContent(project: ProjectRow, config: DaleConfig, content: unknown, message: string): Promise<string> {
+  async commitContent(project: ProjectRow, config: WaltConfig, content: unknown, message: string): Promise<string> {
     const base = { owner: project.repo_owner, repo: project.repo_name, path: config.content, branch: project.default_branch };
     const body = Buffer.from(serializeContent(content)).toString('base64');
     for (let attempt = 0; ; attempt++) {

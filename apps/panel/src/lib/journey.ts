@@ -1,5 +1,5 @@
 import { OPEN_STATUSES } from "./labels";
-import type { DaleEvent, DaleRequest } from "./types";
+import type { WaltEvent, WaltRequest } from "./types";
 
 export type NodeState = "pendiente" | "activo" | "esperando" | "ok" | "falla" | "omitido";
 
@@ -24,7 +24,7 @@ const TRAILING = ["revertido", "derivado"];
 /** Pasos internos que no se dibujan como nodo propio. */
 const HIDDEN = new Set(["publicando"]);
 
-export function basePath(req: Pick<DaleRequest, "category" | "lane">): string[] {
+export function basePath(req: Pick<WaltRequest, "category" | "lane">): string[] {
   switch (req.category) {
     case "permitido":
       return CONTENT_AUTO;
@@ -45,9 +45,9 @@ export function basePath(req: Pick<DaleRequest, "category" | "lane">): string[] 
   }
 }
 
-export function buildJourney(req: DaleRequest, events: DaleEvent[]): JourneyNode[] {
+export function buildJourney(req: WaltRequest, events: WaltEvent[]): JourneyNode[] {
   const mine = events.filter((e) => e.request_id === req.id).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id - b.id));
-  const last = new Map<string, DaleEvent>();
+  const last = new Map<string, WaltEvent>();
   for (const e of mine) last.set(e.step, e);
 
   const path = [...basePath(req)];
@@ -80,7 +80,7 @@ export function buildJourney(req: DaleRequest, events: DaleEvent[]): JourneyNode
 }
 
 /** Tiempo desde que llegó el pedido hasta publicado, si se publicó. */
-export function timeToPublish(req: DaleRequest, events: DaleEvent[]): number | null {
+export function timeToPublish(req: WaltRequest, events: WaltEvent[]): number | null {
   const pub = events.find((e) => e.request_id === req.id && e.step === "publicado" && e.status === "ok");
   if (!pub) return null;
   return new Date(pub.at).getTime() - new Date(req.created_at).getTime();

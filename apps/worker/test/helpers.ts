@@ -1,7 +1,7 @@
-import { createFakeProvider, type AiProvider } from '@dale/ai';
-import type { RunCodeChangeResult } from '@dale/agent';
-import { SEED_IDS, type ContactRow, type Interpretation } from '@dale/core';
-import { bakeryContent } from '@dale/core/fixtures';
+import { createFakeProvider, type AiProvider } from '@walt/ai';
+import type { RunCodeChangeResult } from '@walt/agent';
+import { SEED_IDS, type ContactRow, type Interpretation } from '@walt/core';
+import { bakeryContent } from '@walt/core/fixtures';
 import { noScreenshots } from '../src/capture.js';
 import { ConsoleChannel } from '../src/channel/console.js';
 import { Worker, type AgentLane } from '../src/pipeline.js';
@@ -31,7 +31,7 @@ export function okAgent(): AgentLane & { calls: string[] } {
     calls,
     runCodeChange: async (i): Promise<RunCodeChangeResult> => {
       calls.push(`run:${i.instruction}`);
-      return { branch: `dale/${i.shortId}`, commitSha: 'abc', prNumber: 7, prUrl: 'https://github.com/x/y/pull/7', diff: '', changedFiles: ['app/page.tsx'], previewUrl: 'https://preview.example', logs: [] };
+      return { branch: `walt/${i.shortId}`, commitSha: 'abc', prNumber: 7, prUrl: 'https://github.com/x/y/pull/7', diff: '', changedFiles: ['app/page.tsx'], previewUrl: 'https://preview.example', logs: [] };
     },
     mergeChange: async (i) => {
       calls.push(`merge:${i.prNumber}`);
@@ -74,7 +74,7 @@ export async function harness(
   opts: { ai?: AiProvider; agent?: AgentLane; repo?: FakeSiteRepo; store?: Store; transcribe?: (audio: Buffer, mime: string) => Promise<string> } = {},
 ): Promise<Harness> {
   const store = new MemoryStore();
-  seedMemory(store, { agencyName: 'Estudio Faro', siteUrl: 'https://sitio.example', repo: 'salvasecco/dale-demo', content: bakeryContent() });
+  seedMemory(store, { agencyName: 'Estudio Faro', siteUrl: 'https://sitio.example', repo: 'salvasecco/walt-demo', content: bakeryContent() });
   const client = await store.ensureContact({ project_id: SEED_IDS.project, role: 'cliente', display_name: 'Mabel', telegram_chat_id: CLIENT_CHAT });
   const agency = await store.ensureContact({ project_id: SEED_IDS.project, role: 'agencia', display_name: 'Faro', telegram_chat_id: AGENCY_CHAT });
   const channel = new ConsoleChannel(null);

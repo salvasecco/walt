@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { BarChart3, Lightbulb, Repeat } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
 import { StatTile } from "@/components/stat-tile";
-import { EmptyState, Surface, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-dale";
+import { EmptyState, Surface, PageHeader, PanelTitle, SampleBadge } from "@/components/ui-walt";
 import { getInsightsData, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { CATEGORY_LABEL, OP_LABEL, TZ } from "@/lib/labels";
-import { CATEGORIES, OP_TYPES, type DaleRequest, type OpType, type Project } from "@/lib/types";
+import { CATEGORIES, OP_TYPES, type WaltRequest, type OpType, type Project } from "@/lib/types";
 import { HBar } from "./charts";
 
 export const metadata: Metadata = { title: "Lo que piden" };
@@ -31,7 +31,7 @@ function normalize(t: string) {
     .trim();
 }
 
-function analyze(requests: DaleRequest[], projects: Project[]) {
+function analyze(requests: WaltRequest[], projects: Project[]) {
   const byCat = CATEGORIES.map((c) => ({ name: CATEGORY_LABEL[c], value: requests.filter((r) => r.category === c).length })).filter((x) => x.value);
   const opCount = new Map<OpType, number>();
   const perProjectOp = new Map<string, number>();
@@ -46,7 +46,7 @@ function analyze(requests: DaleRequest[], projects: Project[]) {
   const byOp = OP_TYPES.map((t) => ({ name: OP_LABEL[t], value: opCount.get(t) ?? 0 })).filter((x) => x.value);
   const decided = requests.filter((r) => r.category);
   const auto = decided.filter((r) => r.category === "permitido" || r.category === "consulta" || r.category === "charla").length;
-  const groups = new Map<string, DaleRequest[]>();
+  const groups = new Map<string, WaltRequest[]>();
   for (const r of requests) {
     const k = `${r.project_id}|${normalize(r.raw_text)}`;
     groups.set(k, [...(groups.get(k) ?? []), r]);

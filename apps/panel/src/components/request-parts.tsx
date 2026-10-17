@@ -1,6 +1,6 @@
 import { ArrowRight, Bot, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { describeChange, describeOp, clock } from "@/lib/labels";
-import type { Change, DaleRequest, Message, SiteContent } from "@/lib/types";
+import type { Change, WaltRequest, Message, SiteContent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function Phone({ messages, assistantName, className, big }: { messages: Message[]; assistantName: string; className?: string; big?: boolean }) {
@@ -63,7 +63,7 @@ export function ChangesDiff({ changes, content, big }: { changes: Change[]; cont
   );
 }
 
-export function OpsList({ request, content, big }: { request: DaleRequest; content?: SiteContent | null; big?: boolean }) {
+export function OpsList({ request, content, big }: { request: WaltRequest; content?: SiteContent | null; big?: boolean }) {
   const ops = request.ops ?? request.interpretation?.ops ?? [];
   if (!ops.length) return null;
   return (
@@ -78,7 +78,7 @@ export function OpsList({ request, content, big }: { request: DaleRequest; conte
   );
 }
 
-export function GateReasons({ request }: { request: DaleRequest }) {
+export function GateReasons({ request }: { request: WaltRequest }) {
   const outcome = request.gate?.outcome;
   const reasons = request.gate?.reasons ?? [];
   const Icon = outcome === "bloqueado" ? ShieldX : outcome === "agencia" ? ShieldAlert : ShieldCheck;

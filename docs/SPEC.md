@@ -1,4 +1,4 @@
-# Dale: especificación para construir
+# Walt: especificación para construir
 
 Versión 1, 2026-10-17, para build 101. Este documento manda. Si algo no está acá, elegí lo más simple que funcione y anotalo en `docs/DECISIONES.md` con una línea.
 
@@ -6,19 +6,19 @@ Versión 1, 2026-10-17, para build 101. Este documento manda. Si algo no está a
 
 ## 0. Qué es
 
-Dale es un asistente al que los clientes de una agencia o de un freelancer le piden cambios chicos de su web por Telegram. La agencia ve todo desde un panel.
+Walt es un asistente al que los clientes de una agencia o de un freelancer le piden cambios chicos de su web por Telegram. La agencia ve todo desde un panel.
 
 **Principio:** un modelo decide, la IA ejecuta y el código valida. La IA nunca tiene la última palabra.
 
 **Las salidas posibles de un pedido:**
 - **Permitido:** cambios de contenido que las reglas dejan pasar solos: textos, precios, colores, horarios, disponibilidad. Llega una captura de cómo queda, el cliente aprueba con un botón y se publica en segundos. Se revierte con otro botón.
 - **Riesgoso:** lo que las reglas mandan a la agencia, como un cartel de promoción, un precio que cambia más del límite, un pedido que la IA entendió con poca confianza o algo que toca código. La agencia aprueba en el panel o desde su Telegram. Si toca código, lo hace un agente en una rama, con PR y vista previa de Vercel.
-- **Fuera de alcance:** una función nueva. Dale arma un borrador de presupuesto; la agencia lo ajusta y se lo manda al cliente.
-- **Consulta:** "¿a qué hora abren el domingo?". Dale contesta con lo que dice la web.
+- **Fuera de alcance:** una función nueva. Walt arma un borrador de presupuesto; la agencia lo ajusta y se lo manda al cliente.
+- **Consulta:** "¿a qué hora abren el domingo?". Walt contesta con lo que dice la web.
 - **Bloqueado:** algo que las reglas o la seguridad no permiten. No se aplica nada y la agencia queda avisada.
 - **Derivado:** cualquier falla o timeout. "No pude hacerlo solo, se lo pasé a tu equipo." Ningún pedido queda colgado.
 
-**Marca blanca:** el cliente nunca habla con "Dale" ni con "Claude". Habla con el asistente de su agencia, por ejemplo "el asistente de Estudio Faro".
+**Marca blanca:** el cliente nunca habla con "Walt" ni con "Claude". Habla con el asistente de su agencia, por ejemplo "el asistente de Estudio Faro".
 
 ---
 
@@ -36,7 +36,7 @@ La evaluación pesa 35% producto funcionando, 25% valor para el usuario, 20% cal
 7. Mensajes de avance y de error en cada paso.
 8. El panel muestra todo en vivo.
 
-**Después, en este orden:** aprobación de la agencia en el panel y en Telegram, reglas editables en vivo, carril de código con el agente, presupuestos, consultas, evaluación, opciones para pedidos ambiguos, audios, "Dale escribe primero".
+**Después, en este orden:** aprobación de la agencia en el panel y en Telegram, reglas editables en vivo, carril de código con el agente, presupuestos, consultas, evaluación, opciones para pedidos ambiguos, audios, "Walt escribe primero".
 
 **Casos de la demo, que tienen que salir siempre:**
 | Pedido | Resultado esperado |
@@ -58,17 +58,17 @@ La evaluación pesa 35% producto funcionando, 25% valor para el usuario, 20% cal
 Telegram ──▶ apps/worker: un solo proceso Node, local en la hackatón, Railway opcional
                ├─ acceso: chat vinculado por invitación, QR con token
                ├─ cola rápida, concurrencia 1, y cola lenta para el agente, concurrencia 1
-               ├─ interpretar: @dale/ai, Claude con salida estructurada
-               ├─ decidir: @dale/core, reglas y gate, sin IA
+               ├─ interpretar: @walt/ai, Claude con salida estructurada
+               ├─ decidir: @walt/core, reglas y gate, sin IA
                │    ├─ permitido → borrador → captura → [Dale] → publicar
-               │    ├─ riesgoso → aprueba la agencia → contenido: publicar · código: @dale/agent
+               │    ├─ riesgoso → aprueba la agencia → contenido: publicar · código: @walt/agent
                │    ├─ fuera de alcance → borrador de presupuesto
                │    ├─ consulta → respuesta
                │    └─ falla o timeout → derivado
                ├─ publicar: versión viva en Supabase y commit en el repo del sitio
                └─ comandos del panel: tabla commands, sondeo cada segundo
 apps/panel, Next.js en Vercel ◀── realtime ──▶ Supabase ◀── lee la versión viva ── sitio demo, otro repo, Vercel
-@dale/agent: Claude Agent SDK en un clon temporal → rama → PR → vista previa de Vercel → merge o revert
+@walt/agent: Claude Agent SDK en un clon temporal → rama → PR → vista previa de Vercel → merge o revert
 ```
 
 **Por qué así:**
@@ -81,7 +81,7 @@ apps/panel, Next.js en Vercel ◀── realtime ──▶ Supabase ◀── le
 
 ## 3. Repos y carpetas
 
-**Repo del producto, `dale`:**
+**Repo del producto, `walt`:**
 ```
 apps/worker            bot, colas, pipeline, comandos, dry-run
 apps/panel             panel de la agencia
@@ -94,15 +94,15 @@ scripts/               check-env, db-migrate, seed, e2e
 docs/                  SPEC.md, DECISIONES.md, ESTADO.md
 ```
 
-**Repo del sitio, `dale-demo`:** la web de una panadería ficticia, Panadería Mabel, que cumple el contrato de la sección 6. Es la carpeta hermana `../dale-demo`.
+**Repo del sitio, `walt-demo`:** la web de una panadería ficticia, Panadería Mabel, que cumple el contrato de la sección 6. Es la carpeta hermana `../walt-demo`.
 
-**Tecnología:** TypeScript estricto, ESM, Node 24, pnpm workspaces sin turborepo, vitest, zod, ajv. Nombres de paquete: `@dale/core`, `@dale/ai`, `@dale/agent`, `@dale/worker`, `@dale/panel`, `@dale/eval`.
+**Tecnología:** TypeScript estricto, ESM, Node 24, pnpm workspaces sin turborepo, vitest, zod, ajv. Nombres de paquete: `@walt/core`, `@walt/ai`, `@walt/agent`, `@walt/worker`, `@walt/panel`, `@walt/eval`.
 
 ---
 
 ## 4. Entorno y secretos
 
-Todos los secretos viven en `~/.dale/.env`, fuera de cualquier repo, así lo leen todos los worktrees y los dos repos. `@dale/core` exporta `loadEnv()`: carga ese archivo, después `.env` local si existe, valida con zod y nunca imprime valores. En el repo va `.env.example` con las claves vacías.
+Todos los secretos viven en `~/.walt/.env`, fuera de cualquier repo, así lo leen todos los worktrees y los dos repos. `@walt/core` exporta `loadEnv()`: carga ese archivo, después `.env` local si existe, valida con zod y nunca imprime valores. En el repo va `.env.example` con las claves vacías.
 
 | Variable | Para qué |
 |---|---|
@@ -121,7 +121,7 @@ Todos los secretos viven en `~/.dale/.env`, fuera de cualquier repo, así lo lee
 | SCREENSHOTS | `on` u `off` |
 | PANEL_PASSWORD | Entrada al panel |
 | DEMO_AGENCY_NAME | Por defecto "Estudio Faro" |
-| DEMO_REPO | Por defecto `salvasecco/dale-demo` |
+| DEMO_REPO | Por defecto `salvasecco/walt-demo` |
 | DEMO_SITE_URL | URL pública del sitio demo |
 
 **Modos falsos,** para desarrollar en paralelo sin credenciales: `LLM_PROVIDER=fake` es un intérprete por reglas solo para pruebas; `GITHUB_MODE=fake`; `TELEGRAM_MODE=console`; `SCREENSHOTS=off`. **La demo corre siempre con el modelo real**, y el README lo dice.
@@ -137,7 +137,7 @@ Archivo `supabase/migrations/0001_init.sql`, aplicado con `pnpm db:migrate`: un 
 | Tabla | Columnas |
 |---|---|
 | factories | name, assistant_name |
-| projects | factory_id, name, client_name, repo_owner, repo_name, default_branch, mode (`contenido` o `codigo`), config_path default `dale.config.json`, site_url |
+| projects | factory_id, name, client_name, repo_owner, repo_name, default_branch, mode (`contenido` o `codigo`), config_path default `walt.config.json`, site_url |
 | contacts | project_id, display_name, role (`cliente` o `agencia`), telegram_chat_id bigint unique |
 | invites | token text primary key, project_id, role, max_uses int default 1, uses int default 0, expires_at |
 | rules | project_id, version int, policies jsonb, limits jsonb, created_by text; unique (project_id, version) |
@@ -170,7 +170,7 @@ Archivo `supabase/migrations/0001_init.sql`, aplicado con `pnpm db:migrate`: un 
 
 ## 6. Contrato de contenido del sitio
 
-Un repo en modo contenido tiene en la raíz `dale.config.json`:
+Un repo en modo contenido tiene en la raíz `walt.config.json`:
 
 ```json
 {
@@ -199,16 +199,16 @@ Un repo en modo contenido tiene en la raíz `dale.config.json`:
 
 Y un JSON Schema del contenido, draft 2020-12. El contenido de la panadería está en la sección 14.
 
-- Contrato ampliado (oct. 2026, ver `docs/DECISIONES.md` › velocidad y los fixtures de `@dale/core`): además, colores `text`, `title`, `button` y `buttonText`, y textos `/about/title`, `/headings/{products,hours,contact}/{title,subtitle}` y `/contact/address`.
+- Contrato ampliado (oct. 2026, ver `docs/DECISIONES.md` › velocidad y los fixtures de `@walt/core`): además, colores `text`, `title`, `button` y `buttonText`, y textos `/about/title`, `/headings/{products,hours,contact}/{title,subtitle}` y `/contact/address`.
 - `buildInventory(config, content)` arma lo que ve la IA: cada texto con su etiqueta y valor actual, cada color, cada producto con id, nombre, categoría, precio y disponibilidad, el cartel, los horarios y las secciones.
 - Nada fuera del config se puede tocar en modo contenido.
-- Un repo sin `dale.config.json` se conecta en modo código: solo el carril del agente.
+- Un repo sin `walt.config.json` se conecta en modo código: solo el carril del agente.
 
 ---
 
 ## 7. Operaciones
 
-La IA no escribe JSON libre: elige operaciones de esta lista y completa los parámetros. El código hace la cuenta. Definidas con zod en `@dale/core`:
+La IA no escribe JSON libre: elige operaciones de esta lista y completa los parámetros. El código hace la cuenta. Definidas con zod en `@walt/core`:
 
 ```ts
 type Op =
@@ -248,7 +248,7 @@ type Op =
 
 Cada política es `auto`, `agencia` o `bloqueado`. El cupo arranca alto para que las pruebas no lo agoten; en vivo se puede bajar. La demo de regla en vivo: pasar `set_banner` de `agencia` a `auto` y repetir el mismo pedido.
 
-**`runGate`,** en `@dale/core`, sin IA y con pruebas:
+**`runGate`,** en `@walt/core`, sin IA y con pruebas:
 1. Cada operación valida su forma con zod y sus referencias contra el config.
 2. Se aplican sobre una copia y se valida el contenido nuevo contra el JSON Schema, con ajv.
 3. Seguridad de cada texto nuevo: sin `<`, `>`, `{{`, `javascript:` ni caracteres de control; largo máximo 300; links solo `https:`; colores `#RRGGBB`; precios positivos con hasta 2 decimales.
@@ -257,7 +257,7 @@ Cada política es `auto`, `agencia` o `bloqueado`. El cupo arranca alto para que
 6. Límites: un precio que cambia más de `maxPriceChangePct` pide a la agencia; pasar el cupo del mes de cambios automáticos publicados pide a la agencia.
 7. Resultado: `{ outcome: 'auto' | 'agencia' | 'bloqueado', reasons: string[], content, changes }`. Las razones van en español y se le muestran a la agencia.
 
-**`decide(interpretation, gate, rules)`,** en `@dale/core`, todo o nada: el pedido toma la categoría de su parte más restrictiva.
+**`decide(interpretation, gate, rules)`,** en `@walt/core`, todo o nada: el pedido toma la categoría de su parte más restrictiva.
 
 | Situación | Categoría | Carril |
 |---|---|---|
@@ -280,18 +280,18 @@ Cada política es `auto`, `agencia` o `bloqueado`. El cupo arranca alto para que
 1. Se descarta si el `update_id` ya se procesó.
 2. Se guarda en messages y se crea el pedido con `short_id`. Se manda "Recibido" en menos de un segundo.
 3. Entra a la cola rápida. Si el chat tiene un pedido esperando su respuesta y el mensaje es "sí", "dale", "no" o "volvé atrás", se trata como respuesta a ese pedido.
-4. Interpretar con @dale/ai, timeout 45 s. Evento `interpretado` con el resumen.
-5. Decidir con @dale/core. Evento `decidido` con categoría, carril y razones.
+4. Interpretar con @walt/ai, timeout 45 s. Evento `interpretado` con el resumen.
+5. Decidir con @walt/core. Evento `decidido` con categoría, carril y razones.
 6. Según la categoría:
    - **Permitido:** borrador en content_versions → captura con Playwright de `site_url?preview=<id>` a 390×844, timeout 25 s → foto al cliente con "¿Así? {resumen}" y botones [Dale] [No era eso] → estado esperando_cliente.
    - **Riesgoso, contenido:** borrador y captura igual que arriba → al cliente "Esto lo aprueba {agencia} porque {razón}. Te aviso" → a cada contacto de rol agencia, foto y botones [Aprobar] [Rechazar] → estado esperando_agencia.
-   - **Riesgoso, código:** a la agencia el pedido con su ficha y [Aprobar y hacer] [Rechazar]. Al aprobar: cola lenta → @dale/agent → PR y vista previa → a la agencia [Ver vista previa] [Ver PR] [Publicar] [Descartar].
-   - **Fuera de alcance:** borrador de presupuesto con @dale/ai, usando los 20 presupuestos anteriores del proyecto → quotes en borrador → al cliente "Eso es algo nuevo. Se lo paso a {agencia} para que te mande un presupuesto" → aviso a la agencia.
-   - **Consulta:** respuesta con @dale/ai sobre el inventario → estado respondido.
+   - **Riesgoso, código:** a la agencia el pedido con su ficha y [Aprobar y hacer] [Rechazar]. Al aprobar: cola lenta → @walt/agent → PR y vista previa → a la agencia [Ver vista previa] [Ver PR] [Publicar] [Descartar].
+   - **Fuera de alcance:** borrador de presupuesto con @walt/ai, usando los 20 presupuestos anteriores del proyecto → quotes en borrador → al cliente "Eso es algo nuevo. Se lo paso a {agencia} para que te mande un presupuesto" → aviso a la agencia.
+   - **Consulta:** respuesta con @walt/ai sobre el inventario → estado respondido.
    - **Bloqueado:** al cliente "Eso no lo puedo hacer desde acá; se lo paso a {agencia}" → aviso a la agencia con las razones.
    - **Charla:** respuesta corta y amable, sin acción.
-7. **Publicar,** al aprobar el cliente o la agencia: se toma la versión viva actual, se vuelven a aplicar las operaciones del pedido sobre ella y se vuelve a pasar el gate → se crea la versión → `publish_version` → commit del JSON en el repo del sitio con el mensaje `dale: {resumen} (#{short_id})`, timeout 20 s → al cliente "Listo, ya está publicado" con [Volver a como estaba]. **Si el commit falla, la versión igual queda viva**, se guarda `git_error` y el panel muestra el botón reintentar_commit.
-8. **Revertir:** `revertChanges` sobre la viva actual → gate → nueva versión viva → commit `dale: revert #{short_id}` → "Listo, volvió a como estaba". En código: revert del merge.
+7. **Publicar,** al aprobar el cliente o la agencia: se toma la versión viva actual, se vuelven a aplicar las operaciones del pedido sobre ella y se vuelve a pasar el gate → se crea la versión → `publish_version` → commit del JSON en el repo del sitio con el mensaje `walt: {resumen} (#{short_id})`, timeout 20 s → al cliente "Listo, ya está publicado" con [Volver a como estaba]. **Si el commit falla, la versión igual queda viva**, se guarda `git_error` y el panel muestra el botón reintentar_commit.
+8. **Revertir:** `revertChanges` sobre la viva actual → gate → nueva versión viva → commit `walt: revert #{short_id}` → "Listo, volvió a como estaba". En código: revert del merge.
 9. **Cualquier excepción o timeout:** estado derivado, mensaje "No pude hacerlo solo, se lo pasé a tu equipo. Te escriben en breve" y aviso a la agencia. Nunca queda un "editando…" sin final.
 
 **Eventos:** cada paso guarda `inicio` y después `ok` o `falla` con `duration_ms`. Pasos: recibido, interpretado, decidido, gate, borrador, captura, enviado, aprobado_cliente, aprobado_agencia, publicando, publicado, commit, revertido, derivado, agente_inicio, agente_pr, agente_preview, presupuesto, respondido.
@@ -302,7 +302,7 @@ Cada política es `auto`, `agencia` o `bloqueado`. El cupo arranca alto para que
 
 **Límites:** 5 pedidos cada 10 minutos por chat, 20 pedidos en cola como máximo y textos truncados a 2.000 caracteres. Fotos sin texto, stickers y otros: "Por ahora describímelo con palabras". Audios: transcripción si hay OPENAI_API_KEY; si no, "Por ahora mandámelo escrito".
 
-**Costos:** cada llamada a un modelo suma tokens y dólares al pedido, con la tabla de precios de `@dale/core`.
+**Costos:** cada llamada a un modelo suma tokens y dólares al pedido, con la tabla de precios de `@walt/core`.
 
 **`pnpm dry-run "<pedido>"`:** corre el pipeline real sin Telegram, con el canal de consola, e imprime cada paso con su tiempo. Con `--approve`, aprueba y publica. Con `--project <id>`, elige el proyecto.
 
@@ -310,7 +310,7 @@ Cada política es `auto`, `agencia` o `bloqueado`. El cupo arranca alto para que
 
 ## 10. Interpretación con IA
 
-`@dale/ai` exporta:
+`@walt/ai` exporta:
 
 ```ts
 interpret(input: { inventory: Inventory; history: Turn[]; text: string; agencyName: string;
@@ -320,7 +320,7 @@ draftQuote(input: { text: string; pastQuotes: QuoteSummary[] }): Promise<{ quote
 transcribe(audio: Buffer, mime: string): Promise<string>   // opcional
 ```
 
-`Interpretation`, definido con zod en `@dale/core` para que lo compartan el worker y la evaluación:
+`Interpretation`, definido con zod en `@walt/core` para que lo compartan el worker y la evaluación:
 
 ```ts
 {
@@ -352,7 +352,7 @@ transcribe(audio: Buffer, mime: string): Promise<string>   // opcional
 
 ## 11. Carril de código
 
-`@dale/agent` exporta:
+`@walt/agent` exporta:
 
 ```ts
 runCodeChange(input: {
@@ -369,7 +369,7 @@ findPreviewUrl(input: { repo; sha: string; timeoutMs?: number }): Promise<string
 ```
 
 **Cómo trabaja:**
-1. Clona el repo en una carpeta temporal, sin dejar el token en logs ni en la URL guardada. Crea la rama `dale/{shortId}`.
+1. Clona el repo en una carpeta temporal, sin dejar el token en logs ni en la URL guardada. Crea la rama `walt/{shortId}`.
 2. Corre el Claude Agent SDK con `cwd` en el clon:
    - herramientas: solo Read, Edit, Write, Glob y Grep. Sin Bash y sin web;
    - un hook PreToolUse que resuelve la ruta real, sin seguir symlinks, y bloquea todo lo que esté fuera del clon y los archivos protegidos: `package.json`, lockfiles, `*.config.*`, `.github/**`, `.env*`, `next.config.*`, `middleware.*` y `proxy.*`;
@@ -394,7 +394,7 @@ grammY. `TELEGRAM_MODE=polling` en local; `webhook` en Railway, validando el hea
 - Un chat sin vincular recibe "Este chat no está habilitado. Pedile el link a tu agencia" y nada más.
 - Tres invitaciones del seed: la del cliente y la de la agencia, de 5 usos y 7 días, y la del jurado, de 50 usos y 48 horas.
 
-**Textos, en `@dale/core/copy`, voseo y cortos. `{a}` es el nombre del asistente:**
+**Textos, en `@walt/core/copy`, voseo y cortos. `{a}` es el nombre del asistente:**
 | Momento | Texto |
 |---|---|
 | Bienvenida | "¡Hola! Soy {a}. Escribime lo que quieras cambiar en tu web, como se lo pedirías a una persona." |
@@ -435,7 +435,7 @@ Next.js con App Router en `apps/panel`, Tailwind, shadcn/ui, framer-motion, luci
 | En vivo | La pantalla de la demo. Arriba, indicadores: pedidos hoy, porcentaje resuelto sin la agencia, tiempo medio a publicado y costo total. Al centro, el pedido activo: la conversación como un celular, el recorrido de pasos con su tiempo, la operación en lenguaje humano, el diff de valores antes y después, la categoría y sus razones. A la derecha, el sitio en un iframe que se actualiza solo |
 | Aprobaciones | Lo que espera a la agencia: captura, resumen, razones, diff, y en código el link al PR y la vista previa. Botones Aprobar y Rechazar |
 | Historial | Todos los pedidos con filtros por categoría y estado. Detalle: mensajes, interpretación, operaciones, gate, versión de reglas, eventos con tiempos, aprobaciones, commit, PR, costo y botón revertir |
-| Proyectos | Lista y "Conectar un repo": owner/repo, rama, URL del sitio. Detecta solo si tiene `dale.config.json`: modo contenido si lo tiene, modo código si no. Muestra el resultado de la prueba de conexión. Genera el QR de invitación para el cliente y para la agencia, con el link `https://t.me/{bot}?start={token}` |
+| Proyectos | Lista y "Conectar un repo": owner/repo, rama, URL del sitio. Detecta solo si tiene `walt.config.json`: modo contenido si lo tiene, modo código si no. Muestra el resultado de la prueba de conexión. Genera el QR de invitación para el cliente y para la agencia, con el link `https://t.me/{bot}?start={token}` |
 | Reglas | Por proyecto: cada tipo de operación en auto, agencia o bloqueado; límite de cambio de precio; cupo del mes; confianza mínima. Guardar crea una versión nueva y muestra "versión 7, vigente desde 15:42" |
 | Lo que piden | Pedidos por categoría y por tipo de operación, porcentaje automático, pedidos repetidos y sugerencias simples como "Mabel cambió precios 6 veces: ofrecele un panel de precios" |
 | Presupuestos | Borradores con título, descripción, monto y días editables, y el botón Enviar al cliente |
@@ -444,7 +444,7 @@ Next.js con App Router en `apps/panel`, Tailwind, shadcn/ui, framer-motion, luci
 
 ## 14. Sitio demo
 
-Repo `dale-demo`. Next.js con App Router y Tailwind, pensado primero para el celular, con estética cálida de panadería. Se publica en Vercel con la integración de Git, así los PRs del agente tienen vista previa.
+Repo `walt-demo`. Next.js con App Router y Tailwind, pensado primero para el celular, con estética cálida de panadería. Se publica en Vercel con la integración de Git, así los PRs del agente tienen vista previa.
 
 **Contenido inicial, `content/site.json`:**
 
@@ -478,16 +478,16 @@ Repo `dale-demo`. Next.js con App Router y Tailwind, pensado primero para el cel
 ```
 
 **Cómo lee el contenido:**
-- Del lado del servidor, en cada request: con `?preview=<uuid>`, la versión con ese id, cualquiera sea su estado, con una cinta "Vista previa". Si no, la versión viva del proyecto `DALE_PROJECT_ID`. Si no hay ninguna o Supabase falla, `content/site.json`.
+- Del lado del servidor, en cada request: con `?preview=<uuid>`, la versión con ese id, cualquiera sea su estado, con una cinta "Vista previa". Si no, la versión viva del proyecto `WALT_PROJECT_ID`. Si no hay ninguna o Supabase falla, `content/site.json`.
 - Sin caché: cada request lee de nuevo.
 - En el navegador, se suscribe por realtime a content_versions del proyecto y refresca la página cuando hay una versión viva nueva. Así la pantalla grande cambia sola.
 - El contenido se valida con zod; si no valida, usa el archivo local.
 
 **Cartel:** se muestra si `enabled` y la hora actual está entre `startsAt` y `endsAt`, cuando existen. Con `discountPercent`, cada precio se muestra tachado con el precio con descuento al lado. Así un cartel temporal se vence solo. En vista previa, un cartel que empieza más adelante se muestra igual, con la etiqueta "Programado: empieza el {fecha}".
 
-**Variables en Vercel:** NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, DALE_PROJECT_ID.
+**Variables en Vercel:** NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, WALT_PROJECT_ID.
 
-**Archivos del contrato:** `dale.config.json` y `content/site.schema.json`, este último coherente con el zod del sitio. Ver sección 6.
+**Archivos del contrato:** `walt.config.json` y `content/site.schema.json`, este último coherente con el zod del sitio. Ver sección 6.
 
 ---
 
@@ -520,7 +520,7 @@ En `eval/`:
 ## 17. Despliegue
 
 - **Panel:** Vercel, desde `apps/panel`, con sus variables.
-- **Sitio:** Vercel, desde `dale-demo`, con la integración de Git.
+- **Sitio:** Vercel, desde `walt-demo`, con la integración de Git.
 - **Worker:** en la hackatón corre en una compu del equipo con `pnpm start:worker` y polling, dentro de un bucle que lo reinicia si se cae. Railway con webhook queda opcional; Playwright necesita su imagen de Docker.
 
 ---

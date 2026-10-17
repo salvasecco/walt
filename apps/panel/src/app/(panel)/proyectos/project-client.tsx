@@ -8,7 +8,7 @@ import { connectProject, createInvites, testRepoConnection, type InviteQR, type 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Chip, Notice, Surface, PanelTitle } from "@/components/ui-dale";
+import { Chip, Notice, Surface, PanelTitle } from "@/components/ui-walt";
 import { dateTime } from "@/lib/labels";
 
 export function ConnectRepo({ hasToken }: { hasToken: boolean }) {
@@ -40,7 +40,7 @@ export function ConnectRepo({ hasToken }: { hasToken: boolean }) {
           <Input value={f.owner} onChange={set("owner")} placeholder="salvasecco" />
         </Field>
         <Field label="Repo">
-          <Input value={f.repo} onChange={set("repo")} placeholder="dale-demo" />
+          <Input value={f.repo} onChange={set("repo")} placeholder="walt-demo" />
         </Field>
         <Field label="Rama">
           <Input value={f.branch} onChange={set("branch")} />
@@ -80,7 +80,7 @@ export function ConnectRepo({ hasToken }: { hasToken: boolean }) {
           <Row ok={check.reachable} text={check.reachable ? `Repo accesible${check.private ? " (privado)" : " (público)"}` : "No se pudo acceder al repo"} />
           {check.reachable && (
             <>
-              <Row ok={check.hasConfig} warn={!check.hasConfig} text={check.hasConfig ? "Tiene dale.config.json" : "No tiene dale.config.json"} />
+              <Row ok={check.hasConfig} warn={!check.hasConfig} text={check.hasConfig ? "Tiene walt.config.json" : "No tiene walt.config.json"} />
               <div className="flex items-center gap-2">
                 Se conecta en{" "}
                 <Chip tone={check.mode === "contenido" ? "muted" : "code"}>

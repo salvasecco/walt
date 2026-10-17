@@ -1,13 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { loadEnv, redact, type DaleEnv } from '@dale/core';
+import { loadEnv, redact, type WaltEnv } from '@walt/core';
 
 /**
  * Supabase client with the service role, over HTTPS. The scripts never use SUPABASE_DB_URL:
  * the network only allows port 443 outbound.
  */
-export function connect(env: DaleEnv = loadEnv()): SupabaseClient {
+export function connect(env: WaltEnv = loadEnv()): SupabaseClient {
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.log('Falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en ~/.dale/.env: no se hizo nada.');
+    console.log('Falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en ~/.walt/.env: no se hizo nada.');
     process.exit(1);
   }
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -37,7 +37,7 @@ export interface SchemaStatus {
 const NIL = '00000000-0000-4000-8000-000000000000';
 
 /** Inspects the schema through the REST API (tables, publish_version and the 0002 revoke). */
-export async function schemaStatus(db: SupabaseClient, env: DaleEnv): Promise<SchemaStatus> {
+export async function schemaStatus(db: SupabaseClient, env: WaltEnv): Promise<SchemaStatus> {
   const missingTables: string[] = [];
   for (const t of MAIN_TABLES) {
     const { error } = await db.from(t).select('*', { count: 'exact', head: true });

@@ -8,8 +8,8 @@ import type {
   Contact,
   Change,
   ContentVersion,
-  DaleEvent,
-  DaleRequest,
+  WaltEvent,
+  WaltRequest,
   Interpretation,
   Message,
   Op,
@@ -320,9 +320,9 @@ const SPECS: Spec[] = [
     cost: 0.4120,
     confidence: 0.88,
     pr: {
-      url: "https://github.com/salvasecco/dale-demo/pull/12",
+      url: "https://github.com/salvasecco/walt-demo/pull/12",
       number: 12,
-      preview: "https://dale-demo-git-dale-j6r2-salvasecco.vercel.app",
+      preview: "https://walt-demo-git-walt-j6r2-salvasecco.vercel.app",
     },
   },
   {
@@ -419,8 +419,8 @@ export type SampleData = {
   contacts: Contact[];
   projects: Project[];
   rules: Rules[];
-  requests: DaleRequest[];
-  events: DaleEvent[];
+  requests: WaltRequest[];
+  events: WaltEvent[];
   messages: Message[];
   versions: ContentVersion[];
   approvals: Approval[];
@@ -434,10 +434,10 @@ export function buildSample(now = Date.now()): SampleData {
     name: "Panadería Mabel",
     client_name: "Mabel",
     repo_owner: "salvasecco",
-    repo_name: "dale-demo",
+    repo_name: "walt-demo",
     default_branch: "main",
     mode: "contenido",
-    config_path: "dale.config.json",
+    config_path: "walt.config.json",
     site_url: null,
     created_at: new Date(now - 86_400_000 * 3).toISOString(),
   };
@@ -452,8 +452,8 @@ export function buildSample(now = Date.now()): SampleData {
     created_at: new Date(now - 86_400_000 * (3 - v) - 3_600_000).toISOString(),
   }));
 
-  const requests: DaleRequest[] = [];
-  const events: DaleEvent[] = [];
+  const requests: WaltRequest[] = [];
+  const events: WaltEvent[] = [];
   const messages: Message[] = [];
   const versions: ContentVersion[] = [];
   const approvals: Approval[] = [];
@@ -615,7 +615,7 @@ export function buildSample(now = Date.now()): SampleData {
   // Clientes de ejemplo: los mismos que inserta `pnpm seed` con is_sample = true.
   const extra = buildSampleClientRows({ now, factoryId: SEED_FACTORY_ID, agencyName: "Estudio Faro" });
   const clients: Client[] = [{ ...MABEL_CLIENT, factory_id: SEED_FACTORY_ID, created_at: project.created_at }, ...extra.clients];
-  for (const r of extra.requests) requests.push(r as unknown as DaleRequest);
+  for (const r of extra.requests) requests.push(r as unknown as WaltRequest);
   for (const e of extra.events) events.push({ ...e, id: evId++ });
   messages.push(...extra.messages);
   approvals.push(...extra.approvals);

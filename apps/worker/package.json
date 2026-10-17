@@ -1,5 +1,5 @@
 {
-  "name": "@dale/worker",
+  "name": "@walt/worker",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,9 +13,9 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@dale/agent": "workspace:*",
-    "@dale/ai": "workspace:*",
-    "@dale/core": "workspace:*",
+    "@walt/agent": "workspace:*",
+    "@walt/ai": "workspace:*",
+    "@walt/core": "workspace:*",
     "@grammyjs/auto-retry": "^2.0.2",
     "@octokit/rest": "^22.0.1",
     "@supabase/supabase-js": "^2.118.0",

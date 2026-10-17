@@ -10,12 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Journey } from "@/components/journey";
 import { ChangesDiff, GateReasons, OpsList, Phone } from "@/components/request-parts";
 import { SiteMock } from "@/components/site-mock";
-import { CategoryChip, Chip, EmptyState, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-dale";
+import { CategoryChip, Chip, EmptyState, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-walt";
 import type { LiveSnapshot } from "@/lib/data";
 import { buildJourney, timeToPublish } from "@/lib/journey";
 import { OPEN_STATUSES, TZ, clock, ms, relative } from "@/lib/labels";
 import { supabaseBrowser } from "@/lib/supabase/browser";
-import { SEED_PROJECT_ID, type ContentVersion, type DaleEvent, type DaleRequest, type Message } from "@/lib/types";
+import { SEED_PROJECT_ID, type ContentVersion, type WaltEvent, type WaltRequest, type Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -38,8 +38,8 @@ function upsert<T extends { id: string | number }>(list: T[], row: T): T[] {
 }
 
 export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
-  const [requests, setRequests] = useState<DaleRequest[]>(initial.requests);
-  const [events, setEvents] = useState<DaleEvent[]>(initial.events);
+  const [requests, setRequests] = useState<WaltRequest[]>(initial.requests);
+  const [events, setEvents] = useState<WaltEvent[]>(initial.events);
   const [messages, setMessages] = useState<Message[]>(initial.messages);
   const [versions, setVersions] = useState<ContentVersion[]>(initial.liveVersions);
   const [conn, setConn] = useState<Conn>(sample ? "ejemplo" : supabase ? "conectando" : "sin_conexion");
@@ -60,10 +60,10 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
       .channel("panel-en-vivo")
       .on("postgres_changes", { event: "*", schema: "public", table: "requests" }, (p) => {
         if (p.eventType === "DELETE") return;
-        setRequests((l) => upsert(l, p.new as DaleRequest));
+        setRequests((l) => upsert(l, p.new as WaltRequest));
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "events" }, (p) => {
-        setEvents((l) => (l.some((e) => e.id === (p.new as DaleEvent).id) ? l : [...l, p.new as DaleEvent]));
+        setEvents((l) => (l.some((e) => e.id === (p.new as WaltEvent).id) ? l : [...l, p.new as WaltEvent]));
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (p) => {
         setMessages((l) => (l.some((m) => m.id === (p.new as Message).id) ? l : [...l, p.new as Message]));
@@ -401,8 +401,8 @@ function ConnBadge({ conn }: { conn: Conn }) {
 function useSimulation(
   enabled: boolean,
   initial: LiveSnapshot,
-  setRequests: React.Dispatch<React.SetStateAction<DaleRequest[]>>,
-  setEvents: React.Dispatch<React.SetStateAction<DaleEvent[]>>,
+  setRequests: React.Dispatch<React.SetStateAction<WaltRequest[]>>,
+  setEvents: React.Dispatch<React.SetStateAction<WaltEvent[]>>,
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>,
 ) {
   const round = useRef(0);

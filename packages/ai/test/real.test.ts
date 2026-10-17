@@ -1,5 +1,5 @@
-import { buildInventory, decide, defaultRules, loadEnv, runGate, type Category } from '@dale/core';
-import { bakeryConfig, bakeryContent, bakerySchema } from '@dale/core/fixtures';
+import { buildInventory, decide, defaultRules, loadEnv, runGate, type Category } from '@walt/core';
+import { bakeryConfig, bakeryContent, bakerySchema } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import { createAi } from '../src/index.js';
 

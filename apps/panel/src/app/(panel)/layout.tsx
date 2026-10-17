@@ -3,7 +3,7 @@ import { logout } from "@/app/actions";
 import { Logo } from "@/components/logo";
 import { LiveRefresh } from "@/components/live-refresh";
 import { Nav } from "@/components/nav";
-import { SampleBadge } from "@/components/ui-dale";
+import { SampleBadge } from "@/components/ui-walt";
 import { authMode } from "@/lib/auth";
 import { getNeedCount } from "@/lib/agency";
 import { dataMode, env, publicSupabase } from "@/lib/env";

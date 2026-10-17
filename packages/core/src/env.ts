@@ -48,13 +48,13 @@ export const EnvSchema = z.object({
   PANEL_PASSWORD: opt,
   PANEL_URL: opt,
   DEMO_AGENCY_NAME: z.string().default('Estudio Faro'),
-  DEMO_REPO: z.string().regex(/^[\w.-]+\/[\w.-]+$/).default('salvasecco/dale-demo'),
+  DEMO_REPO: z.string().regex(/^[\w.-]+\/[\w.-]+$/).default('salvasecco/walt-demo'),
   DEMO_SITE_URL: opt,
 });
 
-export type DaleEnvValues = z.infer<typeof EnvSchema>;
+export type WaltEnvValues = z.infer<typeof EnvSchema>;
 
-export interface DaleEnv extends DaleEnvValues {
+export interface WaltEnv extends WaltEnvValues {
   /** Values of secret vars with 8+ characters, for the gate and for `redact`. Never print them. */
   readonly secrets: string[];
   /** Modes that were switched to fake because their credentials were missing (only with `fallbackToFake`). */
@@ -62,7 +62,7 @@ export interface DaleEnv extends DaleEnvValues {
 }
 
 export interface LoadEnvOptions {
-  /** Home env file. Default `~/.dale/.env`. */
+  /** Home env file. Default `~/.walt/.env`. */
   homeFile?: string;
   /** Directory of the local `.env`. Default `process.cwd()`. */
   cwd?: string;
@@ -74,7 +74,7 @@ export interface LoadEnvOptions {
   applyToProcess?: boolean;
 }
 
-export const HOME_ENV_FILE = join(homedir(), '.dale', '.env');
+export const HOME_ENV_FILE = join(homedir(), '.walt', '.env');
 
 function readEnvFile(path: string): Record<string, string> {
   return existsSync(path) ? parse(readFileSync(path, 'utf8')) : {};
@@ -87,10 +87,10 @@ function nonEmpty(src: Record<string, string | undefined>): Record<string, strin
 }
 
 /**
- * Loads `~/.dale/.env`, then a local `.env` (overrides), then `process.env` (overrides),
+ * Loads `~/.walt/.env`, then a local `.env` (overrides), then `process.env` (overrides),
  * validates with zod and never prints values. Empty strings count as unset.
  */
-export function loadEnv(opts: LoadEnvOptions = {}): DaleEnv {
+export function loadEnv(opts: LoadEnvOptions = {}): WaltEnv {
   const home = readEnvFile(opts.homeFile ?? HOME_ENV_FILE);
   const local = readEnvFile(join(opts.cwd ?? process.cwd(), '.env'));
   const overrides = opts.overrides ?? process.env;
@@ -112,7 +112,7 @@ export function loadEnv(opts: LoadEnvOptions = {}): DaleEnv {
       if (!downgraded.includes(m.mode)) downgraded.push(m.mode);
     }
   }
-  const env: DaleEnv = { ...values, secrets: secretValues(values), downgraded };
+  const env: WaltEnv = { ...values, secrets: secretValues(values), downgraded };
   if (opts.applyToProcess) {
     for (const [k, v] of Object.entries(values)) {
       if (v !== undefined && process.env[k] === undefined) process.env[k] = String(v);
@@ -136,9 +136,9 @@ export interface MissingCredential {
 }
 
 /** Credentials required by the selected modes that are not set. Names only. */
-export function missingCredentials(v: DaleEnvValues): MissingCredential[] {
+export function missingCredentials(v: WaltEnvValues): MissingCredential[] {
   const out: MissingCredential[] = [];
-  const need = (mode: MissingCredential['mode'], keys: (keyof DaleEnvValues)[]) => {
+  const need = (mode: MissingCredential['mode'], keys: (keyof WaltEnvValues)[]) => {
     const missing = keys.filter((k) => !v[k]);
     if (missing.length > 0) out.push({ mode, keys: missing });
   };
@@ -152,12 +152,12 @@ export function missingCredentials(v: DaleEnvValues): MissingCredential[] {
   return out;
 }
 
-export function hasSupabase(v: DaleEnvValues): boolean {
+export function hasSupabase(v: WaltEnvValues): boolean {
   return !!(v.SUPABASE_URL && v.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 /** Throws (with key names only) if the selected modes lack credentials. */
-export function requireCredentials(v: DaleEnvValues): void {
+export function requireCredentials(v: WaltEnvValues): void {
   const missing = missingCredentials(v);
   if (missing.length > 0) {
     throw new Error(`Faltan credenciales: ${missing.map((m) => `${m.mode} → ${m.keys.join(', ')}`).join('; ')}`);
@@ -172,7 +172,7 @@ export function redact(text: string, secrets: string[]): string {
 }
 
 /** Safe summary for logs: modes and which keys are set, never values. */
-export function describeEnv(env: DaleEnv): Record<string, string> {
+export function describeEnv(env: WaltEnv): Record<string, string> {
   return {
     TELEGRAM_MODE: env.TELEGRAM_MODE,
     GITHUB_MODE: env.GITHUB_MODE,

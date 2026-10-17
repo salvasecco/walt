@@ -1,4 +1,4 @@
-import type { AiProvider } from '@dale/ai';
+import type { AiProvider } from '@walt/ai';
 import {
   buildInventory,
   checkText,
@@ -8,19 +8,19 @@ import {
   inventoryPointers,
   redact,
   runGate,
-  type DaleConfig,
+  type WaltConfig,
   type Decision,
   type GateResult,
   type Interpretation,
   type Rules,
   type Usage,
-} from '@dale/core';
+} from '@walt/core';
 import { expectedCategories, type EvalCase } from './cases.js';
 import { opsMatch } from './normalize.js';
 
 export interface EvalContext {
   ai: AiProvider;
-  config: DaleConfig;
+  config: WaltConfig;
   content: unknown;
   schema: object;
   rules: Rules;

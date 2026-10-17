@@ -1,4 +1,4 @@
-import { EMPTY_USAGE, type Interpretation, type Inventory, type InventoryProduct, type Op } from '@dale/core';
+import { EMPTY_USAGE, type Interpretation, type Inventory, type InventoryProduct, type Op } from '@walt/core';
 import type { AiProvider, InterpretInput } from './types.js';
 
 /**

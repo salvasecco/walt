@@ -4,7 +4,7 @@ import { Users } from "lucide-react";
 import { HealthBadge } from "@/components/health-badge";
 import { NotConfigured } from "@/components/not-configured";
 import { QuotaMeter } from "@/components/quota-meter";
-import { Chip, EmptyState, Mono, Notice, PageHeader, SampleBadge, Surface } from "@/components/ui-dale";
+import { Chip, EmptyState, Mono, Notice, PageHeader, SampleBadge, Surface } from "@/components/ui-walt";
 import { getClientsOverview, type ClientsOverview } from "@/lib/agency";
 import { NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";

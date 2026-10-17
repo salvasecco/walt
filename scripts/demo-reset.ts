@@ -6,8 +6,8 @@
  * so git history matches the live version again (skip with --keep-repo).
  * Usage: pnpm demo:reset [--project <id>] [--keep-repo]
  */
-import { DEFAULT_RULES, loadEnv, redact, SEED_IDS, type DaleEnv } from '@dale/core';
-import { bakeryContent } from '@dale/core/fixtures';
+import { DEFAULT_RULES, loadEnv, redact, SEED_IDS, type WaltEnv } from '@walt/core';
+import { bakeryContent } from '@walt/core/fixtures';
 import { connect, must, runMain } from './lib/db.js';
 
 runMain('demo:reset', async () => {
@@ -46,7 +46,7 @@ runMain('demo:reset', async () => {
 });
 
 /** Commits the fixture as content/site.json in DEMO_REPO when it differs. Returns a one-line status. */
-async function resetRepo(env: DaleEnv): Promise<string> {
+async function resetRepo(env: WaltEnv): Promise<string> {
   if (env.GITHUB_MODE !== 'real' || !env.GITHUB_TOKEN) return 'Repo del sitio sin tocar: GITHUB_MODE no es real.';
   const url = `https://api.github.com/repos/${env.DEMO_REPO}/contents/content/site.json`;
   const headers = {
@@ -65,7 +65,7 @@ async function resetRepo(env: DaleEnv): Promise<string> {
       method: 'PUT',
       headers,
       body: JSON.stringify({
-        message: 'dale: demo:reset vuelve al contenido inicial',
+        message: 'walt: demo:reset vuelve al contenido inicial',
         content: Buffer.from(JSON.stringify(wanted, null, 2) + '\n').toString('base64'),
         sha,
       }),

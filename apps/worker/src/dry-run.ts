@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import { loadEnv, SEED_IDS, describeEnv, redact, type Interpretation } from '@dale/core';
+import { loadEnv, SEED_IDS, describeEnv, redact, type Interpretation } from '@walt/core';
 import { buildApp, memoryStore } from './app.js';
 import { ConsoleChannel } from './channel/console.js';
 import { CONSOLE_CHATS, ensureConsoleContacts } from './console-contacts.js';

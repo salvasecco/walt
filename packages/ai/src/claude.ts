@@ -7,7 +7,7 @@ import {
   type Interpretation,
   type QuoteDraft,
   type Usage,
-} from '@dale/core';
+} from '@walt/core';
 import { z } from 'zod';
 import { formatHistory, formatInventory, loadPrompt } from './prompts.js';
 import type { AiProvider, InterpretInput } from './types.js';

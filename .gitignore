@@ -4,7 +4,7 @@ node_modules
 .next
 dist
 coverage
-.dale-fake/
+.walt-fake/
 *.log
 logs/
 .vercel

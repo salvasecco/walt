@@ -3,10 +3,10 @@
  * with its key, GITHUB_MODE=real and GITHUB_TOKEN. Opens a PR, waits for the Vercel preview,
  * prints both and, with `--close`, closes the PR and deletes the branch (main is never touched).
  *
- *   pnpm --filter @dale/agent smoke -- --close ["instrucción"]
+ *   pnpm --filter @walt/agent smoke -- --close ["instrucción"]
  */
 import { Octokit } from '@octokit/rest';
-import { loadEnv, missingCredentials, redact, shortId } from '@dale/core';
+import { loadEnv, missingCredentials, redact, shortId } from '@walt/core';
 import { createAgentDeps, runCodeChange } from './index.js';
 
 async function main() {

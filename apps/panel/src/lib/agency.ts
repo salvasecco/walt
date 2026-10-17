@@ -6,7 +6,7 @@ import { NotConfiguredError } from "./data";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
 import { supabaseAdmin } from "./supabase/server";
-import type { Client, Contact, DaleRequest, Message, Project, Quote, RequestStatus } from "./types";
+import type { Client, Contact, WaltRequest, Message, Project, Quote, RequestStatus } from "./types";
 
 const DAY = 86_400_000;
 
@@ -24,11 +24,11 @@ function must<T>(res: { data: unknown; error: { message: string } | null }): T {
 const LIGHT_REQUEST = "id, short_id, project_id, raw_text, status, category, lane, cost_usd, created_at, summary:interpretation->>summary";
 
 /** Pedido liviano: sin los jsonb grandes, con el resumen de la interpretación. */
-export type LightRequest = Pick<DaleRequest, "id" | "short_id" | "project_id" | "raw_text" | "status" | "category" | "lane" | "cost_usd" | "created_at"> & {
+export type LightRequest = Pick<WaltRequest, "id" | "short_id" | "project_id" | "raw_text" | "status" | "category" | "lane" | "cost_usd" | "created_at"> & {
   summary: string | null;
 };
 
-const toLight = (r: DaleRequest): LightRequest => ({
+const toLight = (r: WaltRequest): LightRequest => ({
   id: r.id,
   short_id: r.short_id,
   project_id: r.project_id,

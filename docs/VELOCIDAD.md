@@ -1,6 +1,6 @@
 # Velocidad
 
-Mediciones con el dry-run real (`pnpm dry-run`, 17/10/2026): Supabase por HTTPS, modelo real (Sonnet 5.5 para interpretar), GitHub real (salvasecco/dale-demo), capturas con Playwright y Vercel real. Cada paso: duración del paso · segundo en que terminó, contado desde que arranca el dry-run (el mensaje del cliente entra en +0,7 a +1,2 s). Los botones los aprieta el dry-run apenas el paso anterior termina.
+Mediciones con el dry-run real (`pnpm dry-run`, 17/10/2026): Supabase por HTTPS, modelo real (Sonnet 5.5 para interpretar), GitHub real (salvasecco/walt-demo), capturas con Playwright y Vercel real. Cada paso: duración del paso · segundo en que terminó, contado desde que arranca el dry-run (el mensaje del cliente entra en +0,7 a +1,2 s). Los botones los aprieta el dry-run apenas el paso anterior termina.
 
 Cómo repetirlo:
 
@@ -76,17 +76,17 @@ Antes salía por el **carril de código** (no había color de título en el cont
 
 | Proyecto | Antes | Después |
 |---|---|---|
-| dale-demo, commit de código | 9,3–14,5 s (TypeScript 2,1 s dentro del build) | 6,9–9,2 s ("Skipping validation of types") |
-| dale-demo, commit solo de contenido | 9,8–11,5 s | salteado (`ignoreCommand`, CANCELED en ~1,1 s) |
-| dale-panel | 19,4–30,0 s (TypeScript 3,7 s) | 15,7 s (preview por CLI; "Build Completed" 5 s contra 9 s) |
-| dale-panel, push que no toca el panel ni core | buildeaba igual | salteado (`apps/panel/vercel.json`) |
+| walt-demo, commit de código | 9,3–14,5 s (TypeScript 2,1 s dentro del build) | 6,9–9,2 s ("Skipping validation of types") |
+| walt-demo, commit solo de contenido | 9,8–11,5 s | salteado (`ignoreCommand`, CANCELED en ~1,1 s) |
+| walt-panel | 19,4–30,0 s (TypeScript 3,7 s) | 15,7 s (preview por CLI; "Build Completed" 5 s contra 9 s) |
+| walt-panel, push que no toca el panel ni core | buildeaba igual | salteado (`apps/panel/vercel.json`) |
 
 ## Qué cambió
 
-1. **Contrato de contenido más amplio** (`packages/core` y dale-demo): `theme.title`, `theme.button`, `theme.buttonText` y `theme.text` como colores editables; títulos y subtítulos de productos, horarios y contacto (`headings`), título de "quiénes somos" y dirección. "Cambiá el título a naranja" y "poné los botones en verde" ya no pasan por el agente. Gate de contraste por pares: texto/fondo 4,5:1, título/fondo 3:1 (texto grande), texto del botón/botón 4,5:1. Prompt de interpretación v4.
-2. **dale-demo `vercel.json`**: `ignoreCommand` saltea el build si el commit solo toca `content/` o `dale.config.json`. Verificado: los 6 commits de contenido de las mediciones quedaron CANCELED en ~1 s; el commit de código y los merges del agente buildearon.
-3. **Builds sin chequeo de tipos** (`typescript.ignoreBuildErrors`) en el sitio y el panel. Next 16.4 ya no lintea en `next build`; la caché de Turbopack para builds viene activada y Vercel restaura la caché del build anterior. Tipos y lint siguen en `pnpm typecheck` y en `ci/github-actions.yml` (se agregó `pnpm --filter @dale/panel lint`). El panel además saltea el build si el push no toca `apps/panel`, `packages/core` ni el lockfile.
-4. **Agente**: `claude-sonnet-5-5` por defecto (también en `~/.dale/.env`), 15 turnos como tope (usaba 5–6), y reintento con `claude-opus-5-5` solo si Sonnet falla (error, sin cambios o diff rechazado por la revisión), desde un clon limpio y dentro del mismo tiempo total.
+1. **Contrato de contenido más amplio** (`packages/core` y walt-demo): `theme.title`, `theme.button`, `theme.buttonText` y `theme.text` como colores editables; títulos y subtítulos de productos, horarios y contacto (`headings`), título de "quiénes somos" y dirección. "Cambiá el título a naranja" y "poné los botones en verde" ya no pasan por el agente. Gate de contraste por pares: texto/fondo 4,5:1, título/fondo 3:1 (texto grande), texto del botón/botón 4,5:1. Prompt de interpretación v4.
+2. **walt-demo `vercel.json`**: `ignoreCommand` saltea el build si el commit solo toca `content/` o `walt.config.json`. Verificado: los 6 commits de contenido de las mediciones quedaron CANCELED en ~1 s; el commit de código y los merges del agente buildearon.
+3. **Builds sin chequeo de tipos** (`typescript.ignoreBuildErrors`) en el sitio y el panel. Next 16.4 ya no lintea en `next build`; la caché de Turbopack para builds viene activada y Vercel restaura la caché del build anterior. Tipos y lint siguen en `pnpm typecheck` y en `ci/github-actions.yml` (se agregó `pnpm --filter @walt/panel lint`). El panel además saltea el build si el push no toca `apps/panel`, `packages/core` ni el lockfile.
+4. **Agente**: `claude-sonnet-5-5` por defecto (también en `~/.walt/.env`), 15 turnos como tope (usaba 5–6), y reintento con `claude-opus-5-5` solo si Sonnet falla (error, sin cambios o diff rechazado por la revisión), desde un clon limpio y dentro del mismo tiempo total.
 5. **Capturas**: el navegador de Playwright se abre al arrancar el worker y queda abierto (un contexto y una página por captura), se relanza si se cae y se cierra en `close()`. `load` + fuentes en vez de `networkidle` (que siempre espera 500 ms más). 2,0 → 0,9 s.
 6. **Otras ganancias baratas del worker**: las lecturas antes de interpretar (contacto, proyecto, contrato del sitio, versión viva, reglas, historial, cupo) van en paralelo; eventos y mensajes salientes se guardan en una cadena ordenada que no bloquea el pedido (cada escritura a Supabase es ~0,2 s); el commit del JSON va de fondo y en orden (la versión ya está viva); el contrato del sitio se cachea y se refresca de fondo; la publicación lee en paralelo; el sondeo del deploy baja de 5 a 2 s y el de la vista previa de 10 a 3 s.
 

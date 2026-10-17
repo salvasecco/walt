@@ -1,7 +1,7 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { redact } from '@dale/core';
+import { redact } from '@walt/core';
 import { git } from './git.js';
 import type { CodeHost } from './hosts.js';
 import { reviewDiff, type DiffFile } from './review.js';
@@ -113,8 +113,8 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
   const secrets = deps.secrets ?? [];
   const logs: string[] = [];
   const log = (line: string) => logs.push(redact(line, secrets));
-  const branch = `dale/${input.shortId}`;
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'dale-code-')));
+  const branch = `walt/${input.shortId}`;
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'walt-code-')));
   const authEnv = deps.host.gitAuthEnv();
   const g = (args: string[], cwd: string) => git(args, { cwd, home: work, authEnv, secrets });
   const timings = { clone: 0, agent: 0, pr: 0, preview: 0 };
@@ -177,14 +177,14 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
     }
     lap('agent');
 
-    const title = `dale: ${firstLine(summary ?? input.instruction)} (#${input.shortId})`;
+    const title = `walt: ${firstLine(summary ?? input.instruction)} (#${input.shortId})`;
     await g(['commit', '--quiet', '--no-verify', '-m', title, '-m', `Pedido ${input.requestId}`], dir);
     const commitSha = (await g(['rev-parse', 'HEAD'], dir)).trim();
     await g(['push', '--quiet', 'origin', `${branch}:refs/heads/${branch}`], dir);
     log(`push de ${branch} (${commitSha.slice(0, 7)})`);
 
     const body = [
-      'Cambio hecho por el agente de Dale, aprobado por la agencia antes de empezar.',
+      'Cambio hecho por el agente de Walt, aprobado por la agencia antes de empezar.',
       '',
       '**Ficha:**',
       '',
@@ -228,7 +228,7 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
 export async function mergeChangeWith(input: { repo: RepoRef; prNumber: number }, host: CodeHost): Promise<{ mergeSha: string }> {
   checkRepo(input.repo);
   if (!Number.isInteger(input.prNumber) || input.prNumber <= 0) throw new Error('Número de PR inválido');
-  const { sha } = await host.mergePullRequest(input.repo, input.prNumber, `dale: merge del PR #${input.prNumber}`);
+  const { sha } = await host.mergePullRequest(input.repo, input.prNumber, `walt: merge del PR #${input.prNumber}`);
   return { mergeSha: sha };
 }
 
@@ -241,7 +241,7 @@ export async function revertChangeWith(
   checkRepo(input.repo);
   if (!/^[0-9a-f]{7,64}$/i.test(input.mergeSha)) throw new Error('SHA inválido');
   if (!SHORT_ID.test(input.shortId)) throw new Error('shortId inválido');
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'dale-revert-')));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'walt-revert-')));
   const authEnv = host.gitAuthEnv();
   const g = (args: string[], cwd: string) => git(args, { cwd, home: work, authEnv, secrets });
   try {
@@ -249,7 +249,7 @@ export async function revertChangeWith(
     const dir = join(work, 'repo');
     const parents = (await g(['rev-list', '--parents', '-n', '1', input.mergeSha], dir)).trim().split(' ').length - 1;
     await g(['revert', '--no-edit', ...(parents > 1 ? ['-m', '1'] : []), input.mergeSha], dir);
-    await g(['commit', '--amend', '--quiet', '-m', `dale: revert #${input.shortId}`, '-m', `Revierte ${input.mergeSha}`], dir);
+    await g(['commit', '--amend', '--quiet', '-m', `walt: revert #${input.shortId}`, '-m', `Revierte ${input.mergeSha}`], dir);
     const revertSha = (await g(['rev-parse', 'HEAD'], dir)).trim();
     await g(['push', '--quiet', 'origin', `HEAD:refs/heads/${input.repo.defaultBranch}`], dir);
     return { revertSha };

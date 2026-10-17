@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dale.local/site.schema.json",
+  "$id": "https://walt.local/site.schema.json",
   "title": "Contenido del sitio de Panadería Mabel",
   "type": "object",
   "additionalProperties": false,

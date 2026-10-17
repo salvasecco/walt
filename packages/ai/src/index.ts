@@ -1,4 +1,4 @@
-import type { DaleEnvValues } from '@dale/core';
+import type { WaltEnvValues } from '@walt/core';
 import { anthropicTransport, bedrockTransport, createClaudeProvider } from './claude.js';
 import { createFakeProvider } from './fake.js';
 import type { AiProvider } from './types.js';
@@ -26,7 +26,7 @@ export {
 } from './claude.js';
 export { formatHistory, formatInventory, loadPrompt } from './prompts.js';
 
-type AiEnv = Pick<DaleEnvValues, 'LLM_PROVIDER'> & Partial<DaleEnvValues>;
+type AiEnv = Pick<WaltEnvValues, 'LLM_PROVIDER'> & Partial<WaltEnvValues>;
 
 /** Returns the provider selected by `LLM_PROVIDER` (SPEC §10). Never logs credentials. */
 export function createAi(env: AiEnv): AiProvider {

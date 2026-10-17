@@ -14,7 +14,7 @@ export function containsCode(text: string): boolean {
 export interface DecideContext {
   /** The raw client text. */
   rawText: string;
-  /** Project mode: `contenido` (has dale.config.json) or `codigo`. */
+  /** Project mode: `contenido` (has walt.config.json) or `codigo`. */
   projectMode?: ProjectMode;
   /** Whether the project allows the code lane. Default true. */
   allowCode?: boolean;

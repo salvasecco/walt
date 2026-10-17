@@ -8,7 +8,7 @@
  */
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadEnv, type DaleEnv } from '@dale/core';
+import { loadEnv, type WaltEnv } from '@walt/core';
 import {
   findPreviewUrlWith,
   mergeChangeWith,
@@ -30,9 +30,9 @@ export { reviewDiff, addedLines } from './review.js';
 export { buildAgentEnv, agentModelId } from './agent-env.js';
 
 /** Folder of the fake GitHub (GITHUB_MODE=fake): bare repos and PR lists. */
-export const FAKE_GITHUB_DIR = join(tmpdir(), 'dale-fake-github');
+export const FAKE_GITHUB_DIR = join(tmpdir(), 'walt-fake-github');
 
-export function createHost(env: DaleEnv): CodeHost {
+export function createHost(env: WaltEnv): CodeHost {
   if (env.GITHUB_MODE === 'real') return new GitHubHost(env.GITHUB_TOKEN ?? '');
   return new LocalHost(FAKE_GITHUB_DIR);
 }
@@ -45,7 +45,7 @@ export function agentModels(primary: string): string[] {
   return primary === AGENT_FALLBACK_MODEL ? [primary] : [primary, AGENT_FALLBACK_MODEL];
 }
 
-export function createAgentDeps(env: DaleEnv = loadEnv()): AgentDeps {
+export function createAgentDeps(env: WaltEnv = loadEnv()): AgentDeps {
   return { host: createHost(env), runner: createClaudeAgentRunner(env), secrets: env.secrets, models: agentModels(env.MODEL_AGENT) };
 }
 

@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createFakeProvider, type AiProvider } from '@dale/ai';
-import { CATEGORIES, DEFAULT_RULES, type Interpretation } from '@dale/core';
-import { bakeryConfig, bakeryContent, bakerySchema } from '@dale/core/fixtures';
+import { createFakeProvider, type AiProvider } from '@walt/ai';
+import { CATEGORIES, DEFAULT_RULES, type Interpretation } from '@walt/core';
+import { bakeryConfig, bakeryContent, bakerySchema } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   EVAL_DIR,

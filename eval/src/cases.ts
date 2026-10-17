@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { CATEGORIES, LANES } from '@dale/core';
+import { CATEGORIES, LANES } from '@walt/core';
 import { z } from 'zod';
 
 /**

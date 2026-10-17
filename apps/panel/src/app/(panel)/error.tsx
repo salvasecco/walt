@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { ErrorState } from "@/components/ui-dale";
+import { ErrorState } from "@/components/ui-walt";
 
 export default function PanelError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (

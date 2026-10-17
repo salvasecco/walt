@@ -1,7 +1,7 @@
-import * as agentLane from '@dale/agent';
-import { createAi, createTranscriber, type AiProvider } from '@dale/ai';
-import { redact, type DaleEnv } from '@dale/core';
-import { bakeryContent } from '@dale/core/fixtures';
+import * as agentLane from '@walt/agent';
+import { createAi, createTranscriber, type AiProvider } from '@walt/ai';
+import { redact, type WaltEnv } from '@walt/core';
+import { bakeryContent } from '@walt/core/fixtures';
 import { noScreenshots, PlaywrightScreenshotter, type Screenshotter } from './capture.js';
 import { ConsoleChannel } from './channel/console.js';
 import type { Channel } from './channel/types.js';
@@ -35,8 +35,8 @@ export interface App {
   close(): Promise<void>;
 }
 
-/** The code lane (`@dale/agent`) bound to this worker's env (with the fake fallbacks). Built lazily. */
-export function agentFromEnv(env: DaleEnv): AgentLane {
+/** The code lane (`@walt/agent`) bound to this worker's env (with the fake fallbacks). Built lazily. */
+export function agentFromEnv(env: WaltEnv): AgentLane {
   return {
     runCodeChange: (input) => agentLane.runCodeChange(input, agentLane.createAgentDeps(env)),
     mergeChange: (input) => agentLane.mergeChange(input, agentLane.createHost(env)),
@@ -49,13 +49,13 @@ export function agentFromEnv(env: DaleEnv): AgentLane {
  * Store from the environment: Supabase over HTTPS (service role) when SUPABASE_URL and the key are set,
  * otherwise in memory with the seed. SUPABASE_DB_URL is not used: the network only allows 443.
  */
-export async function storeFromEnv(env: DaleEnv): Promise<Store> {
+export async function storeFromEnv(env: WaltEnv): Promise<Store> {
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) return new SupabaseStore(serviceClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY));
   return memoryStore(env);
 }
 
 /** In-memory store loaded with the same data as the seed. */
-export function memoryStore(env: DaleEnv): Store {
+export function memoryStore(env: WaltEnv): Store {
   const mem = new MemoryStore();
   seedMemory(mem, {
     agencyName: env.DEMO_AGENCY_NAME,
@@ -67,7 +67,7 @@ export function memoryStore(env: DaleEnv): Store {
 }
 
 /** Wires the worker from `loadEnv({ fallbackToFake: true })`. */
-export async function buildApp(env: DaleEnv, opts: BuildOptions = {}): Promise<App> {
+export async function buildApp(env: WaltEnv, opts: BuildOptions = {}): Promise<App> {
   const log = opts.log ?? ((l: string) => console.log(redact(l, env.secrets)));
   const store = opts.store ?? (await storeFromEnv(env));
   const channel = opts.channel ?? new ConsoleChannel();

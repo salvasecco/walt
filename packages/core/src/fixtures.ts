@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseConfig, type DaleConfig } from './config.ts';
+import { parseConfig, type WaltConfig } from './config.ts';
 
 const dir = fileURLToPath(new URL('../test/fixtures/', import.meta.url));
 const read = (name: string): unknown => JSON.parse(readFileSync(dir + name, 'utf8'));
@@ -9,9 +9,9 @@ const read = (name: string): unknown => JSON.parse(readFileSync(dir + name, 'utf
 export function bakeryContent(): BakeryContent {
   return read('site.json') as BakeryContent;
 }
-/** `dale.config.json` of the bakery (SPEC §6). */
-export function bakeryConfig(): DaleConfig {
-  return parseConfig(read('dale.config.json'));
+/** `walt.config.json` of the bakery (SPEC §6). */
+export function bakeryConfig(): WaltConfig {
+  return parseConfig(read('walt.config.json'));
 }
 /** JSON Schema (draft 2020-12) of the bakery content. */
 export function bakerySchema(): object {

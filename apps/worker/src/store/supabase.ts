@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { CommandRow, ContactRow, ContentVersionRow, FactoryRow, ProjectRow, QuoteRow, RequestRow, Rules } from '@dale/core';
+import type { CommandRow, ContactRow, ContentVersionRow, FactoryRow, ProjectRow, QuoteRow, RequestRow, Rules } from '@walt/core';
 import type { NewEvent, NewMessage, NewQuote, NewRequest, NewVersion, RedeemResult, Store } from './types.js';
 
 const NUM_COLS = new Set(['confidence', 'cost_usd', 'amount_usd', 'telegram_chat_id']);

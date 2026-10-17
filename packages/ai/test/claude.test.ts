@@ -1,5 +1,5 @@
-import { buildInventory, type Usage } from '@dale/core';
-import { bakeryConfig, bakeryContent } from '@dale/core/fixtures';
+import { buildInventory, type Usage } from '@walt/core';
+import { bakeryConfig, bakeryContent } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import {
   bedrockModelId,

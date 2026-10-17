@@ -1,5 +1,5 @@
-import { SEED_IDS, type ProjectRow } from '@dale/core';
-import { bakeryConfig, bakeryContent } from '@dale/core/fixtures';
+import { SEED_IDS, type ProjectRow } from '@walt/core';
+import { bakeryConfig, bakeryContent } from '@walt/core/fixtures';
 import type { Context } from 'grammy';
 import { describe, expect, it } from 'vitest';
 import { keyboard, toIncoming } from '../src/channel/telegram.js';
@@ -9,7 +9,7 @@ import { GitHubSiteRepo, serializeContent } from '../src/site/repo.js';
 
 const project: ProjectRow = {
   id: SEED_IDS.project, factory_id: SEED_IDS.agency, name: 'P', client_name: 'Mabel', repo_owner: 'o', repo_name: 'r',
-  default_branch: 'main', mode: 'contenido', config_path: 'dale.config.json', site_url: null, created_at: '',
+  default_branch: 'main', mode: 'contenido', config_path: 'walt.config.json', site_url: null, created_at: '',
 };
 
 describe('Telegram', () => {
@@ -41,7 +41,7 @@ describe('GitHub (octokit simulado)', () => {
     const calls: { op: string; args: Record<string, unknown> }[] = [];
     let conflict = !!opts.conflictOnce;
     const files: Record<string, string> = {
-      'dale.config.json': JSON.stringify(bakeryConfig()),
+      'walt.config.json': JSON.stringify(bakeryConfig()),
       'content/site.schema.json': '{"type":"object"}',
       'content/site.json': JSON.stringify(bakeryContent()),
     };
@@ -70,10 +70,10 @@ describe('GitHub (octokit simulado)', () => {
     const { config, schema } = await repo.loadContract(project);
     expect(config.content).toBe('content/site.json');
     expect(schema).toEqual({ type: 'object' });
-    const sha = await repo.commitContent(project, config, { a: 1 }, 'dale: algo (#ABC)');
+    const sha = await repo.commitContent(project, config, { a: 1 }, 'walt: algo (#ABC)');
     expect(sha).toBe('c0ffee');
     const put = o.calls.find((c) => c.op === 'put')!.args;
-    expect(put).toMatchObject({ owner: 'o', repo: 'r', path: 'content/site.json', branch: 'main', message: 'dale: algo (#ABC)', sha: 'sha-content/site.json' });
+    expect(put).toMatchObject({ owner: 'o', repo: 'r', path: 'content/site.json', branch: 'main', message: 'walt: algo (#ABC)', sha: 'sha-content/site.json' });
     expect(Buffer.from(put.content as string, 'base64').toString()).toBe(serializeContent({ a: 1 }));
   });
   it('reintenta una vez si el archivo cambió en el medio', async () => {

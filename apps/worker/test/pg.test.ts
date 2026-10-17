@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { createFakeProvider } from '@dale/ai';
-import { assistantName, copy, DEFAULT_RULES, SEED_IDS } from '@dale/core';
-import { bakeryContent } from '@dale/core/fixtures';
+import { createFakeProvider } from '@walt/ai';
+import { assistantName, copy, DEFAULT_RULES, SEED_IDS } from '@walt/core';
+import { bakeryContent } from '@walt/core/fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { noScreenshots } from '../src/capture.js';
 import { ConsoleChannel } from '../src/channel/console.js';
@@ -37,7 +37,7 @@ describe('PgStore sobre la migración real (PGlite)', () => {
     for (const f of readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
     await pg.query('insert into factories (id, name, assistant_name) values ($1, $2, $3)', [SEED_IDS.agency, 'Estudio Faro', assistantName('Estudio Faro')]);
     await pg.query(
-      `insert into projects (id, factory_id, name, client_name, repo_owner, repo_name, site_url) values ($1, $2, 'Panadería Mabel', 'Mabel', 'salvasecco', 'dale-demo', 'https://sitio.example')`,
+      `insert into projects (id, factory_id, name, client_name, repo_owner, repo_name, site_url) values ($1, $2, 'Panadería Mabel', 'Mabel', 'salvasecco', 'walt-demo', 'https://sitio.example')`,
       [SEED_IDS.project, SEED_IDS.agency],
     );
     await pg.query('insert into rules (project_id, version, policies, limits) values ($1, 1, $2::jsonb, $3::jsonb)', [

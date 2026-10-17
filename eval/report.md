@@ -1,4 +1,4 @@
-# Evaluación de Dale
+# Evaluación de Walt
 
 - Fecha: 2026-10-17T18:05:56.250Z
 - Proveedor: **fake**, modelo `fake (intérprete por reglas)`

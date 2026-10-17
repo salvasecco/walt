@@ -5,7 +5,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
-import { loadEnv, redact, type DaleEnv } from '@dale/core';
+import { loadEnv, redact, type WaltEnv } from '@walt/core';
 import { connect, schemaStatus } from './lib/db.js';
 
 const run = promisify(execFile);
@@ -29,7 +29,7 @@ async function getJson(url: string, headers: Record<string, string>): Promise<{ 
   return { status: res.status, body };
 }
 
-async function checkTelegram(env: DaleEnv): Promise<Row> {
+async function checkTelegram(env: WaltEnv): Promise<Row> {
   const name = 'Telegram (getMe)';
   if (!env.TELEGRAM_BOT_TOKEN) return { name, ok: false, detail: 'falta TELEGRAM_BOT_TOKEN' };
   const { body } = await getJson(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getMe`, {});
@@ -38,7 +38,7 @@ async function checkTelegram(env: DaleEnv): Promise<Row> {
   return { name, ok: same, detail: same ? `@${body.result.username}, modo ${env.TELEGRAM_MODE}` : 'TELEGRAM_BOT_USERNAME no coincide con el bot' };
 }
 
-async function checkSupabaseApi(env: DaleEnv): Promise<Row> {
+async function checkSupabaseApi(env: WaltEnv): Promise<Row> {
   const name = 'Supabase (select con service role)';
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     return { name, ok: false, detail: 'falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY' };
@@ -53,7 +53,7 @@ async function checkSupabaseApi(env: DaleEnv): Promise<Row> {
   return { name, ok: false, detail: `HTTP ${status}` };
 }
 
-async function checkSupabaseAnon(env: DaleEnv): Promise<Row> {
+async function checkSupabaseAnon(env: WaltEnv): Promise<Row> {
   const name = 'Supabase (clave anon)';
   if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return { name, ok: false, detail: 'falta SUPABASE_ANON_KEY' };
   const { status } = await getJson(`${env.SUPABASE_URL}/rest/v1/projects?select=id&limit=1`, {
@@ -63,7 +63,7 @@ async function checkSupabaseAnon(env: DaleEnv): Promise<Row> {
   return { name, ok: status === 200, detail: status === 200 ? 'lee projects' : `HTTP ${status}` };
 }
 
-async function checkSchema(env: DaleEnv): Promise<Row> {
+async function checkSchema(env: WaltEnv): Promise<Row> {
   const name = 'Migraciones (vía REST)';
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return { name, ok: false, detail: 'falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY' };
   const s = await schemaStatus(connect(env), env);
@@ -72,10 +72,10 @@ async function checkSchema(env: DaleEnv): Promise<Row> {
   return { name, ok: true, detail: '0001 y 0002 aplicadas' };
 }
 
-async function checkGithub(env: DaleEnv): Promise<Row> {
+async function checkGithub(env: WaltEnv): Promise<Row> {
   const name = `GitHub (usuario y acceso a ${env.DEMO_REPO})`;
   if (!env.GITHUB_TOKEN) return { name, ok: false, detail: `falta GITHUB_TOKEN (modo ${env.GITHUB_MODE})` };
-  const headers = { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'dale-check' };
+  const headers = { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'walt-check' };
   const user = await getJson('https://api.github.com/user', headers);
   if (user.status !== 200) return { name, ok: false, detail: `el token no es válido (HTTP ${user.status})` };
   const repo = await getJson(`https://api.github.com/repos/${env.DEMO_REPO}`, headers);
@@ -84,7 +84,7 @@ async function checkGithub(env: DaleEnv): Promise<Row> {
   return { name, ok: push !== false, detail: `${user.body.login}${push === false ? ', sin permiso de escritura' : ', con escritura'}` };
 }
 
-async function checkModel(env: DaleEnv): Promise<Row> {
+async function checkModel(env: WaltEnv): Promise<Row> {
   const name = `Modelo (${env.LLM_PROVIDER})`;
   if (env.LLM_PROVIDER === 'fake') return { name, ok: false, detail: 'proveedor falso: la demo necesita el modelo real' };
   if (env.LLM_PROVIDER === 'bedrock') {
@@ -110,7 +110,7 @@ async function checkVercel(): Promise<Row> {
   }
 }
 
-function checkPresent(env: DaleEnv): Row[] {
+function checkPresent(env: WaltEnv): Row[] {
   return [
     { name: 'Panel (PANEL_PASSWORD)', ok: !!env.PANEL_PASSWORD, detail: env.PANEL_PASSWORD ? 'definida' : 'falta' },
     { name: 'Sitio demo (DEMO_SITE_URL)', ok: !!env.DEMO_SITE_URL, detail: env.DEMO_SITE_URL ? 'definida' : 'falta: se usa http://localhost:3001' },

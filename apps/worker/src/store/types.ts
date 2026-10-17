@@ -15,7 +15,7 @@ import type {
   Role,
   Rules,
   Via,
-} from '@dale/core';
+} from '@walt/core';
 
 export type NewRequest = Pick<RequestRow, 'short_id' | 'project_id' | 'contact_id' | 'raw_text'> &
   Partial<Pick<RequestRow, 'status' | 'parent_request_id'>>;

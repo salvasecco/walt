@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { NotConfigured } from "@/components/not-configured";
-import { Notice, PageHeader, SampleBadge } from "@/components/ui-dale";
+import { Notice, PageHeader, SampleBadge } from "@/components/ui-walt";
 import { getAttention, type AttentionData } from "@/lib/agency";
 import { NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";

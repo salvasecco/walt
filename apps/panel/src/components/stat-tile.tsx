@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Surface } from "@/components/ui-dale";
+import { Surface } from "@/components/ui-walt";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -63,8 +63,8 @@ function Sparkline({ data, label }: { data: number[]; label?: string }) {
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="hidden shrink-0 sm:block" role="img" aria-label={label}>
       {label && <title>{label}</title>}
-      <polyline points={pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} fill="none" stroke="var(--dale-faint)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r={2.5} fill="var(--dale-info)" stroke="var(--dale-surface)" strokeWidth={1.5} />
+      <polyline points={pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} fill="none" stroke="var(--walt-faint)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lx} cy={ly} r={2.5} fill="var(--walt-info)" stroke="var(--walt-surface)" strokeWidth={1.5} />
     </svg>
   );
 }

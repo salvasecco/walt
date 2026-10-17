@@ -1,6 +1,6 @@
 
 /**
- * Entorno del panel. En local, next.config.ts carga ~/.dale/.env antes de arrancar.
+ * Entorno del panel. En local, next.config.ts carga ~/.walt/.env antes de arrancar.
  * Nunca se imprime ningún valor.
  */
 const read = (...keys: string[]) => {

@@ -5,7 +5,7 @@ import { Check, Eye, Receipt, Send } from "lucide-react";
 import { LayoutGroup, MotionConfig, motion } from "framer-motion";
 import { CommandButton } from "@/components/command-button";
 import { buttonVariants } from "@/components/ui/button";
-import { Chip, DotLabel, IdTag, StatusChip } from "@/components/ui-dale";
+import { Chip, DotLabel, IdTag, StatusChip } from "@/components/ui-walt";
 import type { AttentionCard } from "@/lib/agency";
 import { COLUMNS, COLUMN_LABEL, KIND_LABEL, type AttItem, type Column } from "@/lib/attention";
 import { dateTime, relative, type Tone } from "@/lib/labels";
@@ -16,7 +16,7 @@ const COLUMN_TONE: Record<Column, Tone> = { te_necesita: "danger", esperando_cli
 const COLUMN_HINT: Record<Column, string> = {
   te_necesita: "Esperan algo tuyo: aprobar, presupuestar o revisar.",
   esperando_cliente: "La pelota la tiene el cliente.",
-  en_curso: "Dale está trabajando.",
+  en_curso: "Walt está trabajando.",
   al_dia: "Nada pendiente.",
 };
 

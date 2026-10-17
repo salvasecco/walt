@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Copia las variables del panel desde ~/.dale/.env al proyecto dale-panel de Vercel, sin imprimir valores,
-# y vuelve a publicar. Correr desde la raíz del repo (con .vercel enlazado a dale-panel):
+# Copia las variables del panel desde ~/.walt/.env al proyecto walt-panel de Vercel, sin imprimir valores,
+# y vuelve a publicar. Correr desde la raíz del repo (con .vercel enlazado a walt-panel):
 #   bash apps/panel/scripts/sync-vercel-env.sh
 set -euo pipefail
-ENV_FILE="${HOME}/.dale/.env"
+ENV_FILE="${HOME}/.walt/.env"
 KEYS=(SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PANEL_PASSWORD GITHUB_TOKEN TELEGRAM_BOT_USERNAME DEMO_AGENCY_NAME DEMO_SITE_URL)
-[ -d .vercel ] || vercel link --yes --project dale-panel >/dev/null
+[ -d .vercel ] || vercel link --yes --project walt-panel >/dev/null
 rm -f .env.local
 missing=()
 for k in "${KEYS[@]}"; do
@@ -17,4 +17,4 @@ for k in "${KEYS[@]}"; do
   echo "ok  $k"
 done
 [ ${#missing[@]} -gt 0 ] && echo "faltan: ${missing[*]}"
-vercel deploy --prod --yes >/dev/null && echo "publicado: https://dale-panel.vercel.app"
+vercel deploy --prod --yes >/dev/null && echo "publicado: https://walt-panel.vercel.app"

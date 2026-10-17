@@ -3,7 +3,7 @@ import Link from "next/link";
 import { History, Search } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
 import { buttonVariants } from "@/components/ui/button";
-import { CategoryChip, EmptyState, Surface, Mono, PageHeader, SampleBadge, StatusChip } from "@/components/ui-dale";
+import { CategoryChip, EmptyState, Surface, Mono, PageHeader, SampleBadge, StatusChip } from "@/components/ui-walt";
 import { getRequests, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { CATEGORY_LABEL, STATUS_LABEL, dateTime } from "@/lib/labels";

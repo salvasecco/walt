@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BANNER_FIELDS, DAYS, getProducts, type DaleConfig } from './config.ts';
+import { BANNER_FIELDS, DAYS, getProducts, type WaltConfig } from './config.ts';
 import { deepClone, deepEqual, getPointer, hasPointer, joinPointer, removePointer, setPointer } from './pointer.ts';
 
 const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -151,7 +151,7 @@ class Recorder {
   }
 }
 
-function productIndex(config: DaleConfig, content: unknown, productId: string): number {
+function productIndex(config: WaltConfig, content: unknown, productId: string): number {
   const p = config.products;
   if (!p) throw new OpValidationError('Este sitio no tiene productos');
   const idx = getProducts(config, content).findIndex((x) => x[p.id] === productId);
@@ -159,7 +159,7 @@ function productIndex(config: DaleConfig, content: unknown, productId: string): 
   return idx;
 }
 
-function productPointer(config: DaleConfig, index: number, field: string): string {
+function productPointer(config: WaltConfig, index: number, field: string): string {
   return `${config.products!.path}${joinPointer(index, field)}`;
 }
 
@@ -167,7 +167,7 @@ function productPointer(config: DaleConfig, index: number, field: string): strin
  * Applies typed operations to a copy of the content. Never mutates the input.
  * Unknown product ids, paths, tokens or sections throw `OpValidationError`.
  */
-export function applyOps(content: unknown, ops: Op[], config: DaleConfig): { content: unknown; changes: Change[] } {
+export function applyOps(content: unknown, ops: Op[], config: WaltConfig): { content: unknown; changes: Change[] } {
   const rec = new Recorder(deepClone(content));
   for (const raw of ops) {
     const parsed = OpSchema.safeParse(raw);

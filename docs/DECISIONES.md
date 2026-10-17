@@ -1,6 +1,6 @@
 # Decisiones
 
-- La carpeta del repo `dale` es `~/orca/projects/walt`; `dale-demo` es la carpeta hermana `~/orca/projects/dale-demo`.
+- La carpeta del repo `walt` es `~/orca/projects/walt`; `walt-demo` es la carpeta hermana `~/orca/projects/walt-demo`.
 - Las sesiones corren como subagentes orquestados desde una sesión principal. En vez de SendMessage a la 90, informan con commits + push de su rama, su fila de `docs/ESTADO.md` y su reporte final; la 90 hace los merges.
 - Worktrees de las sesiones en `~/orca/projects/walt-worktrees/<nombre>`, rama `<nombre>`.
 - Push siempre por HTTPS: por SSH se cuelga.
@@ -8,9 +8,9 @@
 - Paquetes sin build: `exports` apunta a `src/*.ts`; los scripts corren con `tsx` y `tsc` solo chequea tipos (`noEmit`).
 - TypeScript 5.9 (no 7) por compatibilidad con Next.js y el resto de las herramientas. zod 4 (trae `z.toJSONSchema`).
 - `pnpm` 12 pide aprobar scripts de instalación: `allowBuilds: { esbuild: true }` en `pnpm-workspace.yaml`.
-- `loadEnv()`: orden `~/.dale/.env` → `.env` local → `process.env` (gana el último), vacío = no definido. Así CI y comandos puntuales pueden forzar modos falsos con variables.
+- `loadEnv()`: orden `~/.walt/.env` → `.env` local → `process.env` (gana el último), vacío = no definido. Así CI y comandos puntuales pueden forzar modos falsos con variables.
 - `loadEnv({ fallbackToFake: true })` baja a modo falso los modos sin credenciales en vez de fallar; `requireCredentials()` es la versión estricta.
-- `@dale/core` es para Node; `@dale/core/browser` es el subconjunto sin `node:` para el panel en el navegador.
+- `@walt/core` es para Node; `@walt/core/browser` es el subconjunto sin `node:` para el panel en el navegador.
 - Secretos para el gate: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL, GITHUB_TOKEN, ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY y PANEL_PASSWORD, si tienen 8 caracteres o más.
 - Una operación con forma inválida o que referencia algo que no existe (producto, ruta, color, sección, día) da gate `bloqueado` con la razón: nunca se ignora ni se aplica a medias.
 - `adjust_prices` exige exactamente un filtro (`all`, `category` o `productIds`) y falla si algún precio quedaría en 0 o negativo, en vez de recortarlo.
@@ -37,34 +37,34 @@
 - `demo:reset` borra pedidos, mensajes, comandos, versiones y reglas del proyecto, y vuelve a crear reglas v1 y la versión viva del fixture. No toca contactos, invitaciones ni el repo del sitio.
 - `check-env` prueba el modelo con `models.retrieve` (no gasta tokens). Con Bedrock solo verifica que estén las credenciales.
 - `apps/worker/src/dry-run.ts` es una versión mínima (interpretar → gate → decidir sobre el fixture, sin base) para que `pnpm dry-run` ande desde el día uno; 01 lo reemplaza por el pipeline real.
-- `@dale/ai` trae la interfaz y el proveedor `fake`; `anthropic` y `bedrock` tiran "no implementado" hasta que los haga 01.
-- `content/site.schema.json` del sitio (generado desde su zod) es más permisivo que el fixture de core (descuento hasta 100, textos sin tope): todo lo que pasa el gate lo acepta el sitio. `site.json` y `dale.config.json` son iguales en los dos repos.
+- `@walt/ai` trae la interfaz y el proveedor `fake`; `anthropic` y `bedrock` tiran "no implementado" hasta que los haga 01.
+- `content/site.schema.json` del sitio (generado desde su zod) es más permisivo que el fixture de core (descuento hasta 100, textos sin tope): todo lo que pasa el gate lo acepta el sitio. `site.json` y `walt.config.json` son iguales en los dos repos.
 - `scripts/run-worker.sh` reinicia el worker si se cae (espera 2 s, hasta 30 s si muere enseguida) y guarda todo en `logs/worker.log` (ignorado por git).
 - `demo:reset` con `GITHUB_MODE=real` también commitea el fixture en `content/site.json` del repo del sitio si difiere (`--keep-repo` lo evita), para que el historial de git coincida con la versión viva.
-- `@dale/agent`: las cuatro funciones del SPEC leen `loadEnv()` y aceptan un último argumento opcional con dependencias (`host`, `runner`) para pruebas y para el worker. `runCodeChangeWith`/`mergeChangeWith`/`revertChangeWith`/`findPreviewUrlWith` son las versiones explícitas.
-- `@dale/agent` con `GITHUB_MODE=fake` usa `LocalHost`: repos bare y PRs en JSON en `$TMPDIR/dale-fake-github/<owner>/<repo>.git`.
+- `@walt/agent`: las cuatro funciones del SPEC leen `loadEnv()` y aceptan un último argumento opcional con dependencias (`host`, `runner`) para pruebas y para el worker. `runCodeChangeWith`/`mergeChangeWith`/`revertChangeWith`/`findPreviewUrlWith` son las versiones explícitas.
+- `@walt/agent` con `GITHUB_MODE=fake` usa `LocalHost`: repos bare y PRs en JSON en `$TMPDIR/walt-fake-github/<owner>/<repo>.git`.
 - Hook del agente: resuelve la ruta contra el clon (nunca contra el cwd del proceso), hace `lstat` de cada componente y niega cualquier symlink; además `realpath` del ancestro existente. Los protegidos se comparan sin distinguir mayúsculas. Se niega leer y escribir protegidos, y `.git/**` siempre. Glob/Grep: sin patrones absolutos ni `..`.
 - Protegidos por defecto, además de los del SPEC: `**/*.lock`, `**/.github/**`, `**/middleware.*`, `**/proxy.*`, `vercel.json`, `.npmrc`, `.claude/**`, y archivos que corren código al instalar o compilar: `.yarnrc*`, `pnpm-workspace.yaml`, `.babelrc*`, `babel.config.*`, `instrumentation.*`, `.gitattributes` y `.gitmodules`.
 - El agente corre con `settingSources: []` (no carga hooks ni settings del repo clonado), `permissionMode: 'dontAsk'`, solo Read/Edit/Write/Glob/Grep, 40 turnos, y `env` mínimo: PATH, HOME y TMPDIR temporales y las variables del proveedor. En Bedrock, `CLAUDE_CODE_USE_BEDROCK=1` y el modelo con prefijo `anthropic.`.
 - git corre con config aislada (`GIT_CONFIG_GLOBAL=/dev/null`, sin hooks) y el token va como header `http.extraheader` por variables `GIT_CONFIG_*`: nunca en la URL ni en `.git/config`.
 - Revisión del diff: solo cuentan las líneas agregadas. Además del SPEC rechaza `new Function(`, variantes de `process.env` (`node:process`, `process?.env`, desestructurado, `Reflect.get`), `child_` armado por partes, `import()` con argumento no literal, `createElement('script')`, binarios, symlinks nuevos, rutas con `..`, más de 30 archivos y un diff vacío.
-- Revert de código: clon de la rama principal, `git revert` del squash (con `-m 1` si fuera un merge con dos padres) y commit `dale: revert #{short_id}`.
+- Revert de código: clon de la rama principal, `git revert` del squash (con `-m 1` si fuera un merge con dos padres) y commit `walt: revert #{short_id}`.
 - Vista previa: primero los deployments de GitHub del commit (estado success, `environment_url` https); si no, statuses con link a `*.vercel.app`. Sondeo cada 10 s hasta 4 min.
-- `@dale/core` importa sus módulos con extensión `.ts` (no `.js`): Turbopack y webpack de Next no mapean `.js`→`.ts` en un paquete transpilado. El panel necesita `allowImportingTsExtensions` en su tsconfig.
+- `@walt/core` importa sus módulos con extensión `.ts` (no `.js`): Turbopack y webpack de Next no mapean `.js`→`.ts` en un paquete transpilado. El panel necesita `allowImportingTsExtensions` en su tsconfig.
 
 ## 02-panel
 
 - Next.js 16.4 (App Router, Turbopack) con Tailwind 4 y shadcn/ui (estilo base-nova, Base UI). Sin Cache Components: el panel es todo datos en vivo, así que el layout del panel va con `dynamic = "force-dynamic"`.
-- Tema único oscuro (no hay modo claro): es un centro de control y se proyecta. Tokens en `globals.css` (`--dale-*`).
+- Tema único oscuro (no hay modo claro): es un centro de control y se proyecta. Tokens en `globals.css` (`--walt-*`).
 - Sistema visual sobrio (oct. 2026, reemplaza la estética neón): paleta neutral con superficies planas (`surface`, `surface-2`, `surface-3`) y bordes de 1px (`line`, `line-strong`), sin glow, sombras de color, gradientes, blur ni grilla de fondo. El color es solo semántico y en poca superficie (`ok` verde, `warn` ámbar, `danger` rojo, `info` azul para consulta/en curso, `code` violeta para el carril de código), en badges chicos; el estado del pedido va en neutro con un punto de color. Primario verde plano. Números y títulos en sans con `tabular-nums`; monospace solo para ids, costos técnicos y tiempos de logs. KPIs planos (`StatTile`) con sparkline en SVG propio solo con datos reales (sin deltas inventados); recorrido como stepper compacto; motion de 150–250 ms sin rebotes.
-- Del paquete `@dale/core` el panel importa solo **tipos** (`import type` desde `@dale/core/browser`). El código de core usa imports con `.js` que Turbopack no resuelve a `.ts`; las constantes (categorías, estados, tipos de operación, ids del seed) se repiten en `apps/panel/src/lib/types.ts` atadas con `satisfies` a los tipos de core.
-- Entrada: cookie `dale_panel` = `v1.<exp>.<hmac-sha256>` con clave derivada de `PANEL_PASSWORD` (cambiar la contraseña invalida las sesiones), 7 días, httpOnly. El `proxy.ts` la verifica y cada acción de servidor la vuelve a verificar. Sin `PANEL_PASSWORD`: abierto en desarrollo, cerrado en producción.
-- `next.config.ts` carga `~/.dale/.env` en local (solo completa variables que falten; en Vercel no). El panel lee `SUPABASE_URL`/`SUPABASE_ANON_KEY` del servidor y se las pasa al navegador para realtime: no hace falta `NEXT_PUBLIC_*` (se aceptan igual).
+- Del paquete `@walt/core` el panel importa solo **tipos** (`import type` desde `@walt/core/browser`). El código de core usa imports con `.js` que Turbopack no resuelve a `.ts`; las constantes (categorías, estados, tipos de operación, ids del seed) se repiten en `apps/panel/src/lib/types.ts` atadas con `satisfies` a los tipos de core.
+- Entrada: cookie `walt_panel` = `v1.<exp>.<hmac-sha256>` con clave derivada de `PANEL_PASSWORD` (cambiar la contraseña invalida las sesiones), 7 días, httpOnly. El `proxy.ts` la verifica y cada acción de servidor la vuelve a verificar. Sin `PANEL_PASSWORD`: abierto en desarrollo, cerrado en producción.
+- `next.config.ts` carga `~/.walt/.env` en local (solo completa variables que falten; en Vercel no). El panel lee `SUPABASE_URL`/`SUPABASE_ANON_KEY` del servidor y se las pasa al navegador para realtime: no hace falta `NEXT_PUBLIC_*` (se aceptan igual).
 - Lecturas del panel del lado del servidor con service role; realtime en el navegador con anon (requests, events, messages, content_versions).
 - Datos de ejemplo: solo si no hay Supabase y `NODE_ENV !== production`, con la etiqueta "datos de ejemplo" visible en todas las pantallas. En producción sin Supabase se muestra "Falta conectar la base". En En vivo, con datos de ejemplo, una simulación reproduce un pedido paso a paso para ver el recorrido.
 - Acciones → `commands`: aprobar, rechazar, publicar (agente listo), revertir, reintentar_commit (`payload.version_id`), enviar_presupuesto (`payload.quote_id`). Todas llevan `payload.via = "panel"` y `actor = "agencia"`.
 - Escrituras directas que no son comandos (no hay tipo de comando para ellas): guardar reglas inserta en `rules` (versión = última + 1, reintenta ante choque de unique); conectar un repo inserta en `projects` + reglas v1 por defecto; las invitaciones insertan en `invites` (5 usos, 7 días, cliente y agencia); editar un presupuesto hace update en `quotes` y "Enviar al cliente" además inserta `enviar_presupuesto`.
-- Conectar un repo: la prueba corre en el servidor contra la API de GitHub con `GITHUB_TOKEN` (sin token, solo repos públicos, y se avisa). Modo contenido si `dale.config.json` existe en la rama y tiene `version: 1` y `content`; si no, modo código. El nuevo proyecto va a la primera factory (o la del seed).
+- Conectar un repo: la prueba corre en el servidor contra la API de GitHub con `GITHUB_TOKEN` (sin token, solo repos públicos, y se avisa). Modo contenido si `walt.config.json` existe en la rama y tiene `version: 1` y `content`; si no, modo código. El nuevo proyecto va a la primera factory (o la del seed).
 - QR de invitación: SVG generado en el servidor con `qrcode`, link `https://t.me/{TELEGRAM_BOT_USERNAME}?start={token}`.
 - Captura en Aprobaciones: si algún mensaje del pedido trae `media.url` se muestra esa imagen; si no, el sitio en un iframe con `?preview=<draft_version_id>`; si no hay URL del sitio, un render mínimo del contenido con los cambios aplicados.
 - La URL del sitio de un proyecto es `projects.site_url`; para el proyecto del seed, si está vacía, `DEMO_SITE_URL`.
@@ -79,10 +79,10 @@
 - Eval: "fueron a la agencia" = categoría riesgoso. "Cambios prohibidos aplicados" = texto del cliente con código que no terminó bloqueado, o un cambio que se aplicaría (permitido, o riesgoso de contenido tras aprobar) fuera del inventario o con texto que no pasa `checkText`. `pnpm eval` sale con código 3 si es mayor que 0.
 - Eval: una falla o timeout del modelo (60 s por caso) cuenta como derivado, igual que en el worker. Si no hay credenciales del modelo corre con el proveedor falso y el reporte lo dice arriba; `--provider anthropic` fuerza el real.
 - Eval: además de los 30 sintéticos hay `cases/inyecciones.jsonl` con 10 inyecciones extra, también sintéticas, reportadas aparte.
-- Vistas previas de las ramas `dale/*` del agente (90): se dejan buildear en Vercel porque la agencia las necesita para revisar. Verificado: el proyecto `dale-demo` en Vercel solo tiene `DALE_PROJECT_ID` y, al conectar Supabase, `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` (públicas, la anon solo lee por RLS); ningún secreto del lado del servidor. Regla: nunca cargar secretos en el entorno Preview de un repo conectado al carril de código. Para repos de terceros con secretos en Preview, queda pendiente apagar los builds de `dale/*` hasta la aprobación (Ignored Build Step de Vercel). La revisión del diff del agente ayuda pero no es una frontera dura: la frontera es que la agencia aprueba antes del merge.
+- Vistas previas de las ramas `walt/*` del agente (90): se dejan buildear en Vercel porque la agencia las necesita para revisar. Verificado: el proyecto `walt-demo` en Vercel solo tiene `WALT_PROJECT_ID` y, al conectar Supabase, `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` (públicas, la anon solo lee por RLS); ningún secreto del lado del servidor. Regla: nunca cargar secretos en el entorno Preview de un repo conectado al carril de código. Para repos de terceros con secretos en Preview, queda pendiente apagar los builds de `walt/*` hasta la aprobación (Ignored Build Step de Vercel). La revisión del diff del agente ayuda pero no es una frontera dura: la frontera es que la agencia aprueba antes del merge.
 ## 01-worker
 
-- `@dale/ai`: un transporte común (Messages API) para `anthropic` (SDK `@anthropic-ai/sdk`, `client.beta.messages.create` con `fallbacks: 'default'` y beta `server-side-fallback-2026-07-01`) y `bedrock` (`AnthropicBedrockMantle` de `@anthropic-ai/bedrock-sdk`, id con prefijo `anthropic.`). Salida estructurada con `output_config.format` + `interpretationJsonSchema`, revalidada con `InterpretationSchema`; un reintento si no valida; un rechazo (`stop_reason: refusal`) no se reintenta y termina en derivado.
+- `@walt/ai`: un transporte común (Messages API) para `anthropic` (SDK `@anthropic-ai/sdk`, `client.beta.messages.create` con `fallbacks: 'default'` y beta `server-side-fallback-2026-07-01`) y `bedrock` (`AnthropicBedrockMantle` de `@anthropic-ai/bedrock-sdk`, id con prefijo `anthropic.`). Salida estructurada con `output_config.format` + `interpretationJsonSchema`, revalidada con `InterpretationSchema`; un reintento si no valida; un rechazo (`stop_reason: refusal`) no se reintenta y termina en derivado.
 - Sin `temperature`: Sonnet 5.5 rechaza valores no default. "Temperatura baja" del SPEC se reemplaza por `effort`: `medium` para interpretar, `low` para consultas y presupuestos. Timeout 45 s por llamada, `maxRetries: 1` en el SDK.
 - El system prompt (estático, en `packages/ai/prompts/*.md`) lleva `cache_control`; el inventario, el historial y el mensaje van en el turno del usuario. El texto del cliente va en `<mensaje_cliente>` (y el historial en `<historial>`), con las etiquetas de cierre neutralizadas.
 - Si el modelo devuelve operaciones en algo que no es `cambio`, se descartan.
@@ -93,13 +93,13 @@
 - Respuestas cortas ("sí", "dale", "no", "volvé atrás") a un pedido abierto no crean pedido nuevo: se guardan como mensaje del pedido abierto y actúan como el botón. Si la IA devuelve `aprobacion`/`revertir`, el pedido queda `charla` y se resuelve el pedido abierto.
 - "No era eso": el borrador queda `descartada`, el pedido `descartado`, y el próximo mensaje del chat crea un pedido con `parent_request_id` (en memoria del proceso).
 - Al publicar se reutiliza el borrador que vio el cliente si se armó sobre la misma versión viva (mismas operaciones, mismo resultado); si la viva cambió, se crea una versión nueva y el borrador se descarta.
-- Si al publicar el gate da `agencia` (cambiaron las reglas entre la vista previa y el "Dale"), el pedido pasa a la agencia en vez de publicarse.
+- Si al publicar el gate da `agencia` (cambiaron las reglas entre la vista previa y el "Walt"), el pedido pasa a la agencia en vez de publicarse.
 - Riesgoso de contenido sin cambios concretos (por ejemplo, poca confianza y sin operaciones) va a derivado: no hay nada que la agencia pueda aprobar.
 - Vuelta atrás: `revertChanges` y después `runGate` sin operaciones sobre el contenido revertido (esquema y seguridad).
 - Carril de código: el `mergeSha` se guarda en `requests.changes` como `{ mergeSha }` (no hay columna) y se usa para el revert. [Descartar] usa `gno:{short}`.
 - Límite por chat: 5 pedidos en 10 minutos cuenta pedidos creados; el sexto recibe "Me mandaste muchos pedidos seguidos…". Cola rápida y lenta de 20 como máximo, concurrencia 1.
 - Captura: Chromium de Playwright reutilizado entre capturas, 390×844 con `deviceScaleFactor: 2`, `networkidle`, 25 s. Sin captura o con `SCREENSHOTS=off` se manda el link de la vista previa.
-- Textos del worker que no están en `@dale/core/copy` (rechazo de la agencia, conflicto al revertir, avisos a la agencia, límite de pedidos) viven en `apps/worker/src/texts.ts` hasta que la 90 los mueva a core.
+- Textos del worker que no están en `@walt/core/copy` (rechazo de la agencia, conflicto al revertir, avisos a la agencia, límite de pedidos) viven en `apps/worker/src/texts.ts` hasta que la 90 los mueva a core.
 - `PANEL_URL` (opcional, `process.env`) agrega el botón "Ver en el panel" a los avisos de la agencia.
 - Fase 2, opciones: si la IA devuelve dos `options` (sin `ops`) y las dos pasan el gate en `auto`, se arman dos borradores con captura y un botón `opt:{short}:{i}` cada uno; elegir aprueba y publica esa opción y descarta la otra. Las opciones se guardan en `requests.gate.options`. Si alguna no pasa en `auto`, sigue el camino normal.
 - Al arrancar, el worker pasa a `derivado` los pedidos que quedaron en recibido, interpretando, cotizando, publicando o agente_trabajando (un reinicio los cortó), con su aviso al cliente y a la agencia: así ningún pedido queda colgado aunque `run-worker.sh` lo reinicie.
@@ -125,7 +125,7 @@
 - Agente: `MODEL_AGENT` por defecto `claude-sonnet-5-5`; si Sonnet tira error, no cambia nada o la revisión rechaza el diff, reintenta con `claude-opus-5-5` desde un clon limpio y con el mismo tiempo total. 15 turnos de tope (medido: 4–6). El resultado trae `timings` por fase, `turns` y `model`.
 - Worker: eventos y mensajes salientes se guardan en una cadena ordenada sin bloquear el pedido; `idle()` la espera y el historial la vacía antes de leer. El commit del JSON va de fondo y en orden. Si el proceso muere sin cerrar, se pueden perder los últimos eventos (no el estado del pedido).
 - `GitHubSiteRepo.loadContract`: caché con refresco de fondo pasados 60 s.
-- Vercel: `ignoreCommand` en dale-demo (solo `content/` o `dale.config.json` → no buildea) y en `apps/panel/vercel.json` (sin cambios en el panel, core ni lockfile → no buildea). `typescript.ignoreBuildErrors` en los dos; tipos y lint en `pnpm typecheck` y CI.
+- Vercel: `ignoreCommand` en walt-demo (solo `content/` o `walt.config.json` → no buildea) y en `apps/panel/vercel.json` (sin cambios en el panel, core ni lockfile → no buildea). `typescript.ignoreBuildErrors` en los dos; tipos y lint en `pnpm typecheck` y CI.
 ## clientes (Atención y Clientes)
 
 - Atención: cada proyecto va a una sola columna por precedencia **Te necesita > En curso > Esperando al cliente > Al día** (las columnas se muestran en el orden Te necesita, Esperando al cliente, En curso, Al día). Lógica pura en `apps/panel/src/lib/attention.ts`, con pruebas.
@@ -142,4 +142,4 @@
 - Seguridad con el worker real: los proyectos de ejemplo no tienen contacto de agencia y su contacto cliente usa chats inexistentes (-1001, -1002); no hay pedidos de ejemplo en estados que el worker toma al arrancar (recibido, interpretando, cotizando, publicando, agente_trabajando). Además, `sendCommand` y "Enviar al cliente" no insertan comandos para pedidos con `is_sample` (avisan "Es un pedido de ejemplo").
 - En vivo excluye los pedidos de ejemplo (es la pantalla de la demo).
 - Sin la migración 0003 el panel sigue andando: Atención usa `projects.client_name` y Clientes avisa que falta la migración y lista los proyectos; el seed saltea los clientes y lo dice.
-- `@dale/panel` ahora tiene `pnpm test` (vitest) para las funciones puras.
+- `@walt/panel` ahora tiene `pnpm test` (vitest) para las funciones puras.
