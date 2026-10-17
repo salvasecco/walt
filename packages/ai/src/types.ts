@@ -10,11 +10,18 @@ export interface InterpretInput {
   now: string;
 }
 
+export interface ConsultaInput {
+  inventory: Inventory;
+  text: string;
+  /** e.g. "el asistente de Estudio Faro". Optional (SPEC §10 signature has only inventory and text). */
+  assistantName?: string;
+}
+
 /** Model provider interface (SPEC §10). */
 export interface AiProvider {
   readonly name: 'anthropic' | 'bedrock' | 'fake';
   interpret(input: InterpretInput): Promise<{ interpretation: Interpretation; usage: Usage }>;
-  answerConsulta(input: { inventory: Inventory; text: string }): Promise<{ answer: string; usage: Usage }>;
+  answerConsulta(input: ConsultaInput): Promise<{ answer: string; usage: Usage }>;
   draftQuote(input: { text: string; pastQuotes: QuoteSummary[] }): Promise<{ quote: QuoteDraft; usage: Usage }>;
   /** Optional: transcribe a voice note. Throws if not configured. */
   transcribe(audio: Buffer, mime: string): Promise<string>;
