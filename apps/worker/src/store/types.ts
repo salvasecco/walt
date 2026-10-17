@@ -74,6 +74,8 @@ export interface Store {
   getRequestByShortId(shortId: string): Promise<RequestRow | null>;
   /** Latest request of the contact in one of the statuses. */
   latestRequestOfContact(contactId: string, statuses: RequestStatus[]): Promise<RequestRow | null>;
+  /** Requests in any of the statuses, oldest first (used to recover the ones a restart left mid-way). */
+  requestsWithStatus(statuses: RequestStatus[]): Promise<RequestRow[]>;
   countRequestsSince(contactId: string, sinceIso: string): Promise<number>;
   /** Automatic (permitido) changes published this month for the project. */
   countAutoPublishedSince(projectId: string, sinceIso: string): Promise<number>;

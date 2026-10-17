@@ -220,6 +220,17 @@ describe('fuera de alcance, consulta, bloqueado y derivado', () => {
     expect(h.store.events.some((e) => e.step === 'interpretado' && e.status === 'falla')).toBe(true);
   });
 
+  it('al arrancar, un pedido cortado por un reinicio pasa a derivado y nadie queda esperando', async () => {
+    const h = await harness();
+    const cut = await h.store.createRequest({ short_id: 'CUT234', project_id: SEED_IDS.project, contact_id: h.client.id, raw_text: 'subí el pan flauta a 95' });
+    await h.store.updateRequest(cut.id, { status: 'interpretando' });
+    expect(await h.worker.recoverInterrupted()).toBe(1);
+    expect((await h.store.getRequest(cut.id))!.status).toBe('derivado');
+    expect(h.last()).toBe(copy.derivado());
+    expect(h.last(AGENCY_CHAT)).toMatch(/No pude resolver solo el pedido #CUT234/);
+    expect(await h.worker.recoverInterrupted()).toBe(0);
+  });
+
   it('un pedido sin operaciones concretas queda derivado', async () => {
     const h = await harness();
     await h.say('hacé que se vea más lindo');

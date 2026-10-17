@@ -124,6 +124,9 @@ export class PgStore implements Store {
       [contactId, statuses],
     );
   }
+  async requestsWithStatus(statuses: string[]) {
+    return this.many<RequestRow>('select * from requests where status = any($1::text[]) order by created_at', [statuses]);
+  }
   async countRequestsSince(contactId: string, sinceIso: string) {
     const r = await this.one<{ n: number }>('select count(*)::int as n from requests where contact_id = $1 and created_at >= $2', [contactId, sinceIso]);
     return Number(r?.n ?? 0);

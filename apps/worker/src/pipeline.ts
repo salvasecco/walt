@@ -39,6 +39,8 @@ import type { SiteRepo } from './site/repo.js';
 import type { Store } from './store/types.js';
 
 export const TIMEOUTS = { interpret: 45_000, commit: 20_000, agent: 300_000, ai: 45_000 } as const;
+/** Working statuses that only exist while the process is handling the request. */
+export const INTERRUPTIBLE: RequestStatus[] = ['recibido', 'interpretando', 'cotizando', 'publicando', 'agente_trabajando'];
 export const LIMITS = { perChat: 5, windowMs: 10 * 60_000, queueMax: 20, maxText: 2_000 } as const;
 
 export interface AgentLane {
@@ -125,6 +127,16 @@ export class Worker {
 
   private redact(s: string): string {
     return redact(s, this.d.secrets);
+  }
+
+  /**
+   * On startup, nothing is running yet: a request left in a working status was cut by a crash or a
+   * restart. Each one goes to `derivado` with its messages, so no request stays hanging (SPEC §9.9).
+   */
+  async recoverInterrupted(): Promise<number> {
+    const stuck = await this.d.store.requestsWithStatus(INTERRUPTIBLE);
+    for (const r of stuck) await this.derive(r.id, new Error('el worker se reinició mientras lo procesaba'));
+    return stuck.length;
   }
 
   async idle(): Promise<void> {

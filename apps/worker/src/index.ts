@@ -28,6 +28,8 @@ export async function main(): Promise<void> {
   const channel = telegram ?? new ConsoleChannel(log, { [CONSOLE_CHATS.cliente]: 'cliente', [CONSOLE_CHATS.agencia]: 'agencia' });
   const app = await buildApp(env, { channel, log });
   log(`[worker] base: ${app.store.kind}`);
+  const recovered = await app.worker.recoverInterrupted();
+  if (recovered > 0) log(`[worker] ${recovered} pedido(s) cortados por un reinicio pasaron a derivado`);
   app.commands.start();
 
   if (telegram) {

@@ -126,6 +126,9 @@ export class MemoryStore implements Store {
     const list = this.requests.filter((r) => r.contact_id === contactId && statuses.includes(r.status));
     return clone(list.at(-1) ?? null);
   }
+  async requestsWithStatus(statuses: string[]) {
+    return clone(this.requests.filter((r) => statuses.includes(r.status)));
+  }
   async countRequestsSince(contactId: string, sinceIso: string) {
     return this.requests.filter((r) => r.contact_id === contactId && r.created_at >= sinceIso).length;
   }
