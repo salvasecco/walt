@@ -21,6 +21,9 @@ loadDaleEnv();
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // Tipos y lint corren en `pnpm typecheck` y en CI (ci/github-actions.yml), no dentro del build de Vercel (~4 s menos).
+  // Next 16 ya no lintea en `next build`.
+  typescript: { ignoreBuildErrors: true },
   // Panel 100% dinámico (datos en vivo): sin Cache Components. Ver docs/DECISIONES.md.
   turbopack: {
     rules: {
