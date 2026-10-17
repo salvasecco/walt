@@ -119,6 +119,15 @@ export class Worker {
   /** Deploy watches running outside the queues (see `whenLive`). */
   private readonly background = new Set<Promise<unknown>>();
   private readonly awaitingCorrection = new Map<string, string>();
+  /**
+   * Bookkeeping writes (events, outgoing messages) go through an ordered chain instead of blocking
+   * the request: each one is a Supabase round trip (~0.2 s) and nothing downstream reads them back.
+   */
+  private writes: Promise<void> = Promise.resolve();
+  /** Git commits of the content JSON, one at a time and off the request path (the version is already live). */
+  private commits: Promise<unknown> = Promise.resolve();
+  /** Live version id used for a request's draft, so the draft does not read it again. */
+  private readonly liveFor = new Map<string, string | null>();
   private readonly now: () => Date;
   private readonly log: (line: string) => void;
 
@@ -151,6 +160,24 @@ export class Worker {
       if (this.fast.size === 0 && this.slow.size === 0) break;
     }
     await Promise.all([...this.background]);
+    await this.commits;
+    await this.flush();
+  }
+
+  /** Waits until every queued bookkeeping write is saved. */
+  async flush(): Promise<void> {
+    let w: Promise<void>;
+    do {
+      w = this.writes;
+      await w;
+    } while (w !== this.writes);
+  }
+
+  private later(what: string, fn: () => Promise<unknown>): void {
+    this.writes = this.writes.then(fn).then(
+      () => {},
+      (err) => this.log(`[${what}] ${this.redact(errMsg(err))}`),
+    );
   }
 
   // ───────────────────────── entrada ─────────────────────────
@@ -321,24 +348,30 @@ export class Worker {
       await this.runRequest(requestId);
     } catch (err) {
       await this.derive(requestId, err);
+    } finally {
+      this.liveFor.delete(requestId);
     }
   }
 
   private async runRequest(requestId: string): Promise<void> {
     const { store } = this.d;
     let req = (await store.getRequest(requestId))!;
-    const contact = (await store.getContact(req.contact_id!))!;
-    const ctx = await this.ctxFor(req.project_id);
-    req = await store.updateRequest(req.id, { status: 'interpretando' });
-
-    const live = await store.getLiveVersion(req.project_id);
+    // Everything the interpretation needs, read in parallel (each read is a round trip).
+    const [contact, ctx, , live, rulesRow, history, autoPublishedThisMonth] = await Promise.all([
+      store.getContact(req.contact_id!).then((c) => c!),
+      this.ctxFor(req.project_id),
+      store.updateRequest(req.id, { status: 'interpretando' }),
+      store.getLiveVersion(req.project_id),
+      store.latestRules(req.project_id),
+      this.history(req.contact_id!, req.id),
+      store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now())),
+    ]);
     const contract = ctx.project.mode === 'contenido' ? await this.d.repo.loadContract(ctx.project) : null;
     if (ctx.project.mode === 'contenido' && !live) throw new Error('El proyecto no tiene versión viva');
+    this.liveFor.set(req.id, live?.id ?? null);
     const inventory = contract && live ? buildInventory(contract.config, live.content) : EMPTY_INVENTORY;
-    const rulesRow = await store.latestRules(req.project_id);
     const rules: Rules = rulesRow?.rules ?? DEFAULT_RULES;
 
-    const history = await this.history(contact.id, req.id);
     const { interpretation, usage } = await this.step(req, 'interpretado', async () =>
       withTimeout(
         this.d.ai.interpret({
@@ -354,8 +387,10 @@ export class Worker {
       ),
       (r) => ({ resumen: r.interpretation.summary, tipo: r.interpretation.kind, confianza: r.interpretation.confidence, proveedor: this.d.ai.name }),
     );
-    req = await this.addUsage(req, [usage]);
+    const all = [...((req.usage as Usage[] | null) ?? []), usage];
     req = await store.updateRequest(req.id, {
+      usage: all,
+      cost_usd: costUsd(all),
       interpretation,
       ops: interpretation.ops,
       confidence: interpretation.confidence,
@@ -383,7 +418,6 @@ export class Worker {
 
     let gate: GateResult | null = null;
     if (interpretation.kind === 'cambio' && interpretation.ops.length > 0 && contract && live) {
-      const autoPublishedThisMonth = await store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now()));
       gate = await this.step(
         req,
         'gate',
@@ -410,7 +444,6 @@ export class Worker {
       live &&
       !containsCode(req.raw_text)
     ) {
-      const autoPublishedThisMonth = await store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now()));
       const viable = interpretation.options!.slice(0, 2).map((o) => ({
         label: o.label,
         gate: runGate({ config: contract.config, content: live.content, schema: contract.schema, ops: o.ops, rules, secrets: this.d.secrets, autoPublishedThisMonth }),
@@ -456,6 +489,7 @@ export class Worker {
   }
 
   private async history(contactId: string, currentRequestId: string): Promise<Turn[]> {
+    await this.flush();
     const msgs = await this.d.store.recentMessages(contactId, 14);
     return msgs
       .filter((m) => m.text && m.request_id !== currentRequestId)
@@ -466,15 +500,15 @@ export class Worker {
   // ───────────────────────── categorías ─────────────────────────
 
   private async draftAndCapture(req: RequestRow, gate: GateResult, ctx: Ctx): Promise<{ photo: Buffer | null; previewUrl: string }> {
-    const live = await this.d.store.getLiveVersion(req.project_id);
+    const parentId = this.liveFor.has(req.id) ? this.liveFor.get(req.id)! : ((await this.d.store.getLiveVersion(req.project_id))?.id ?? null);
     const draft = await this.step(
       req,
       'borrador',
-      () => this.d.store.createVersion({ project_id: req.project_id, request_id: req.id, parent_id: live?.id ?? null, status: 'borrador', content: gate.content }),
+      () => this.d.store.createVersion({ project_id: req.project_id, request_id: req.id, parent_id: parentId, status: 'borrador', content: gate.content }),
       (v) => ({ version: v.id }),
     );
     const previewUrl = this.previewUrl(ctx.project, draft.id);
-    await this.d.store.updateRequest(req.id, { draft_version_id: draft.id, preview_url: previewUrl });
+    const saved = this.d.store.updateRequest(req.id, { draft_version_id: draft.id, preview_url: previewUrl });
     let photo: Buffer | null = null;
     if (this.d.screenshots.enabled) {
       const t0 = performance.now();
@@ -482,6 +516,7 @@ export class Worker {
       photo = await this.d.screenshots.capture(previewUrl);
       await this.event(req, 'captura', photo ? 'ok' : 'falla', Math.round(performance.now() - t0), photo ? { bytes: photo.length } : { error: 'Sin captura: se manda el link' });
     }
+    await saved;
     return { photo, previewUrl };
   }
 
@@ -790,10 +825,15 @@ export class Worker {
     const t0 = performance.now();
     await this.event(req, 'publicando', 'inicio', null, { actor, via });
 
-    const live = await store.getLiveVersion(req.project_id);
+    const [live, contract, rulesRow, autoPublished, draft] = await Promise.all([
+      store.getLiveVersion(req.project_id),
+      this.d.repo.loadContract(ctx.project),
+      store.latestRules(req.project_id),
+      actor === 'cliente' ? store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now())) : Promise.resolve(0),
+      req.draft_version_id ? store.getVersion(req.draft_version_id) : Promise.resolve(null),
+    ]);
     if (!live) throw new Error('El proyecto no tiene versión viva');
-    const contract = await this.d.repo.loadContract(ctx.project);
-    const rules = (await store.latestRules(req.project_id))?.rules ?? DEFAULT_RULES;
+    const rules = rulesRow?.rules ?? DEFAULT_RULES;
     const ops = (req.ops as Op[] | null) ?? [];
     const gate = runGate({
       config: contract.config,
@@ -802,7 +842,7 @@ export class Worker {
       ops,
       rules,
       secrets: this.d.secrets,
-      autoPublishedThisMonth: actor === 'cliente' ? await store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now())) : 0,
+      autoPublishedThisMonth: autoPublished,
     });
     await this.event(req, 'gate', 'ok', null, { resultado: gate.outcome, razones: gate.reasons, alPublicar: true });
     if (gate.outcome === 'bloqueado') {
@@ -829,7 +869,6 @@ export class Worker {
     }
 
     // Reuse the previewed draft if it was built on this same live version (same ops, same base → same content).
-    const draft = req.draft_version_id ? await store.getVersion(req.draft_version_id) : null;
     let versionId: string;
     if (draft && draft.status === 'borrador' && draft.parent_id === live.id) {
       versionId = draft.id;
@@ -846,7 +885,12 @@ export class Worker {
     await this.sayTo(req.contact_id, req.id, { text: actor === 'agencia' ? copy.aprobadoAgencia(ctx.agencyName) : copy.publicado(), buttons: undo });
     if (actor === 'agencia' && via === 'telegram') await this.notifyAgency(ctx, req.id, { text: copy.agenciaPublicado(req.short_id) });
 
-    await this.commit(req, ctx.project, versionId, `dale: ${summary} (#${req.short_id})`);
+    this.commitLater(req, ctx.project, versionId, `dale: ${summary} (#${req.short_id})`);
+  }
+
+  /** Commits after answering, in order, without holding the queue (SPEC §9.7: the version is already live). */
+  private commitLater(req: RequestRow, project: ProjectRow, versionId: string, message: string): void {
+    this.commits = this.commits.then(() => this.commit(req, project, versionId, message)).catch(() => {});
   }
 
   /** Commit of the content JSON. If it fails the version stays live and `git_error` is saved. */
@@ -891,7 +935,7 @@ export class Worker {
       return;
     }
 
-    const live = await store.getLiveVersion(req.project_id);
+    const [live, contract] = await Promise.all([store.getLiveVersion(req.project_id), this.d.repo.loadContract(ctx.project)]);
     if (!live) throw new Error('El proyecto no tiene versión viva');
     const changes = (req.changes as Change[] | null) ?? [];
     const r = revertChanges(live.content, changes);
@@ -902,7 +946,6 @@ export class Worker {
       return;
     }
     // Gate over the reverted content (schema, security): no operations, only validation.
-    const contract = await this.d.repo.loadContract(ctx.project);
     const gate = runGate({ config: contract.config, content: r.content, schema: contract.schema, ops: [], rules: DEFAULT_RULES, secrets: this.d.secrets });
     if (gate.outcome === 'bloqueado') throw new Error(`El contenido revertido no pasa el gate: ${gate.reasons.join('; ')}`);
     const v = await store.createVersion({ project_id: req.project_id, request_id: req.id, parent_id: live.id, status: 'borrador', content: r.content });
@@ -910,7 +953,7 @@ export class Worker {
     req = await store.updateRequest(req.id, { status: 'revertido', live_version_id: v.id });
     await this.event(req, 'revertido', 'ok', Math.round(performance.now() - t0), { version: v.id });
     await this.sayTo(req.contact_id, req.id, { text: copy.revertido() });
-    await this.commit(req, ctx.project, v.id, `dale: revert #${req.short_id}`);
+    this.commitLater(req, ctx.project, v.id, `dale: revert #${req.short_id}`);
   }
 
   // ───────────────────────── carril de código ─────────────────────────
@@ -1122,13 +1165,13 @@ export class Worker {
     if (msg.photo) media.foto = true;
     if (msg.buttons?.length) media.botones = msg.buttons.flat().map((b) => ('data' in b ? { text: b.text, data: b.data } : { text: b.text, url: b.url }));
     if (error) media.error = error;
-    await this.d.store.addMessage({
+    this.later('mensaje', () => this.d.store.addMessage({
       request_id: requestId,
       contact_id: contact.id,
       direction: 'salida',
       text: msg.text,
       media: Object.keys(media).length ? media : null,
-    });
+    }));
   }
 
   private async sayTo(contactId: string | null, requestId: string, msg: OutMessage): Promise<void> {
@@ -1143,7 +1186,7 @@ export class Worker {
   }
 
   private async event(req: Pick<RequestRow, 'id' | 'short_id'>, step: EventStep, status: 'inicio' | 'ok' | 'falla', durationMs: number | null, detail: unknown): Promise<void> {
-    await this.d.store.addEvent({ request_id: req.id, step, status, detail: detail ?? null, duration_ms: durationMs });
+    this.later('evento', () => this.d.store.addEvent({ request_id: req.id, step, status, detail: detail ?? null, duration_ms: durationMs }));
     this.d.onEvent?.({ requestId: req.id, shortId: req.short_id, step, status, durationMs, detail });
   }
 

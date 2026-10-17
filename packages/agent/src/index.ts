@@ -78,7 +78,7 @@ export async function waitForDeploy(
   host?: CodeHost,
 ): Promise<boolean> {
   const h = host ?? createHost(loadEnv());
-  const pollMs = input.pollMs ?? 5_000;
+  const pollMs = input.pollMs ?? 2_000;
   const deadline = Date.now() + (input.timeoutMs ?? 240_000);
   for (;;) {
     try {

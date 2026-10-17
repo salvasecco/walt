@@ -278,7 +278,7 @@ async function runWithTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms: nu
 export async function findPreviewUrlWith(
   input: { repo: RepoRef; sha: string; prNumber?: number; timeoutMs?: number },
   host: CodeHost,
-  pollMs = 10_000,
+  pollMs = 3_000,
 ): Promise<string | undefined> {
   const deadline = Date.now() + (input.timeoutMs ?? 240_000);
   for (;;) {
