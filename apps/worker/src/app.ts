@@ -73,6 +73,7 @@ export async function buildApp(env: DaleEnv, opts: BuildOptions = {}): Promise<A
   const channel = opts.channel ?? new ConsoleChannel();
   const screenshots =
     opts.screenshots ?? (env.SCREENSHOTS === 'on' ? new PlaywrightScreenshotter(undefined, (m) => log(`[captura] ${m}`)) : noScreenshots);
+  screenshots.warm?.();
   const ai = opts.ai ?? createAi(env);
   const repo = opts.repo ?? (env.GITHUB_MODE === 'real' && env.GITHUB_TOKEN ? new GitHubSiteRepo(env.GITHUB_TOKEN) : new FakeSiteRepo());
   const worker = new Worker({

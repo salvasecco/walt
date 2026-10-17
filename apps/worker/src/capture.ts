@@ -7,6 +7,8 @@ export const CAPTURE_TIMEOUT_MS = 25_000;
 export interface Screenshotter {
   readonly enabled: boolean;
   capture(url: string): Promise<Buffer | null>;
+  /** Optional: start the browser ahead of the first capture. */
+  warm?(): void;
   close(): Promise<void>;
 }
 
@@ -16,24 +18,45 @@ export const noScreenshots: Screenshotter = {
   close: async () => {},
 };
 
-/** Playwright Chromium at 390×844 (SPEC §9), one browser reused across captures. */
+/**
+ * Playwright Chromium at 390×844 (SPEC §9). One browser stays open and is reused: each capture
+ * opens its own context and page and closes them. If the browser dies it is launched again on the
+ * next capture; `close()` shuts it down.
+ */
 export class PlaywrightScreenshotter implements Screenshotter {
   readonly enabled = true;
   private browser: Promise<Browser> | null = null;
+  launches = 0;
 
   constructor(
     private readonly timeoutMs = CAPTURE_TIMEOUT_MS,
     private readonly log: (msg: string) => void = () => {},
+    private readonly launch: () => Promise<Browser> = () => import('playwright').then(({ chromium }) => chromium.launch({ headless: true })),
   ) {}
 
-  private getBrowser(): Promise<Browser> {
-    if (!this.browser) {
-      this.browser = import('playwright').then(({ chromium }) => chromium.launch({ headless: true }));
-      this.browser.catch(() => {
-        this.browser = null;
-      });
+  private async getBrowser(): Promise<Browser> {
+    if (this.browser) {
+      const b = await this.browser.catch(() => null);
+      if (b?.isConnected()) return b;
+      this.browser = null;
     }
-    return this.browser;
+    this.launches++;
+    const p = this.launch();
+    this.browser = p;
+    p.then(
+      (b) =>
+        b.on('disconnected', () => {
+          if (this.browser === p) this.browser = null;
+        }),
+      () => {
+        if (this.browser === p) this.browser = null;
+      },
+    );
+    return p;
+  }
+
+  warm(): void {
+    this.getBrowser().catch((err) => this.log(`no pude abrir el navegador: ${err instanceof Error ? err.message : String(err)}`));
   }
 
   async capture(url: string): Promise<Buffer | null> {
@@ -57,7 +80,9 @@ export class PlaywrightScreenshotter implements Screenshotter {
     });
     try {
       const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'networkidle', timeout: this.timeoutMs });
+      // `load` plus the web fonts instead of `networkidle` (which always waits 500 ms more of silence).
+      await page.goto(url, { waitUntil: 'load', timeout: this.timeoutMs });
+      await page.evaluate('document.fonts.ready.then(() => true)').catch(() => {});
       return await page.screenshot({ type: 'png' });
     } finally {
       await context.close().catch(() => {});
@@ -67,6 +92,6 @@ export class PlaywrightScreenshotter implements Screenshotter {
   async close(): Promise<void> {
     const b = this.browser;
     this.browser = null;
-    if (b) await (await b.catch(() => null))?.close();
+    if (b) await (await b.catch(() => null))?.close().catch(() => {});
   }
 }
