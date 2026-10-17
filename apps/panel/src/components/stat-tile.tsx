@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Line, LineChart, ResponsiveContainer, YAxis } from "recharts";
 import { Surface } from "@/components/ui-dale";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { HelpCircle } from "lucide-react";
@@ -51,30 +50,21 @@ export function StatTile({
   );
 }
 
+const W = 80;
+const H = 36;
+const PAD = 4;
+
+/** Sparkline fina en SVG plano (sin librería de gráficos: es un trazo y un punto). */
 function Sparkline({ data, label }: { data: number[]; label?: string }) {
-  const points = data.map((v, i) => ({ i, v }));
-  const last = points.length - 1;
+  const max = Math.max(...data) || 1;
+  const step = (W - PAD * 2) / (data.length - 1);
+  const pts = data.map((v, i) => [PAD + i * step, H - PAD - (v / max) * (H - PAD * 2)] as const);
+  const [lx, ly] = pts[pts.length - 1];
   return (
-    <div className="hidden h-9 w-20 shrink-0 sm:block" role="img" aria-label={label} title={label}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={points} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-          <YAxis hide domain={[0, "dataMax"]} />
-          <Line
-            type="monotone"
-            dataKey="v"
-            stroke="var(--dale-faint)"
-            strokeWidth={1.5}
-            isAnimationActive={false}
-            dot={(p: { cx?: number; cy?: number; index?: number }) =>
-              p.index === last && p.cx != null && p.cy != null ? (
-                <circle key="last" cx={p.cx} cy={p.cy} r={2.5} fill="var(--dale-info)" stroke="var(--dale-surface)" strokeWidth={1.5} />
-              ) : (
-                <g key={p.index} />
-              )
-            }
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="hidden shrink-0 sm:block" role="img" aria-label={label}>
+      {label && <title>{label}</title>}
+      <polyline points={pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")} fill="none" stroke="var(--dale-faint)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={lx} cy={ly} r={2.5} fill="var(--dale-info)" stroke="var(--dale-surface)" strokeWidth={1.5} />
+    </svg>
   );
 }
