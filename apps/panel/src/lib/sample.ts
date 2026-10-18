@@ -89,8 +89,27 @@ type Spec = {
   replies: string[];
   cost: number;
   confidence?: number;
-  pr?: { url: string; number: number; preview: string };
+  pr?: { url: string; number: number; preview: string; diff?: string };
 };
+
+const MAP_DIFF = `diff --git a/components/Site.tsx b/components/Site.tsx
+index 3f2a1c4..9b7e0d2 100644
+--- a/components/Site.tsx
++++ b/components/Site.tsx
+@@ -142,6 +142,16 @@ export function Site({ content }: { content: SiteContent }) {
+           <p className="text-lg">{content.contact.address}</p>
++          <div className="mt-4 overflow-hidden rounded-xl border">
++            <iframe
++              title="Mapa de la panadería"
++              src={\`https://www.google.com/maps?q=\${encodeURIComponent(content.contact.address)}&output=embed\`}
++              className="h-64 w-full"
++              loading="lazy"
++            />
++          </div>
+           <a href={content.contact.whatsapp} className="mt-4 inline-block">
+             Escribinos por WhatsApp
+           </a>
+`;
 
 const SPECS: Spec[] = [
   {
@@ -311,18 +330,18 @@ const SPECS: Spec[] = [
       ["recibido", 120],
       ["interpretado", 2600],
       ["decidido", 7],
-      ["aprobado_agencia", 41000],
-      ["agente_inicio", 98000],
+      ["agente_inicio", 9800],
       ["agente_pr", 2400],
-      ["agente_preview", 61000],
+      ["agente_preview", 12600],
     ],
-    replies: ["Recibido, ya lo veo.", "Esto lo aprueba Estudio Faro porque necesita un cambio de código. Te aviso apenas esté."],
+    replies: ["Recibido, ya lo veo.", "Esto lleva cambios en el código. Lo preparo y Estudio Faro lo revisa antes de mostrártelo. Te aviso apenas esté."],
     cost: 0.4120,
     confidence: 0.88,
     pr: {
       url: "https://github.com/salvasecco/walt-demo/pull/12",
       number: 12,
       preview: "https://walt-demo-git-walt-j6r2-salvasecco.vercel.app",
+      diff: MAP_DIFF,
     },
   },
   {
@@ -475,7 +494,12 @@ export function buildSample(now = Date.now()): SampleData {
           request_id: id,
           step,
           status,
-          detail: status === "falla" ? { error: "GitHub no respondió en 20 s" } : null,
+          detail:
+            status === "falla"
+              ? { error: "GitHub no respondió en 20 s" }
+              : step === "agente_pr" && s.pr
+                ? { pr: s.pr.url, numero: s.pr.number, archivos: ["components/Site.tsx"], diff: s.pr.diff ?? "" }
+                : null,
           duration_ms: dur,
           at: new Date(t).toISOString(),
         });

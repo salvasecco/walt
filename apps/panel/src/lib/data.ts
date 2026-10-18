@@ -166,6 +166,7 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
   if (mode() === "ejemplo") {
     const s = buildSample();
     requests = s.requests.filter((r) => statuses.includes(r.status));
+    prEvents = s.events.filter((e) => e.step === "agente_pr" && e.status === "ok");
     projects = s.projects;
     versions = s.versions.filter((v) => v.status === "viva");
   } else {
