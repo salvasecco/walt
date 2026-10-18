@@ -57,6 +57,12 @@ export async function mergeChange(input: { repo: RepoRef; prNumber: number }, ho
   return mergeChangeWith(input, host ?? createHost(loadEnv()));
 }
 
+/** Closes the PR of a change that will not be published. Hosts without PRs do nothing. */
+export async function closeChange(input: { repo: RepoRef; prNumber: number }, host?: CodeHost): Promise<void> {
+  const h = host ?? createHost(loadEnv());
+  await h.closePullRequest?.(input.repo, input.prNumber);
+}
+
 export async function revertChange(
   input: { repo: RepoRef; mergeSha: string; shortId: string },
   host?: CodeHost,

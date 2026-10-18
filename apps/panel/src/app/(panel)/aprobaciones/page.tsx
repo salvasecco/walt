@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCheck, ExternalLink, GitPullRequest, Eye } from "lucide-react";
+import { CodeDiff } from "@/components/code-diff";
 import { CommandButton } from "@/components/command-button";
 import { NotConfigured } from "@/components/not-configured";
 import { PreviewFrame } from "@/components/preview-frame";
@@ -24,14 +25,14 @@ export default async function AprobacionesPage() {
   const sample = dataMode() === "ejemplo";
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Aprobaciones" subtitle="Lo que las reglas mandan a la agencia. Aprobar publica; rechazar le avisa al cliente." right={sample && <SampleBadge />} />
+      <PageHeader title="Aprobaciones" subtitle="Lo que las reglas mandan a la agencia. Al aprobar, el cliente recibe la vista previa y lo publica él; rechazar le avisa." right={sample && <SampleBadge />} />
       {items.length === 0 ? (
         <EmptyState icon={<CheckCheck className="size-5" />} title="Nada esperando">
           Cuando un pedido necesite tu visto bueno, aparece acá y en tu Telegram.
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-5">
-          {items.map(({ request: r, project, liveVersion, screenshot }) => {
+          {items.map(({ request: r, project, liveVersion, screenshot, code: review }) => {
             const code = r.lane === "codigo";
             const agentReady = r.status === "agente_listo";
             return (
@@ -82,6 +83,20 @@ export default async function AprobacionesPage() {
                       </div>
                     </section>
                   )}
+                  {code && review && (
+                    <section>
+                      <PanelTitle
+                        right={
+                          <span className="text-xs text-muted-foreground">
+                            {review.files.length} {review.files.length === 1 ? "archivo" : "archivos"}
+                          </span>
+                        }
+                      >
+                        Los cambios en el código
+                      </PanelTitle>
+                      <CodeDiff diff={review.diff} className="mt-2" />
+                    </section>
+                  )}
                   {code && (
                     <section className="flex flex-wrap gap-3">
                       {r.interpretation?.codeInstruction && (
@@ -105,11 +120,11 @@ export default async function AprobacionesPage() {
                   <div className="mt-auto flex flex-wrap gap-2 border-t border-line pt-4">
                     {agentReady ? (
                       <>
-                        <CommandButton type="publicar" requestId={r.id} variant="approve">
-                          Publicar
+                        <CommandButton type="aprobar" requestId={r.id} variant="approve">
+                          Aprobar
                         </CommandButton>
-                        <CommandButton type="rechazar" requestId={r.id} variant="reject" confirm="¿Descartar el cambio del agente?">
-                          Descartar
+                        <CommandButton type="rechazar" requestId={r.id} variant="reject" confirm="¿Rechazar el cambio? Se cierra el PR y se le avisa al cliente.">
+                          Rechazar
                         </CommandButton>
                       </>
                     ) : (

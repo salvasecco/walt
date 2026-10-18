@@ -81,7 +81,7 @@ export type AttItem = {
 
 export const KIND_LABEL: Record<ItemKind, string> = {
   aprobar: "Espera tu aprobación",
-  agente_listo: "Cambio de código listo para publicar",
+  agente_listo: "Cambio de código listo para revisar",
   presupuesto_borrador: "Presupuesto en borrador",
   derivado: "Derivado a la agencia",
   bloqueado: "Bloqueado",

@@ -10,7 +10,8 @@ const USAGE = 'Uso: pnpm dry-run "<pedido>" [--approve] [--agency] [--undo] [--a
 /**
  * `pnpm dry-run "<pedido>" [--approve] [--agency] [--undo] [--audio <archivo>] [--project <id>] [--memoria]`
  * `--approve` approves (client `ok`, or agency `gok` when it waits for the agency).
- * `--agency` also publishes a code change (`gok` → agent → `pub`) and waits until it is on the web.
+ * `--agency` also approves a code change as the agency once the agent has its PR (`gok`), then the client
+ * publishes it from the preview (`ok`) and the run waits until it is on the web.
  * `--audio <file>` sends the file as a Telegram voice note (same handler) instead of text.
  * `--memoria` uses the in-memory store even when Supabase is configured.
  * Runs the real pipeline (SPEC §9) on the console channel and prints every step with its time,
@@ -86,18 +87,14 @@ async function main() {
       return;
     }
 
-    if (args.approve && (req.status === 'esperando_cliente' || req.status === 'esperando_agencia')) {
-      const asAgency = req.status === 'esperando_agencia';
+    // The agency approves first when it has to (risky content, or a code change with its PR); the client
+    // always publishes from the preview.
+    for (let i = 0; i < 3 && args.approve; i++) {
+      const asAgency = req.status === 'esperando_agencia' || (args.agency && req.status === 'agente_listo');
+      if (!asAgency && req.status !== 'esperando_cliente') break;
       const data = `${asAgency ? 'gok' : 'ok'}:${req.short_id}`;
       console.log(`${at()} 👆 ${asAgency ? 'agencia' : 'cliente'} aprieta ${data}`);
       await app.worker.handle({ kind: 'callback', chatId: asAgency ? CONSOLE_CHATS.agencia : CONSOLE_CHATS.cliente, fromName: 'consola', data });
-      await app.worker.idle();
-      req = (await app.store.getRequest(req.id))!;
-    }
-    if (args.agency && req.status === 'agente_listo') {
-      const data = `pub:${req.short_id}`;
-      console.log(`${at()} 👆 agencia aprieta ${data}`);
-      await app.worker.handle({ kind: 'callback', chatId: CONSOLE_CHATS.agencia, fromName: 'consola', data });
       await app.worker.idle();
       req = (await app.store.getRequest(req.id))!;
     }

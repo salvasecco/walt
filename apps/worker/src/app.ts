@@ -41,6 +41,7 @@ export function agentFromEnv(env: WaltEnv): AgentLane {
     runCodeChange: (input) => agentLane.runCodeChange(input, agentLane.createAgentDeps(env)),
     mergeChange: (input) => agentLane.mergeChange(input, agentLane.createHost(env)),
     revertChange: (input) => agentLane.revertChange(input, agentLane.createHost(env)),
+    closeChange: (input) => agentLane.closeChange(input, agentLane.createHost(env)),
     waitForDeploy: (input) => agentLane.waitForDeploy(input, agentLane.createHost(env)),
   };
 }

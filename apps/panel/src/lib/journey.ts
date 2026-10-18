@@ -12,8 +12,8 @@ export type JourneyNode = {
 };
 
 const CONTENT_AUTO = ["recibido", "interpretado", "decidido", "gate", "borrador", "captura", "enviado", "aprobado_cliente", "publicado", "commit"];
-const CONTENT_AGENCY = ["recibido", "interpretado", "decidido", "gate", "borrador", "captura", "enviado", "aprobado_agencia", "publicado", "commit"];
-const CODE = ["recibido", "interpretado", "decidido", "aprobado_agencia", "agente_inicio", "agente_pr", "agente_preview", "publicado", "en_la_web"];
+const CONTENT_AGENCY = ["recibido", "interpretado", "decidido", "gate", "borrador", "captura", "aprobado_agencia", "enviado", "aprobado_cliente", "publicado", "commit"];
+const CODE = ["recibido", "interpretado", "decidido", "agente_inicio", "agente_pr", "agente_preview", "aprobado_agencia", "enviado", "aprobado_cliente", "publicado", "en_la_web"];
 const QUESTION = ["recibido", "interpretado", "decidido", "respondido"];
 const QUOTE = ["recibido", "interpretado", "decidido", "presupuesto", "enviado"];
 const BLOCKED = ["recibido", "interpretado", "decidido", "enviado"];

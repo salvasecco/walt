@@ -41,12 +41,17 @@ import type { Store } from './store/types.js';
 export const TIMEOUTS = { interpret: 45_000, commit: 20_000, agent: 300_000, ai: 45_000 } as const;
 /** Working statuses that only exist while the process is handling the request. */
 export const INTERRUPTIBLE: RequestStatus[] = ['recibido', 'interpretando', 'cotizando', 'publicando', 'agente_trabajando'];
+/** The diff saved with the PR event, for the panel. */
+const MAX_DIFF_CHARS = 60_000;
+
 export const LIMITS = { perChat: 5, windowMs: 10 * 60_000, queueMax: 20, maxText: 2_000 } as const;
 
 export interface AgentLane {
   runCodeChange(input: RunCodeChangeInput): Promise<RunCodeChangeResult>;
   mergeChange(input: { repo: RepoRef; prNumber: number }): Promise<{ mergeSha: string }>;
   revertChange(input: { repo: RepoRef; mergeSha: string; shortId: string }): Promise<{ revertSha: string }>;
+  /** Closes the PR of a change nobody approved. Optional: without it the PR stays open. */
+  closeChange?(input: { repo: RepoRef; prNumber: number }): Promise<void>;
   /** Resolves true once the hosting deploy of `sha` is live. Without it, merge = published. */
   waitForDeploy?(input: { repo: RepoRef; sha: string }): Promise<boolean>;
 }
@@ -472,7 +477,7 @@ export class Worker {
         return this.flowPermitido(req, contact, ctx, interpretation, gate!);
       case 'riesgoso':
         return decision.lane === 'codigo'
-          ? this.flowRiesgosoCodigo(req, contact, ctx, interpretation, decision)
+          ? this.flowRiesgosoCodigo(req, contact, ctx)
           : this.flowRiesgosoContenido(req, contact, ctx, interpretation, gate, decision);
       case 'fuera_de_alcance':
         return this.flowFueraDeAlcance(req, contact, ctx, interpretation);
@@ -611,27 +616,61 @@ export class Worker {
     const { photo, previewUrl } = await this.draftAndCapture(req, gate, ctx);
     await this.say(contact, req.id, { text: copy.esperaAgencia(ctx.agencyName, reason) });
     const text = copy.agenciaAprobacion(ctx.project.client_name, it.summary, reason) + (photo ? '' : `\n${copy.linkVistaPrevia(previewUrl)}`);
-    await this.step(req, 'enviado', () =>
-      this.notifyAgency(ctx, req.id, {
-        text,
-        photo,
-        buttons: [[{ text: B.aprobar, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }], ...this.panelRow()],
-      }),
-    );
+    await this.notifyAgency(ctx, req.id, {
+      text,
+      photo,
+      buttons: [[{ text: B.aprobar, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }], ...this.panelRow()],
+    });
     await this.d.store.updateRequest(req.id, { status: 'esperando_agencia' });
   }
 
-  private async flowRiesgosoCodigo(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation, decision: Decision): Promise<void> {
-    const reason = asClause(decision.reasons[0] ?? 'toca código');
-    await this.say(contact, req.id, { text: copy.esperaAgencia(ctx.agencyName, reason) });
-    const ficha = it.codeInstruction ?? it.summary;
+  /**
+   * Code lane: the agent prepares the change in a branch right away; the agency approves it with the PR
+   * and its diff in view, and only then the client gets the preview and publishes it.
+   */
+  private async flowRiesgosoCodigo(req: RequestRow, contact: ContactRow, ctx: Ctx): Promise<void> {
+    await this.say(contact, req.id, { text: copy.preparandoCodigo(ctx.agencyName) });
+    await this.d.store.updateRequest(req.id, { status: 'agente_trabajando' });
+    if (!this.slow.push(() => this.runAgent(req.id))) throw new Error('La cola del agente está llena');
+  }
+
+  /**
+   * After the agency approves (risky content or a ready code change): the client gets the preview with
+   * "Dale" and "No era eso", like any other change. Nothing is published before the client says yes.
+   */
+  private async sendReviewedPreview(req: RequestRow, via: Via): Promise<void> {
+    const ctx = await this.ctxFor(req.project_id);
+    await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'aprobado', via });
+    await this.event(req, 'aprobado_agencia', 'ok', 0, { via });
+    const previewUrl = req.preview_url;
+    let photo: Buffer | null = null;
+    if (previewUrl && this.d.screenshots.enabled) {
+      const t0 = performance.now();
+      await this.event(req, 'captura', 'inicio', null, { url: previewUrl });
+      photo = await this.d.screenshots.capture(previewUrl);
+      await this.event(req, 'captura', photo ? 'ok' : 'falla', Math.round(performance.now() - t0), photo ? { bytes: photo.length } : { error: 'Sin captura: se manda el link' });
+    }
+    const summary = (req.interpretation as Interpretation | null)?.summary ?? req.raw_text;
+    const text = copy.revisadoAgencia(ctx.agencyName, summary) + (photo || !previewUrl ? '' : `\n${copy.linkVistaPrevia(previewUrl)}`);
     await this.step(req, 'enviado', () =>
-      this.notifyAgency(ctx, req.id, {
-        text: copy.agenciaCodigo(ctx.project.client_name, it.summary, ficha, reason),
-        buttons: [[{ text: B.aprobarYHacer, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }], ...this.panelRow()],
+      this.sayTo(req.contact_id, req.id, {
+        text,
+        photo,
+        buttons: [[{ text: B.dale, data: `ok:${req.short_id}` }, { text: B.noEraEso, data: `no:${req.short_id}` }]],
       }),
     );
-    await this.d.store.updateRequest(req.id, { status: 'esperando_agencia' });
+    await this.d.store.updateRequest(req.id, { status: 'esperando_cliente' });
+  }
+
+  /** Best effort: the PR of a code change that will not be published gets closed. */
+  private async closeCode(req: RequestRow): Promise<void> {
+    if (req.lane !== 'codigo' || !req.pr_number || !this.d.agent.closeChange) return;
+    try {
+      const ctx = await this.ctxFor(req.project_id);
+      await this.d.agent.closeChange({ repo: this.repoRef(ctx.project), prNumber: req.pr_number });
+    } catch (err) {
+      this.log(`[#${req.short_id}] no pude cerrar el PR: ${this.redact(errMsg(err))}`);
+    }
   }
 
   private async flowFueraDeAlcance(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation): Promise<void> {
@@ -741,10 +780,16 @@ export class Worker {
       switch (action) {
         case 'ok':
           if (req.status !== 'esperando_cliente') return;
+          if (req.lane === 'codigo') {
+            await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'aprobado', via });
+            await this.event(req, 'aprobado_cliente', 'ok', 0, { via });
+            return await this.publishCode(req.id, via);
+          }
           if (((req.ops as Op[] | null) ?? []).length === 0) return await this.sayTo(req.contact_id, req.id, { text: copy.elegiUna() });
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'aprobado', via });
           await this.event(req, 'aprobado_cliente', 'ok', 0, { via });
-          return await this.publish(req.id, 'cliente', via);
+          // A risky change that reaches the client already has the agency's approval.
+          return await this.publish(req.id, 'cliente', via, { agencyApproved: req.category === 'riesgoso' });
         case 'no':
           if (req.status !== 'esperando_cliente') return;
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'rechazado', via });
@@ -753,6 +798,7 @@ export class Worker {
             const v = await this.d.store.getVersion(o.draftVersionId);
             if (v?.status === 'borrador') await this.d.store.updateVersion(v.id, { status: 'descartada' });
           }
+          await this.closeCode(req);
           await this.d.store.updateRequest(req.id, { status: 'descartado' });
           if (req.contact_id) this.awaitingCorrection.set(req.contact_id, req.id);
           return await this.sayTo(req.contact_id, req.id, { text: copy.noEraEso() });
@@ -760,25 +806,32 @@ export class Worker {
           if (req.status !== 'publicado') return;
           return await this.revert(req.id, via);
         case 'gok':
-          if (!isAgency || req.status !== 'esperando_agencia') return;
-          await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'aprobado', via });
-          await this.event(req, 'aprobado_agencia', 'ok', 0, { via });
+          if (!isAgency) return;
+          if (req.lane === 'codigo' && req.status === 'agente_listo') return await this.sendReviewedPreview(req, via);
+          if (req.status !== 'esperando_agencia') return;
           if (req.lane === 'codigo') {
+            // Requests from before the agent ran on its own: approving starts it.
+            await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'aprobado', via });
+            await this.event(req, 'aprobado_agencia', 'ok', 0, { via });
             await this.d.store.updateRequest(req.id, { status: 'agente_trabajando' });
             if (!this.slow.push(() => this.runAgent(req.id))) throw new Error('La cola del agente está llena');
             return;
           }
-          return await this.publish(req.id, 'agencia', via);
+          return await this.sendReviewedPreview(req, via);
         case 'gno':
           if (!isAgency || !['esperando_agencia', 'agente_listo', 'esperando_cliente'].includes(req.status)) return;
           await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'rechazado', via });
           await this.discardDraft(req);
+          await this.closeCode(req);
           await this.d.store.updateRequest(req.id, { status: 'rechazado' });
           return await this.sayTo(req.contact_id, req.id, { text: copy.rechazadoAgencia((await this.ctxFor(req.project_id)).agencyName) });
         case 'pub':
           if (!isAgency) return;
-          if (req.lane === 'codigo' && req.status === 'agente_listo') return await this.publishCode(req.id, via);
-          if (req.status === 'esperando_agencia' || req.status === 'esperando_cliente') {
+          // The agency's "publish" on something the client has not seen is an approval: the client still previews it.
+          if (req.lane === 'codigo' && req.status === 'agente_listo') return await this.sendReviewedPreview(req, via);
+          if (req.status === 'esperando_agencia') return await this.sendReviewedPreview(req, via);
+          if (req.lane === 'codigo' && req.status === 'esperando_cliente') return await this.publishCode(req.id, via);
+          if (req.status === 'esperando_cliente') {
             await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'aprobado', via });
             await this.event(req, 'aprobado_agencia', 'ok', 0, { via });
             return await this.publish(req.id, 'agencia', via);
@@ -818,7 +871,7 @@ export class Worker {
   // ───────────────────────── publicar y revertir ─────────────────────────
 
   /** SPEC §9 step 7: re-apply the ops on the current live version, re-run the gate, publish, commit. */
-  async publish(requestId: string, actor: Role, via: Via): Promise<void> {
+  async publish(requestId: string, actor: Role, via: Via, opts: { agencyApproved?: boolean } = {}): Promise<void> {
     const { store } = this.d;
     let req = (await store.getRequest(requestId))!;
     const ctx = await this.ctxFor(req.project_id);
@@ -854,7 +907,7 @@ export class Worker {
       if (contact) await this.flowBloqueado(req, contact, ctx, it, gate.reasons);
       return;
     }
-    if (gate.outcome === 'agencia' && actor === 'cliente') {
+    if (gate.outcome === 'agencia' && actor === 'cliente' && !opts.agencyApproved) {
       // Rules changed between the preview and the approval: now the agency decides.
       await store.updateRequest(req.id, { status: 'esperando_agencia', category: 'riesgoso', lane: 'contenido', gate: { outcome: gate.outcome, reasons: gate.reasons } });
       await this.event(req, 'publicando', 'falla', Math.round(performance.now() - t0), { razones: gate.reasons, aLaAgencia: true });
@@ -983,7 +1036,12 @@ export class Worker {
         ...(res.turns !== undefined ? { turnos: res.turns } : {}),
         ...(res.model ? { modelo: res.model } : {}),
       });
-      await this.event(req, 'agente_pr', 'ok', tm?.pr ?? null, { pr: res.prUrl, numero: res.prNumber });
+      await this.event(req, 'agente_pr', 'ok', tm?.pr ?? null, {
+        pr: res.prUrl,
+        numero: res.prNumber,
+        archivos: res.changedFiles,
+        diff: this.redact(res.diff).slice(0, MAX_DIFF_CHARS),
+      });
       if (res.previewUrl) await this.event(req, 'agente_preview', 'ok', tm?.preview ?? null, { url: res.previewUrl });
       for (const l of res.logs) this.log(`[agente #${req.short_id}] ${this.redact(l)}`);
       req = await this.d.store.updateRequest(req.id, { status: 'agente_listo', pr_url: res.prUrl, pr_number: res.prNumber, preview_url: res.previewUrl ?? null });
@@ -992,7 +1050,7 @@ export class Worker {
       links.push({ text: B.verPr, url: res.prUrl });
       await this.notifyAgency(ctx, req.id, {
         text: copy.agenciaAgenteListo(req.short_id, it?.summary ?? req.raw_text),
-        buttons: [links, [{ text: B.publicar, data: `pub:${req.short_id}` }, { text: B.descartar, data: `gno:${req.short_id}` }]],
+        buttons: [links, [{ text: B.aprobar, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }]],
       });
     } catch (err) {
       await this.derive(requestId, err);
@@ -1008,8 +1066,8 @@ export class Worker {
     const { mergeSha } = await withTimeout(this.d.agent.mergeChange({ repo: this.repoRef(ctx.project), prNumber: req.pr_number }), 60_000, 'Merge');
     req = await this.d.store.updateRequest(req.id, { status: 'publicado', changes: { mergeSha } });
     await this.event(req, 'publicado', 'ok', Math.round(performance.now() - t0), { sha: mergeSha });
-    const done = { text: copy.aprobadoAgencia(ctx.agencyName), buttons: [[{ text: B.volver, data: `undo:${req.short_id}` }]] };
-    await this.whenLive(req, ctx, mergeSha, copy.publicandoCodigo(ctx.agencyName), done);
+    const done = { text: copy.publicado(), buttons: [[{ text: B.volver, data: `undo:${req.short_id}` }]] };
+    await this.whenLive(req, ctx, mergeSha, copy.publicandoCambio(), done);
   }
 
   /**
@@ -1183,7 +1241,14 @@ export class Worker {
 
   private async notifyAgency(ctx: Ctx, requestId: string, msg: OutMessage): Promise<void> {
     const agency = await this.d.store.listContacts(ctx.project.id, 'agencia');
-    for (const a of agency) await this.say(a, requestId, msg);
+    if (agency.length === 0) return;
+    // A client never sees the agency's buttons, even if the same chat is also linked as the agency.
+    const req = await this.d.store.getRequest(requestId);
+    const requester = req?.contact_id ? await this.d.store.getContact(req.contact_id) : null;
+    for (const a of agency) {
+      if (requester && (a.id === requester.id || a.telegram_chat_id === requester.telegram_chat_id)) continue;
+      await this.say(a, requestId, msg);
+    }
   }
 
   private async event(req: Pick<RequestRow, 'id' | 'short_id'>, step: EventStep, status: 'inicio' | 'ok' | 'falla', durationMs: number | null, detail: unknown): Promise<void> {

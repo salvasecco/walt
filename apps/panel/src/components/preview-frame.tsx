@@ -24,6 +24,8 @@ export function PreviewFrame({
         {screenshot ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={screenshot} alt="Captura de la vista previa" className="size-full object-cover object-top" />
+        ) : request.lane === "codigo" && request.preview_url && !sample ? (
+          <iframe src={request.preview_url} title="Vista previa del PR" className="size-full" loading="lazy" />
         ) : siteUrl && request.draft_version_id && !sample ? (
           <iframe src={`${siteUrl}?preview=${request.draft_version_id}`} title="Vista previa del borrador" className="size-full" loading="lazy" />
         ) : liveVersion?.content ? (

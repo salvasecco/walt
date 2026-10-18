@@ -33,6 +33,12 @@ export const copy = {
   aprobadoAgencia: (agencia: string) => `${agencia} lo aprobó y ya está publicado.`,
   publicandoCodigo: (agencia: string) => `${agencia} lo aprobó. Se está publicando: tarda un minuto o dos y te aviso cuando esté en la web.`,
   revirtiendoCodigo: () => 'Lo estoy volviendo atrás: tarda un minuto o dos y te aviso cuando esté.',
+  /** Code lane: the agent prepares it and the agency reviews it before the client sees the preview. */
+  preparandoCodigo: (agencia: string) =>
+    `Esto lleva cambios en el código. Lo preparo y ${agencia} lo revisa antes de mostrártelo. Te aviso apenas esté.`,
+  /** The preview the client gets once the agency approved (risky content or code). */
+  revisadoAgencia: (agencia: string, resumen: string) => `${agencia} ya lo revisó. ¿Así? ${resumen}`,
+  publicandoCambio: () => 'Se está publicando: tarda un minuto y te aviso cuando esté en la web.',
   demoraPublicacion: (agencia: string) => `El cambio ya está hecho, pero la web tarda más de lo normal en actualizarse. Se lo aviso a ${agencia}.`,
   loApruebaAgencia: (agencia: string) => `Ese cambio lo aprueba ${agencia}. Ya les avisé; te escribo apenas esté.`,
   fueraDeAlcance: (agencia: string) =>
@@ -75,7 +81,8 @@ export const copy = {
     `Pedido de ${cliente}: ${resumen}. Necesita tu aprobación porque ${razon}.\nFicha para el agente: ${ficha}`,
   agenciaFueraDeAlcance: (cliente: string, resumen: string, titulo: string, monto: number, dias: number) =>
     `Pedido de ${cliente}: ${resumen}. Es una función nueva. Armé un borrador de presupuesto: ${titulo}, USD ${monto}, ${dias} días. Revisalo y mandalo desde el panel.`,
-  agenciaAgenteListo: (shortId: string, resumen: string) => `Listo el cambio de código de #${shortId}: ${resumen}. Revisalo y publicalo.`,
+  agenciaAgenteListo: (shortId: string, resumen: string) =>
+    `Listo el cambio de código de #${shortId}: ${resumen}. Revisá el PR y aprobalo: después el cliente ve la vista previa y lo publica.`,
   agenciaPublicado: (shortId: string) => `Publicado #${shortId}.`,
   agenciaPresupuesto: (cliente: string, titulo: string, aceptado: boolean) =>
     `${cliente} ${aceptado ? 'aceptó' : 'dejó para más adelante'} el presupuesto: ${titulo}.`,

@@ -145,11 +145,15 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
   return { request, project, events, messages, approvals, versions, liveVersion, quote };
 }
 
+/** Lo que el agente quiere cambiar en el código: el diff guardado con el evento del PR. */
+export type CodeReview = { diff: string; files: string[] };
+
 export type PendingApproval = {
   request: WaltRequest;
   project: Project | null;
   liveVersion: ContentVersion | null;
   screenshot: string | null;
+  code: CodeReview | null;
 };
 
 export async function getPendingApprovals(): Promise<PendingApproval[]> {
@@ -158,6 +162,7 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
   let projects: Project[];
   let versions: ContentVersion[];
   let messages: Message[] = [];
+  let prEvents: WaltEvent[] = [];
   if (mode() === "ejemplo") {
     const s = buildSample();
     requests = s.requests.filter((r) => statuses.includes(r.status));
@@ -177,14 +182,28 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
         .in("request_id", requests.map((r) => r.id))
         .not("media", "is", null)
         .then(must<Message[]>);
+    const codeIds = requests.filter((r) => r.lane === "codigo").map((r) => r.id);
+    if (codeIds.length)
+      prEvents = await db
+        .from("events")
+        .select("*")
+        .in("request_id", codeIds)
+        .eq("step", "agente_pr")
+        .eq("status", "ok")
+        .then(must<WaltEvent[]>);
   }
   return requests.map((request) => {
     const media = messages.filter((m) => m.request_id === request.id).map((m) => m.media).find((m) => m && typeof m.url === "string");
+    const pr = prEvents.filter((e) => e.request_id === request.id).at(-1)?.detail;
     return {
       request,
       project: projects.find((p) => p.id === request.project_id) ?? null,
       liveVersion: versions.find((v) => v.project_id === request.project_id) ?? null,
       screenshot: (media?.url as string | undefined) ?? null,
+      code:
+        pr && typeof pr.diff === "string"
+          ? { diff: pr.diff, files: Array.isArray(pr.archivos) ? (pr.archivos as string[]) : [] }
+          : null,
     };
   });
 }

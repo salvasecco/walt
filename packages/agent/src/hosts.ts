@@ -18,6 +18,8 @@ export interface CodeHost {
   gitAuthEnv(): Record<string, string>;
   createPullRequest(repo: RepoRef, pr: { head: string; base: string; title: string; body: string }): Promise<{ number: number; url: string }>;
   mergePullRequest(repo: RepoRef, prNumber: number, title: string): Promise<{ sha: string }>;
+  /** Closes a PR without merging (the agency or the client said no). */
+  closePullRequest?(repo: RepoRef, prNumber: number): Promise<void>;
   /** One look for a preview URL of a commit (and its PR, when known); `findPreviewUrl` polls this. */
   previewUrlOnce(repo: RepoRef, sha: string, prNumber?: number): Promise<string | undefined>;
   /** State of the hosting deploy of a commit (Vercel's commit status), if there is one yet. */
@@ -51,6 +53,9 @@ export class GitHubHost implements CodeHost {
     });
     if (!data.merged) throw new Error(`GitHub no mergeó el PR #${prNumber}: ${data.message}`);
     return { sha: data.sha };
+  }
+  async closePullRequest(repo: RepoRef, prNumber: number): Promise<void> {
+    await this.octokit.rest.pulls.update({ owner: repo.owner, repo: repo.name, pull_number: prNumber, state: 'closed' });
   }
   async previewUrlOnce(repo: RepoRef, sha: string, prNumber?: number): Promise<string | undefined> {
     const owner = repo.owner;

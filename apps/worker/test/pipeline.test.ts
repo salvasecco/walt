@@ -157,8 +157,13 @@ describe('riesgoso de contenido: aprueba la agencia', () => {
     await h.press(`gok:${req.short_id}`, CLIENT_CHAT);
     expect(h.store.requests[0]!.status).toBe('esperando_agencia');
     await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
+    // Approved by the agency, the client still sees the preview and publishes it.
+    expect(h.store.requests[0]!.status).toBe('esperando_cliente');
+    expect(h.last()).toMatch(/^Estudio Faro ya lo revisó\. ¿Así\?/);
+    expect(h.channel.lastButton(CLIENT_CHAT, 'ok:')).toBe(`ok:${req.short_id}`);
+    await h.press(`ok:${req.short_id}`);
     expect(h.store.requests[0]!.status).toBe('publicado');
-    expect(h.last()).toBe(copy.aprobadoAgencia('Estudio Faro'));
+    expect(h.last()).toBe(copy.publicado());
     const banner = (h.store.versions.find((v) => v.status === 'viva')!.content as { banner: { enabled: boolean; endsAt: string } }).banner;
     expect(banner).toMatchObject({ enabled: true, endsAt: '2026-10-18T23:59:00-03:00' });
   });
@@ -170,8 +175,10 @@ describe('riesgoso de contenido: aprueba la agencia', () => {
     h.store.addCommand({ type: 'aprobar', request_id: req.id });
     await new CommandPoller(h.store, h.worker, [], () => {}).tick();
     expect(h.store.commands[0]!.status).toBe('hecho');
-    expect(h.store.requests[0]!.status).toBe('publicado');
+    expect(h.store.requests[0]!.status).toBe('esperando_cliente');
     expect(h.store.approvals.at(-1)).toMatchObject({ actor: 'agencia', via: 'panel' });
+    await h.press(`ok:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('publicado');
 
     h.store.addCommand({ type: 'revertir', request_id: req.id });
     await new CommandPoller(h.store, h.worker, [], () => {}).tick();
@@ -259,26 +266,47 @@ describe('riesgoso de código: cola lenta y @walt/agent', () => {
     const h = await harness({ ai: needsCode });
     await h.say('agregá un mapa en contacto');
     const req = lastReq(h);
-    expect(req).toMatchObject({ category: 'riesgoso', lane: 'codigo', status: 'esperando_agencia' });
-    expect(h.channel.lastButton(AGENCY_CHAT, 'gok:')).toBe(`gok:${req.short_id}`);
-    await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
-    expect(h.store.requests[0]!.status).toBe('derivado');
+    expect(req).toMatchObject({ category: 'derivado', lane: 'codigo', status: 'derivado' });
     expect(h.last()).toBe(copy.derivado());
   });
 
-  it('con un agente que anda: PR, publicar y revertir', async () => {
-    const agent = okAgent();
+  it('el agente arranca solo; la agencia aprueba el PR; el cliente ve la vista previa y publica', async () => {
+    const agent = { ...okAgent(), closeChange: async () => {} };
+    const h = await harness({ ai: needsCode, agent });
+    await h.say('agregá un mapa en contacto');
+    const req = lastReq(h);
+    expect(h.textsTo(CLIENT_CHAT)).toContain(copy.preparandoCodigo('Estudio Faro'));
+    expect(h.store.requests[0]).toMatchObject({ status: 'agente_listo', pr_number: 7, preview_url: 'https://preview.example' });
+    expect(agent.calls[0]).toBe('run:Agregar un mapa embebido en la sección de contacto');
+    const pr = h.store.events.find((e) => e.request_id === req.id && e.step === 'agente_pr' && e.status === 'ok');
+    expect(pr?.detail).toMatchObject({ numero: 7, archivos: ['app/page.tsx'] });
+    // The client never gets the agency's buttons, and cannot approve for it.
+    expect(h.channel.lastButton(CLIENT_CHAT, 'gok:')).toBeUndefined();
+    expect(h.channel.lastButton(CLIENT_CHAT, 'pub:')).toBeUndefined();
+    await h.press(`gok:${req.short_id}`, CLIENT_CHAT);
+    expect(h.store.requests[0]!.status).toBe('agente_listo');
+    await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
+    expect(h.store.requests[0]!.status).toBe('esperando_cliente');
+    expect(h.last()).toMatch(/^Estudio Faro ya lo revisó\. ¿Así\?/);
+    await h.press(`ok:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('publicado');
+    expect(h.last()).toBe(copy.publicado());
+    await h.press(`undo:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('revertido');
+    expect(agent.calls).toEqual(['run:Agregar un mapa embebido en la sección de contacto', 'merge:7', 'revert:m1']);
+  });
+
+  it('si el cliente dice "No era eso" al código, el PR se cierra y no se publica', async () => {
+    const closed: number[] = [];
+    const agent = { ...okAgent(), closeChange: async (i: { prNumber: number }) => void closed.push(i.prNumber) };
     const h = await harness({ ai: needsCode, agent });
     await h.say('agregá un mapa en contacto');
     const req = lastReq(h);
     await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
-    expect(h.store.requests[0]).toMatchObject({ status: 'agente_listo', pr_number: 7, preview_url: 'https://preview.example' });
-    expect(agent.calls[0]).toBe('run:Agregar un mapa embebido en la sección de contacto');
-    await h.press(`pub:${req.short_id}`, AGENCY_CHAT);
-    expect(h.store.requests[0]!.status).toBe('publicado');
-    await h.press(`undo:${req.short_id}`);
-    expect(h.store.requests[0]!.status).toBe('revertido');
-    expect(agent.calls).toEqual(['run:Agregar un mapa embebido en la sección de contacto', 'merge:7', 'revert:m1']);
+    await h.press(`no:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('descartado');
+    expect(closed).toEqual([7]);
+    expect(agent.calls).toEqual(['run:Agregar un mapa embebido en la sección de contacto']);
   });
 });
 
@@ -295,14 +323,15 @@ describe('aprobar por texto (SPEC §9, paso 3)', () => {
     await h.worker.idle();
   };
 
-  it('la agencia escribe "aprobar y hacer" y después "publicalo": hace lo mismo que los botones', async () => {
+  it('la agencia aprueba por texto el cambio de código y el cliente lo publica con "dale"', async () => {
     const agent = okAgent();
     const h = await harness({ ai, agent });
     await h.say('agregá un mapa en contacto');
     const req = lastReq(h);
-    await agencySays(h, 'aprobar y hacer');
     expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('agente_listo');
-    await agencySays(h, 'publicalo');
+    await agencySays(h, 'aprobado');
+    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('esperando_cliente');
+    await h.say('dale');
     expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('publicado');
     expect(agent.calls).toEqual(['run:Agregar un mapa', 'merge:7']);
   });
@@ -312,7 +341,7 @@ describe('aprobar por texto (SPEC §9, paso 3)', () => {
     await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
     const req = lastReq(h);
     await agencySays(h, 'aprobado');
-    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('publicado');
+    expect(h.store.requests.find((r) => r.id === req.id)!.status).toBe('esperando_cliente');
     expect(h.store.approvals).toEqual([expect.objectContaining({ actor: 'agencia', decision: 'aprobado' })]);
   });
 
@@ -333,12 +362,12 @@ describe('aprobar por texto (SPEC §9, paso 3)', () => {
     const req = lastReq(h);
     await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
     // press() waits for idle, which includes the deploy watch: release it while press is pending.
-    const pressed = h.press(`pub:${req.short_id}`, AGENCY_CHAT);
-    for (let i = 0; i < 50 && h.last() !== copy.publicandoCodigo('Estudio Faro'); i++) await new Promise((r) => setTimeout(r, 10));
-    expect(h.last()).toBe(copy.publicandoCodigo('Estudio Faro'));
+    const pressed = h.press(`ok:${req.short_id}`);
+    for (let i = 0; i < 50 && h.last() !== copy.publicandoCambio(); i++) await new Promise((r) => setTimeout(r, 10));
+    expect(h.last()).toBe(copy.publicandoCambio());
     release(true);
     await pressed;
-    expect(h.last()).toBe(copy.aprobadoAgencia('Estudio Faro'));
+    expect(h.last()).toBe(copy.publicado());
     expect(h.store.events.some((e) => e.request_id === req.id && e.step === 'en_la_web' && e.status === 'ok')).toBe(true);
   });
 });
