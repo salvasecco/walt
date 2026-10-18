@@ -55,7 +55,7 @@ describe('runGate', () => {
       expect(r.reasons.join(' ')).toMatch(/El título queda con poco contraste sobre el fondo/);
     });
     it('un fondo nuevo también se mide contra el título', () => {
-      const r = gate([{ type: 'set_color', token: 'background', value: '#B45309' }]);
+      const r = gate([{ type: 'set_color', token: 'background', value: '#1C1917' }]);
       expect(r.reasons.join(' ')).toMatch(/título/);
     });
     it('botones: texto del botón contra el color del botón', () => {
