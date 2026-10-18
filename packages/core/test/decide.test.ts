@@ -45,9 +45,15 @@ describe('decide', () => {
     expect(decide(interp({ kind: 'funcion_nueva' }), null, r, { rawText: 'quiero reservas online' }).category).toBe('fuera_de_alcance');
   });
 
-  it('poca confianza va a la agencia', () => {
+  it('confianza algo baja con cambios concretos: lo confirma el cliente con la vista previa', () => {
     const ops: Op[] = [{ type: 'set_price', productId: 'pan-flauta', value: 95 }];
-    const d = decide(interp({ ops, confidence: 0.4 }), gateFor(ops), defaultRules(), { rawText: 'x' });
+    const d = decide(interp({ ops, confidence: 0.55 }), gateFor(ops), defaultRules(), { rawText: 'x' });
+    expect(d).toMatchObject({ category: 'permitido', lane: 'contenido' });
+  });
+
+  it('confianza muy baja va a la agencia', () => {
+    const ops: Op[] = [{ type: 'set_price', productId: 'pan-flauta', value: 95 }];
+    const d = decide(interp({ ops, confidence: 0.3 }), gateFor(ops), defaultRules(), { rawText: 'x' });
     expect(d).toMatchObject({ category: 'riesgoso', lane: 'contenido' });
     expect(d.reasons[0]).toMatch(/confianza/);
   });

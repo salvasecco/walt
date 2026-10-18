@@ -28,6 +28,9 @@ export interface Decision {
   reasons: string[];
 }
 
+/** Below this, even concrete operations go to the agency instead of the client's preview. */
+export const LOW_CONFIDENCE_FLOOR = 0.4;
+
 // Most restrictive wins (all or nothing).
 const RANK: Record<string, number> = {
   permitido: 0,
@@ -87,7 +90,11 @@ export function decide(
         : { key: 'derivado', reason: `Hay partes que necesitan código y el proyecto no lo permite${detail}` },
     );
   }
-  if (interpretation.confidence < rules.limits.minConfidence) {
+  // Low confidence with concrete operations the gate lets through: the client's own preview ("¿Así?",
+  // with Dale / No era eso) is the check, not the agency. Only a very unsure reading goes to the agency.
+  const previewIsEnough =
+    interpretation.confidence >= LOW_CONFIDENCE_FLOOR && gate?.outcome === 'auto' && gate.changes.length > 0 && !interpretation.needsCode;
+  if (interpretation.confidence < rules.limits.minConfidence && !previewIsEnough) {
     parts.push({
       key: 'riesgoso:contenido',
       reason: `Lo entendí con poca confianza (${Math.round(interpretation.confidence * 100)}%)`,
