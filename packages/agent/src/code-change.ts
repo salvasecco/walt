@@ -70,6 +70,17 @@ export class DiffRejectedError extends Error {
   }
 }
 
+/**
+ * The agent looked and left the repo as it was: usually the change is already there. Not a failure:
+ * the worker tells the client and the agency instead of escalating.
+ */
+export class NoChangeNeededError extends Error {
+  constructor(readonly summary: string | undefined, readonly logs: string[]) {
+    super(`El agente no encontró nada para cambiar${summary ? `: ${summary}` : ''}`);
+    this.name = 'NoChangeNeededError';
+  }
+}
+
 const SHORT_ID = /^[A-Za-z0-9_-]{1,32}$/;
 const REF = /^[A-Za-z0-9._/-]{1,100}$/;
 
@@ -167,6 +178,8 @@ export async function runCodeChangeWith(input: RunCodeChangeInput, deps: AgentDe
       await g(['add', '-A'], dir);
       files = parseRaw(await g(['diff', '--cached', '--raw', '-z', '--no-renames'], dir));
       diff = await g(['diff', '--cached', '--no-color', '--no-ext-diff'], dir);
+      // Nothing changed because it was already there (the agent says so): no retry, nothing is pushed.
+      if (files.length === 0 && /(^|\n)\s*ya estaba:/i.test(summary ?? '')) throw new NoChangeNeededError(summary, logs);
       const reasons = reviewDiff({ diff, files, protectedGlobs, secrets });
       if (reasons.length === 0) {
         usedModel = model;

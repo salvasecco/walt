@@ -310,6 +310,23 @@ describe('riesgoso de código: cola lenta y @walt/agent', () => {
   });
 });
 
+describe('carril de código: el cambio ya estaba', () => {
+  it('si el agente no cambia nada, le dice al cliente que ya está y no lo deriva', async () => {
+    const ai = aiWith((t) =>
+      t.includes('envío gratis')
+        ? { kind: 'cambio', summary: 'Agrego un aviso de envío gratis', ops: [], needsCode: true, codeInstruction: 'Agregar aviso', unexpressedParts: ['aviso'], confidence: 0.9 }
+        : null,
+    );
+    const noChange = Object.assign(new Error('El agente no encontró nada para cambiar'), { name: 'NoChangeNeededError', summary: 'Ya estaba: el aviso está arriba del footer.' });
+    const h = await harness({ ai, agent: { ...okAgent(), runCodeChange: async () => { throw noChange; } } });
+    await h.say('agregá un aviso de envío gratis arriba del footer');
+    const req = lastReq(h);
+    expect(req.status).toBe('respondido');
+    expect(h.last()).toBe(copy.yaEstaba('Estudio Faro'));
+    expect(h.last(AGENCY_CHAT)).toContain('Ya estaba: el aviso está arriba del footer.');
+  });
+});
+
 describe('aprobar por texto (SPEC §9, paso 3)', () => {
   const ai = aiWith((t) =>
     t.includes('mapa')

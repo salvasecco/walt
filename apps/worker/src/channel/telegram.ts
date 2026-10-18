@@ -60,6 +60,9 @@ export function toIncoming(ctx: Context, token: string): Incoming | null {
  * Telegram with grammY (SPEC §12): polling locally, webhook with the secret header on a
  * server. Handlers only enqueue, so updates are acknowledged fast.
  */
+/** Chat ids below this (in absolute value) are console or sample contacts, never real chats. */
+export const FAKE_CHAT_LIMIT = 100_000;
+
 export class TelegramChannel implements Channel {
   readonly name = 'telegram' as const;
   readonly bot: Bot;
@@ -71,6 +74,8 @@ export class TelegramChannel implements Channel {
   }
 
   async send(chatId: number, msg: OutMessage): Promise<void> {
+    // Console (dry-run) and sample contacts use small fake chat ids; real Telegram ids are much larger.
+    if (Math.abs(chatId) < FAKE_CHAT_LIMIT) return;
     const reply_markup = keyboard(msg.buttons);
     if (msg.photo) {
       try {

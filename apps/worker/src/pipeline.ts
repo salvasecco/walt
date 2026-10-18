@@ -1053,8 +1053,20 @@ export class Worker {
         buttons: [links, [{ text: B.aprobar, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }]],
       });
     } catch (err) {
+      // The change was already there: answer, don't escalate (the agent's error crosses as a plain Error).
+      if (err instanceof Error && err.name === 'NoChangeNeededError') return this.alreadyThere(requestId, err as Error & { summary?: string });
       await this.derive(requestId, err);
     }
+  }
+
+  private async alreadyThere(requestId: string, err: Error & { summary?: string }): Promise<void> {
+    const req = (await this.d.store.getRequest(requestId))!;
+    const ctx = await this.ctxFor(req.project_id);
+    const detail = this.redact(err.summary?.trim() || 'No encontró qué cambiar.');
+    await this.event(req, 'agente_inicio', 'ok', null, { archivos: [], sinCambios: true, detalle: detail });
+    await this.d.store.updateRequest(req.id, { status: 'respondido', error: null });
+    await this.sayTo(req.contact_id, req.id, { text: copy.yaEstaba(ctx.agencyName) });
+    await this.notifyAgency(ctx, req.id, { text: copy.agenciaYaEstaba(req.short_id, detail), buttons: this.panelRow() });
   }
 
   private async publishCode(requestId: string, via: Via): Promise<void> {

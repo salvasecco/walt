@@ -40,6 +40,8 @@ export const copy = {
   revisadoAgencia: (agencia: string, resumen: string) => `${agencia} ya lo revisó. ¿Así? ${resumen}`,
   publicandoCambio: () => 'Se está publicando: tarda un minuto y te aviso cuando esté en la web.',
   demoraPublicacion: (agencia: string) => `El cambio ya está hecho, pero la web tarda más de lo normal en actualizarse. Se lo aviso a ${agencia}.`,
+  yaEstaba: (agencia: string) => `Revisé tu web y eso ya está así. Si querés algo distinto, contame qué cambiarías; si no, se lo comento a ${agencia}.`,
+  agenciaYaEstaba: (shortId: string, detalle: string) => `#${shortId}: el agente revisó el código y no hizo falta cambiar nada. ${detalle}`,
   loApruebaAgencia: (agencia: string) => `Ese cambio lo aprueba ${agencia}. Ya les avisé; te escribo apenas esté.`,
   fueraDeAlcance: (agencia: string) =>
     `Eso es algo nuevo para tu web. Se lo paso a ${agencia} para que te mande un presupuesto.`,
