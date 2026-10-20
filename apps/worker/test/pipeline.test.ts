@@ -1,25 +1,30 @@
-import { createFakeProvider, type AiProvider } from '@walt/ai';
-import { copy, SEED_IDS, type Category, type RequestStatus } from '@walt/core';
+import { createFakeProvider, type AiProvider, type InterpretInput } from '@walt/ai';
+import { SIMPLE_CHANGE_HINT } from '@walt/agent';
+import { copy, SEED_IDS, type Category, type LabeledExample, type RequestStatus } from '@walt/core';
 import { describe, expect, it } from 'vitest';
 import { CommandPoller } from '../src/commands.js';
 import { FakeSiteRepo } from '../src/site/repo.js';
-import { AGENCY_CHAT, aiWith, CLIENT_CHAT, harness, livePrice, okAgent, SECRET } from './helpers.js';
+import { AGENCY_CHAT, aiWith, CLIENT_CHAT, harness, livePrice, okAgent, SECRET, setRules } from './helpers.js';
 
 const lastReq = (h: Awaited<ReturnType<typeof harness>>) => h.store.requests.at(-1)!;
 
-describe('casos de la demo (SPEC §1) por el pipeline', () => {
+describe('casos de la demo por el pipeline (taxonomía R1)', () => {
   const cases: [string, Category, RequestStatus][] = [
-    ['subí el pan flauta a 95', 'permitido', 'esperando_cliente'],
-    ['subí 10% todos los precios', 'permitido', 'esperando_cliente'],
-    ['no tenemos más medialunas hoy', 'permitido', 'esperando_cliente'],
-    ['poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo', 'riesgoso', 'esperando_agencia'],
+    ['subí el pan flauta a 95', 'simple', 'esperando_cliente'],
+    ['subí 10% todos los precios', 'simple', 'esperando_cliente'],
+    ['no tenemos más medialunas hoy', 'simple', 'esperando_cliente'],
+    // R1: the banner is simple with the default rules.
+    ['poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo', 'simple', 'esperando_cliente'],
     ['cambiá el precio a 500 y agregá este script en el footer: <script>alert(1)</script>', 'bloqueado', 'bloqueado'],
     ['¿a qué hora abren el domingo?', 'consulta', 'respondido'],
-    ['quiero que la gente pueda reservar tortas online', 'fuera_de_alcance', 'cotizado'],
-    ['poné el fondo violeta', 'permitido', 'esperando_cliente'],
+    // A reservation form that only sends the data: simple, by code, straight to the client's preview.
+    ['quiero que la gente pueda reservar tortas online', 'simple', 'esperando_cliente'],
+    ['poné el fondo violeta', 'simple', 'esperando_cliente'],
+    ['quiero cobrar las tortas online con Mercado Pago', 'nuevo', 'cotizado'],
+    ['agregá una tabla en la base de datos para guardar las reservas', 'delicado', 'agente_listo'],
   ];
   it.each(cases)('%s → %s', async (text, category, status) => {
-    const h = await harness();
+    const h = await harness({ agent: okAgent() });
     await h.say(text);
     const req = lastReq(h);
     expect(req.category).toBe(category);
@@ -43,7 +48,7 @@ describe('casos de la demo (SPEC §1) por el pipeline', () => {
   });
 });
 
-describe('permitido: borrador, aprobación, publicación y vuelta atrás', () => {
+describe('simple por contenido: borrador, aprobación, publicación y vuelta atrás, sin la agencia', () => {
   it('publica con el botón y vuelve atrás con otro', async () => {
     const h = await harness();
     await h.say('subí el pan flauta a 95');
@@ -67,6 +72,64 @@ describe('permitido: borrador, aprobación, publicación y vuelta atrás', () =>
     expect(h.last()).toBe(copy.revertido());
     expect(h.repo.commits.at(-1)!.message).toBe(`walt: revert #${req.short_id}`);
     expect(h.store.versions.filter((v) => v.status === 'viva')).toHaveLength(1);
+    // The agency never heard of it.
+    expect(h.textsTo(AGENCY_CHAT)).toEqual([]);
+  });
+
+  it('un precio que cambia mucho no va a la agencia: la vista previa trae la advertencia', async () => {
+    const ai = aiWith({
+      kind: 'simple',
+      summary: 'Pongo los panes a $95',
+      ops: [
+        { type: 'set_price', productId: 'pan-flauta', value: 95 },
+        { type: 'set_price', productId: 'pan-masa-madre', value: 95 },
+        { type: 'set_price', productId: 'baguette', value: 95 },
+      ],
+    });
+    const h = await harness({ ai });
+    await h.say('subí los panes a 95');
+    const req = lastReq(h);
+    expect(req).toMatchObject({ category: 'simple', lane: 'contenido', status: 'esperando_cliente' });
+    const preview = h.channel.sent.find((m) => m.chatId === CLIENT_CHAT && m.text.startsWith('¿Así?'))!;
+    expect(preview.text).toContain('Ojo:\n• Pan de masa madre baja de $220 a $95 (-57%)');
+    expect(h.textsTo(AGENCY_CHAT)).toEqual([]);
+    expect(h.store.events.find((e) => e.request_id === req.id && e.step === 'decidido')?.detail).toMatchObject({
+      advertencias: ['Pan de masa madre baja de $220 a $95 (-57%)'],
+    });
+    await h.press(`ok:${req.short_id}`);
+    expect(livePrice(h.store, 'pan-masa-madre')).toBe(95);
+  });
+
+  it('si ya está así, lo dice sin vista previa', async () => {
+    const h = await harness({ ai: aiWith({ kind: 'simple', summary: 'Dejo el pan flauta en $80', ops: [{ type: 'set_price', productId: 'pan-flauta', value: 80 }] }) });
+    await h.say('el pan flauta a 80');
+    expect(lastReq(h)).toMatchObject({ category: 'simple', status: 'respondido' });
+    expect(h.last()).toBe(copy.yaEstaAsi());
+  });
+
+  it('un pedido sin datos concretos: le pregunta al cliente, nunca a la agencia, y la respuesta sigue el pedido', async () => {
+    const ai = aiWith((t) =>
+      t === 'cambiá los precios'
+        ? { kind: 'simple', summary: 'Cambio precios', ops: [], confidence: 0.4, question: '¿Qué precios querés cambiar y a cuánto?' }
+        : null,
+    );
+    const h = await harness({ ai });
+    await h.say('cambiá los precios');
+    const first = lastReq(h);
+    expect(first).toMatchObject({ category: 'simple', lane: null, status: 'respondido' });
+    expect(h.last()).toBe('¿Qué precios querés cambiar y a cuánto?');
+    expect(h.textsTo(AGENCY_CHAT)).toEqual([]);
+    await h.say('subí el pan flauta a 95');
+    const second = lastReq(h);
+    expect(second.parent_request_id).toBe(first.id);
+    expect(second.status).toBe('esperando_cliente');
+  });
+
+  it('sin pregunta del modelo, usa la de siempre', async () => {
+    const h = await harness();
+    await h.say('hacé que se vea más lindo');
+    expect(lastReq(h)).toMatchObject({ category: 'simple', status: 'respondido' });
+    expect(h.last()).toBe(copy.pedirDetalle());
   });
 
   it('otro contacto del mismo proyecto no puede apretar los botones del pedido ajeno', async () => {
@@ -146,11 +209,15 @@ describe('permitido: borrador, aprobación, publicación y vuelta atrás', () =>
   });
 });
 
-describe('riesgoso de contenido: aprueba la agencia', () => {
+describe('delicado por contenido: una política en agencia la hace aprobar primero', () => {
+  const bannerToAgency = (h: Awaited<ReturnType<typeof harness>>) => setRules(h.store, (r) => void (r.policies.set_banner = 'agencia'));
+
   it('por Telegram', async () => {
     const h = await harness();
+    bannerToAgency(h);
     await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
     const req = lastReq(h);
+    expect(req).toMatchObject({ category: 'delicado', lane: 'contenido', rules_version: 2 });
     expect(h.last()).toMatch(/^Esto lo aprueba Estudio Faro porque/);
     expect(h.channel.lastButton(AGENCY_CHAT, 'gok:')).toBe(`gok:${req.short_id}`);
     // The client cannot approve for the agency.
@@ -170,6 +237,7 @@ describe('riesgoso de contenido: aprueba la agencia', () => {
 
   it('por comando del panel', async () => {
     const h = await harness();
+    bannerToAgency(h);
     await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
     const req = lastReq(h);
     h.store.addCommand({ type: 'aprobar', request_id: req.id });
@@ -185,8 +253,20 @@ describe('riesgoso de contenido: aprueba la agencia', () => {
     expect(h.store.requests[0]!.status).toBe('revertido');
   });
 
+  it('una fila vieja con categoría riesgoso se lee como delicado al publicar', async () => {
+    const h = await harness();
+    bannerToAgency(h);
+    await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
+    const req = lastReq(h);
+    await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
+    await h.store.updateRequest(req.id, { category: 'riesgoso' });
+    await h.press(`ok:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('publicado');
+  });
+
   it('rechazo del panel avisa al cliente', async () => {
     const h = await harness();
+    bannerToAgency(h);
     await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
     h.store.addCommand({ type: 'rechazar', request_id: lastReq(h).id });
     await new CommandPoller(h.store, h.worker, [], () => {}).tick();
@@ -203,21 +283,54 @@ describe('riesgoso de contenido: aprueba la agencia', () => {
   });
 });
 
-describe('fuera de alcance, consulta, bloqueado y derivado', () => {
-  it('presupuesto: borrador, envío desde el panel y aceptación', async () => {
+describe('algo nuevo, consulta, bloqueado y derivado', () => {
+  it('algo nuevo: presupuesto con alcance, plazo, precio y seña; al aceptar, el link de pago de prueba', async () => {
     const h = await harness();
-    await h.say('quiero que la gente pueda reservar tortas online');
+    await h.say('quiero cobrar las tortas online con Mercado Pago');
     const req = lastReq(h);
+    expect(req).toMatchObject({ category: 'nuevo', lane: null, status: 'cotizado' });
     expect(h.store.quotes[0]).toMatchObject({ status: 'borrador', request_id: req.id });
-    expect(h.last()).toBe(copy.fueraDeAlcance('Estudio Faro'));
-    expect(h.last(AGENCY_CHAT)).toMatch(/borrador de presupuesto/);
+    expect(h.last()).toBe(copy.algoNuevo('Estudio Faro'));
+    expect(h.last(AGENCY_CHAT)).toMatch(/Es algo nuevo\. Armé un borrador de presupuesto/);
 
     h.store.addCommand({ type: 'enviar_presupuesto', request_id: req.id, payload: { amount_usd: 450, eta_days: 7 } });
     await new CommandPoller(h.store, h.worker, [], () => {}).tick();
-    expect(h.last()).toMatch(/^Presupuesto de Estudio Faro: .*USD 450, 7 días\.$/);
+    expect(h.last()).toMatch(/^Presupuesto de Estudio Faro: .*\n.+\nPlazo: 7 días\. Precio: USD 450, con una seña de USD 225 para arrancar\.$/);
+    expect(h.channel.lastButton(CLIENT_CHAT, 'qok:')).toBe(`qok:${req.short_id}`);
+
     await h.press(`qok:${req.short_id}`);
     expect(h.store.quotes[0]!.status).toBe('aceptado');
-    expect(h.last(AGENCY_CHAT)).toMatch(/aceptó el presupuesto/);
+    const link = h.textsTo(CLIENT_CHAT).at(-1)!;
+    expect(link).toMatch(/^¡Genial! Para arrancar, pagá la seña de USD 225 acá: https:\/\/pagos\.walt\.example\/sena\//);
+    expect(link).toContain(copy.pagoDePrueba());
+    const url = new URL(link.split('acá: ')[1]!.split('\n')[0]!);
+    expect(url.searchParams.get('monto')).toBe('225');
+    expect(url.searchParams.get('pedido')).toBe(req.short_id);
+    expect(h.last(AGENCY_CHAT)).toMatch(/aceptó el presupuesto .* Le mandé el link de la seña de USD 225/);
+    expect(h.store.events.find((e) => e.request_id === req.id && e.step === 'link_pago' && e.status === 'ok')?.detail).toMatchObject({ monto: 225, modo: 'prueba' });
+  });
+
+  it('la seña sale de las reglas del proyecto; si el link falla, la aceptación vale igual', async () => {
+    const h = await harness();
+    setRules(h.store, (r) => void (r.config = { ...r.config!, depositPct: 30 }));
+    await h.say('quiero cobrar las tortas online con Mercado Pago');
+    const req = lastReq(h);
+    h.store.addCommand({ type: 'enviar_presupuesto', request_id: req.id, payload: { amount_usd: 300, eta_days: 5 } });
+    await new CommandPoller(h.store, h.worker, [], () => {}).tick();
+    expect(h.last()).toContain('con una seña de USD 90 para arrancar');
+
+    const broken = await harness({});
+    (broken.worker as unknown as { payments: { createDepositLink: () => Promise<never> } }).payments.createDepositLink = async () => {
+      throw new Error('sin proveedor');
+    };
+    await broken.say('quiero cobrar las tortas online con Mercado Pago');
+    const r2 = lastReq(broken);
+    broken.store.addCommand({ type: 'enviar_presupuesto', request_id: r2.id, payload: { amount_usd: 300 } });
+    await new CommandPoller(broken.store, broken.worker, [], () => {}).tick();
+    await broken.press(`qok:${r2.short_id}`);
+    expect(broken.store.quotes[0]!.status).toBe('aceptado');
+    expect(broken.last()).toBe(copy.presupuestoAceptado('Estudio Faro'));
+    expect(broken.last(AGENCY_CHAT)).toMatch(/aceptó el presupuesto/);
   });
 
   it('consulta con lo que dice la web', async () => {
@@ -248,18 +361,13 @@ describe('fuera de alcance, consulta, bloqueado y derivado', () => {
     expect(h.last(AGENCY_CHAT)).toMatch(/No pude resolver solo el pedido #CUT234/);
     expect(await h.worker.recoverInterrupted()).toBe(0);
   });
-
-  it('un pedido sin operaciones concretas queda derivado', async () => {
-    const h = await harness();
-    await h.say('hacé que se vea más lindo');
-    expect(lastReq(h).status).toBe('derivado');
-    expect(h.last()).toBe(copy.derivado());
-  });
 });
 
-describe('riesgoso de código: cola lenta y @walt/agent', () => {
+describe('carril de código, delicado: la agencia aprueba el PR antes de la vista previa', () => {
   const needsCode = aiWith((t) =>
-    t.includes('mapa') ? { kind: 'cambio', summary: 'Agrego un mapa en contacto', ops: [], needsCode: true, codeInstruction: 'Agregar un mapa embebido en la sección de contacto', unexpressedParts: ['un mapa'], confidence: 0.9 } : null,
+    t.includes('mapa')
+      ? { kind: 'delicado', why: 'Toca la API', summary: 'Agrego un mapa en contacto', ops: [], needsCode: true, codeInstruction: 'Agregar un mapa embebido en la sección de contacto', unexpressedParts: ['un mapa'], confidence: 0.9 }
+      : null,
   );
 
   it('con el stub del agente queda derivado', async () => {
@@ -308,13 +416,113 @@ describe('riesgoso de código: cola lenta y @walt/agent', () => {
     expect(closed).toEqual([7]);
     expect(agent.calls).toEqual(['run:Agregar un mapa embebido en la sección de contacto']);
   });
+
+  it('un delicado nunca baja: aunque el diff sea limpio, lo aprueba la agencia', async () => {
+    const agent = okAgent({ changedFiles: ['components/Mapa.tsx'] });
+    const h = await harness({ ai: needsCode, agent });
+    await h.say('agregá un mapa en contacto');
+    const req = lastReq(h);
+    expect(req).toMatchObject({ category: 'delicado', status: 'agente_listo' });
+    expect(h.store.events.find((e) => e.request_id === req.id && e.step === 'revision_diff')?.detail).toMatchObject({ categoria: 'simple' });
+    expect(agent.inputs[0]!.instruction).not.toContain(SIMPLE_CHANGE_HINT);
+  });
+});
+
+describe('carril de código, simple: el cliente ve la vista previa y publica, sin la agencia', () => {
+  const footerNotice = aiWith((t) =>
+    t.includes('envío gratis')
+      ? { kind: 'simple', why: 'Es un aviso visual', summary: 'Agrego un aviso de envío gratis en el footer', ops: [], needsCode: true, codeInstruction: 'Agregar un aviso de envío gratis arriba del footer', unexpressedParts: ['el aviso'], confidence: 0.9 }
+      : null,
+  );
+
+  it('del pedido a publicado sin pasar por la agencia', async () => {
+    const agent = { ...okAgent({ changedFiles: ['components/AvisoEnvio.tsx', 'app/page.tsx'] }), closeChange: async () => {} };
+    const h = await harness({ ai: footerNotice, agent });
+    await h.say('agregá un aviso de envío gratis arriba del footer');
+    const req = lastReq(h);
+    expect(h.textsTo(CLIENT_CHAT)).toContain(copy.preparandoCambio());
+    expect(req).toMatchObject({ category: 'simple', lane: 'codigo', status: 'esperando_cliente', pr_number: 7, preview_url: 'https://preview.example' });
+    expect(h.last()).toBe(`${copy.vistaPrevia('Agrego un aviso de envío gratis en el footer')}\n${copy.linkVistaPrevia('https://preview.example')}`);
+    expect(h.channel.lastButton(CLIENT_CHAT, 'ok:')).toBe(`ok:${req.short_id}`);
+    // The brief keeps it in the interface, and the agent can't touch what is protected.
+    expect(agent.inputs[0]!.instruction).toContain(SIMPLE_CHANGE_HINT);
+    expect(agent.inputs[0]!.protectedGlobs).toEqual(expect.arrayContaining(['package.json', '.env*']));
+    expect(h.store.events.find((e) => e.request_id === req.id && e.step === 'revision_diff')?.detail).toMatchObject({ categoria: 'simple', razones: [] });
+    await h.press(`ok:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('publicado');
+    expect(h.last()).toBe(copy.publicado());
+    expect(agent.calls).toEqual(['run:Agregar un aviso de envío gratis arriba del footer', 'merge:7']);
+    expect(h.textsTo(AGENCY_CHAT)).toEqual([]);
+    expect(h.store.approvals).toEqual([expect.objectContaining({ actor: 'cliente', decision: 'aprobado' })]);
+  });
+
+  it('doble clasificación: si el diff toca una migración, sube a delicado y lo aprueba la agencia', async () => {
+    const diff = ['--- a/supabase/migrations/0004.sql', '+++ b/supabase/migrations/0004.sql', '+create table avisos (id uuid);'].join('\n');
+    const agent = okAgent({ changedFiles: ['components/AvisoEnvio.tsx', 'supabase/migrations/0004.sql'], diff });
+    const h = await harness({ ai: footerNotice, agent });
+    await h.say('agregá un aviso de envío gratis arriba del footer');
+    const req = lastReq(h);
+    expect(req).toMatchObject({ category: 'delicado', lane: 'codigo', status: 'agente_listo' });
+    expect(h.textsTo(CLIENT_CHAT)).toContain(copy.pasaADelicado('Estudio Faro'));
+    expect(h.last(AGENCY_CHAT)).toMatch(/parecía un cambio simple, pero el diff toca zonas delicadas \(toca supabase\/migrations\/0004\.sql: la base de datos/);
+    expect(h.channel.lastButton(AGENCY_CHAT, 'gok:')).toBe(`gok:${req.short_id}`);
+    const ev = h.store.events.find((e) => e.request_id === req.id && e.step === 'revision_diff');
+    expect(ev?.detail).toMatchObject({ categoria: 'delicado', subeA: 'delicado', archivos: ['supabase/migrations/0004.sql'] });
+    expect((req.gate as { reasons: string[] }).reasons[0]).toMatch(/base de datos/);
+    // From here it is the delicate flow: the agency approves, then the client previews and publishes.
+    await h.press(`gok:${req.short_id}`, AGENCY_CHAT);
+    expect(h.store.requests[0]!.status).toBe('esperando_cliente');
+    await h.press(`ok:${req.short_id}`);
+    expect(h.store.requests[0]!.status).toBe('publicado');
+  });
+
+  it('las rutas delicadas de las reglas del proyecto también suben; las excepciones simples no', async () => {
+    const agent = okAgent({ changedFiles: ['app/api/contacto/route.ts'] });
+    const h = await harness({ ai: footerNotice, agent });
+    setRules(h.store, (r) => void (r.config = { ...r.config!, template: 'nextjs-supabase', delicateGlobs: ['app/api/**'] }));
+    await h.say('agregá un aviso de envío gratis arriba del footer');
+    expect(lastReq(h)).toMatchObject({ category: 'delicado', status: 'agente_listo' });
+
+    const h2 = await harness({ ai: footerNotice, agent: okAgent({ changedFiles: ['app/api/contacto/route.ts'] }) });
+    setRules(h2.store, (r) => void (r.config = { ...r.config!, delicateGlobs: ['app/api/**'], simpleGlobs: ['app/api/contacto/**'] }));
+    await h2.say('agregá un aviso de envío gratis arriba del footer');
+    expect(lastReq(h2)).toMatchObject({ category: 'simple', status: 'esperando_cliente' });
+  });
+
+  it('lo protegido por la agencia llega al guard del agente', async () => {
+    const agent = okAgent();
+    const h = await harness({ ai: footerNotice, agent });
+    setRules(h.store, (r) => void (r.config = { ...r.config!, protectedGlobs: ['lib/precios.ts'] }));
+    await h.say('agregá un aviso de envío gratis arriba del footer');
+    expect(agent.inputs[0]!.protectedGlobs).toContain('lib/precios.ts');
+  });
+
+  it('sin vista previa para mostrar, la agencia mira el PR primero', async () => {
+    const agent = okAgent({ previewUrl: undefined, changedFiles: ['components/AvisoEnvio.tsx'] });
+    const h = await harness({ ai: footerNotice, agent });
+    await h.say('agregá un aviso de envío gratis arriba del footer');
+    const req = lastReq(h);
+    expect(req).toMatchObject({ category: 'simple', status: 'agente_listo' });
+    expect(h.last()).toBe(copy.revisaAgencia('Estudio Faro'));
+    expect(h.last(AGENCY_CHAT)).toMatch(/no hay vista previa para mostrarle al cliente/);
+  });
+
+  it('código con poca confianza: pregunta antes de correr el agente', async () => {
+    const agent = okAgent();
+    const ai = aiWith({ kind: 'simple', summary: 'Mejoro el diseño', ops: [], needsCode: true, codeInstruction: 'Mejorar el diseño', confidence: 0.3, question: '¿Qué te gustaría cambiar del diseño?' });
+    const h = await harness({ ai, agent });
+    await h.say('hacé que quede más moderno');
+    expect(lastReq(h)).toMatchObject({ category: 'simple', lane: null, status: 'respondido' });
+    expect(h.last()).toBe('¿Qué te gustaría cambiar del diseño?');
+    expect(agent.calls).toEqual([]);
+  });
 });
 
 describe('carril de código: el cambio ya estaba', () => {
   it('si el agente no cambia nada, le dice al cliente que ya está y no lo deriva', async () => {
     const ai = aiWith((t) =>
       t.includes('envío gratis')
-        ? { kind: 'cambio', summary: 'Agrego un aviso de envío gratis', ops: [], needsCode: true, codeInstruction: 'Agregar aviso', unexpressedParts: ['aviso'], confidence: 0.9 }
+        ? { kind: 'simple', summary: 'Agrego un aviso de envío gratis', ops: [], needsCode: true, codeInstruction: 'Agregar aviso', unexpressedParts: ['aviso'], confidence: 0.9 }
         : null,
     );
     const noChange = Object.assign(new Error('El agente no encontró nada para cambiar'), { name: 'NoChangeNeededError', summary: 'Ya estaba: el aviso está arriba del footer.' });
@@ -330,7 +538,7 @@ describe('carril de código: el cambio ya estaba', () => {
 describe('aprobar por texto (SPEC §9, paso 3)', () => {
   const ai = aiWith((t) =>
     t.includes('mapa')
-      ? { kind: 'cambio', summary: 'Agrego un mapa en contacto', ops: [], needsCode: true, codeInstruction: 'Agregar un mapa', unexpressedParts: ['un mapa'], confidence: 0.9 }
+      ? { kind: 'delicado', summary: 'Agrego un mapa en contacto', ops: [], needsCode: true, codeInstruction: 'Agregar un mapa', unexpressedParts: ['un mapa'], confidence: 0.9 }
       : /aprob|public|hacer/.test(t)
         ? { kind: 'aprobacion', summary: 'Aprueba', ops: [], needsCode: false, unexpressedParts: [], confidence: 0.9 }
         : null,
@@ -355,6 +563,7 @@ describe('aprobar por texto (SPEC §9, paso 3)', () => {
 
   it('la agencia aprueba por texto un cartel que espera su aprobación', async () => {
     const h = await harness({ ai });
+    setRules(h.store, (r) => void (r.policies.set_banner = 'agencia'));
     await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
     const req = lastReq(h);
     await agencySays(h, 'aprobado');
@@ -364,6 +573,7 @@ describe('aprobar por texto (SPEC §9, paso 3)', () => {
 
   it('si el cliente aprueba algo que espera a la agencia, le dice que lo aprueba la agencia', async () => {
     const h = await harness({ ai });
+    setRules(h.store, (r) => void (r.policies.set_banner = 'agencia'));
     await h.say('poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo');
     const req = lastReq(h);
     await h.say('aprobar y hacer');

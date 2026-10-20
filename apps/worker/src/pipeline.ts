@@ -6,12 +6,21 @@ import {
   buttons as B,
   copy,
   costUsd,
+  createFakePaymentLinks,
   decide,
   DEFAULT_RULES,
+  depositAmount,
+  exampleSourceOf,
+  isChangeKind,
+  MAX_PROMPT_EXAMPLES,
+  normalizeCategory,
   redact,
   revertChanges,
+  rulesConfig,
   runGate,
   shortId as newShortId,
+  warningsBlock,
+  withBlock,
   type Change,
   type CommandRow,
   type ContactRow,
@@ -21,7 +30,9 @@ import {
   type GateResult,
   type Interpretation,
   type Inventory,
+  type LabeledExample,
   type Op,
+  type PaymentLinks,
   type ProjectRow,
   type RequestRow,
   type RequestStatus,
@@ -31,7 +42,7 @@ import {
   type Usage,
   type Via,
 } from '@walt/core';
-import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from '@walt/agent';
+import { classifyDiff, protectedGlobsFor, SIMPLE_CHANGE_HINT, type RepoRef, type RunCodeChangeInput, type RunCodeChangeResult } from '@walt/agent';
 import type { Screenshotter } from './capture.js';
 import type { Button, Channel, Incoming, OutMessage } from './channel/types.js';
 import { Queue, withTimeout } from './queue.js';
@@ -71,6 +82,8 @@ export interface WorkerDeps {
   transcribe?: ((audio: Buffer, mime: string) => Promise<string>) | null;
   /** Optional panel URL for the "Ver en el panel" button. */
   panelUrl?: string;
+  /** Deposit links for accepted quotes. Default: the fake provider in test mode (R1 has no payment accounts). */
+  payments?: PaymentLinks;
   now?: () => Date;
   log?: (line: string) => void;
   /** Called on every event saved (dry-run prints them). */
@@ -135,9 +148,11 @@ export class Worker {
   private readonly liveFor = new Map<string, string | null>();
   private readonly now: () => Date;
   private readonly log: (line: string) => void;
+  private readonly payments: PaymentLinks;
 
   constructor(private readonly d: WorkerDeps) {
     this.now = d.now ?? (() => new Date());
+    this.payments = d.payments ?? createFakePaymentLinks();
     this.log = d.log ?? ((l) => console.log(l));
     this.fast = new Queue('rápida', LIMITS.queueMax, (e) => this.log(`[cola rápida] ${this.redact(errMsg(e))}`));
     this.slow = new Queue('lenta', LIMITS.queueMax, (e) => this.log(`[cola lenta] ${this.redact(errMsg(e))}`));
@@ -363,7 +378,7 @@ export class Worker {
     let req = (await store.getRequest(requestId))!;
     // Everything the interpretation needs, read in parallel (each read is a round trip).
     const ctxP = this.ctxFor(req.project_id);
-    const [contact, ctx, contract, , live, rulesRow, history, autoPublishedThisMonth] = await Promise.all([
+    const [contact, ctx, contract, , live, rulesRow, history, autoPublishedThisMonth, examples] = await Promise.all([
       store.getContact(req.contact_id!).then((c) => c!),
       ctxP,
       ctxP.then((c) => (c.project.mode === 'contenido' ? this.d.repo.loadContract(c.project) : null)),
@@ -372,11 +387,13 @@ export class Worker {
       store.latestRules(req.project_id),
       this.history(req.contact_id!, req.id),
       store.countAutoPublishedSince(req.project_id, startOfMonthIso(this.now())),
+      ctxP.then((c) => this.examplesFor(c, req)),
     ]);
     if (ctx.project.mode === 'contenido' && !live) throw new Error('El proyecto no tiene versión viva');
     this.liveFor.set(req.id, live?.id ?? null);
     const inventory = contract && live ? buildInventory(contract.config, live.content) : EMPTY_INVENTORY;
     const rules: Rules = rulesRow?.rules ?? DEFAULT_RULES;
+    const config = rulesConfig(rules);
 
     const { interpretation, usage } = await this.step(req, 'interpretado', async () =>
       withTimeout(
@@ -387,11 +404,22 @@ export class Worker {
           agencyName: ctx.agencyName,
           clientName: ctx.project.client_name,
           now: montevideoIso(this.now()),
+          policyText: rules.policy_text,
+          alwaysNew: config.alwaysNew,
+          examples,
         }),
         TIMEOUTS.interpret,
         'Interpretación',
       ),
-      (r) => ({ resumen: r.interpretation.summary, tipo: r.interpretation.kind, confianza: r.interpretation.confidence, proveedor: this.d.ai.name }),
+      (r) => ({
+        resumen: r.interpretation.summary,
+        tipo: r.interpretation.kind,
+        confianza: r.interpretation.confidence,
+        ...(r.interpretation.why ? { porque: r.interpretation.why } : {}),
+        ...(r.interpretation.language ? { idioma: r.interpretation.language } : {}),
+        ...(examples.length ? { ejemplos: examples.length } : {}),
+        proveedor: this.d.ai.name,
+      }),
     );
     const all = [...((req.usage as Usage[] | null) ?? []), usage];
     req = await store.updateRequest(req.id, {
@@ -423,7 +451,7 @@ export class Worker {
     }
 
     let gate: GateResult | null = null;
-    if (interpretation.kind === 'cambio' && interpretation.ops.length > 0 && contract && live) {
+    if (isChangeKind(interpretation.kind) && interpretation.ops.length > 0 && contract && live) {
       gate = await this.step(
         req,
         'gate',
@@ -437,13 +465,13 @@ export class Worker {
             secrets: this.d.secrets,
             autoPublishedThisMonth,
           }),
-        (g) => ({ resultado: g.outcome, razones: g.reasons, cambios: g.changes.length }),
+        (g) => ({ resultado: g.outcome, razones: g.reasons, advertencias: g.warnings, cambios: g.changes.length }),
       );
     }
 
-    // Phase 2: two concrete readings of an ambiguous change → two previews and a button each.
+    // Phase 2: two concrete readings of an ambiguous simple change → two previews and a button each.
     if (
-      interpretation.kind === 'cambio' &&
+      interpretation.kind === 'simple' &&
       interpretation.ops.length === 0 &&
       (interpretation.options?.length ?? 0) >= 2 &&
       contract &&
@@ -464,23 +492,32 @@ export class Worker {
       projectMode: ctx.project.mode,
       hasOpenRequest: false,
     });
-    await this.event(req, 'decidido', 'ok', 0, { categoria: decision.category, carril: decision.lane, razones: decision.reasons });
+    await this.event(req, 'decidido', 'ok', 0, {
+      categoria: decision.category,
+      carril: decision.lane,
+      razones: decision.reasons,
+      ...(decision.warnings.length ? { advertencias: decision.warnings } : {}),
+      ...(decision.clarify ? { aclarar: true } : {}),
+    });
     req = await store.updateRequest(req.id, {
       category: decision.category,
       lane: decision.lane,
-      gate: gate ? { outcome: gate.outcome, reasons: gate.reasons } : { outcome: null, reasons: decision.reasons },
+      gate: gate
+        ? { outcome: gate.outcome, reasons: gate.reasons, warnings: decision.warnings }
+        : { outcome: null, reasons: decision.reasons, warnings: decision.warnings },
       changes: gate?.changes ?? null,
     });
 
     switch (decision.category) {
-      case 'permitido':
-        return this.flowPermitido(req, contact, ctx, interpretation, gate!);
-      case 'riesgoso':
-        return decision.lane === 'codigo'
-          ? this.flowRiesgosoCodigo(req, contact, ctx)
-          : this.flowRiesgosoContenido(req, contact, ctx, interpretation, gate, decision);
-      case 'fuera_de_alcance':
-        return this.flowFueraDeAlcance(req, contact, ctx, interpretation);
+      case 'simple':
+      case 'delicado':
+        if (decision.clarify) return this.flowClarify(req, contact, interpretation);
+        if (decision.lane === 'codigo') return this.flowCodigo(req, contact, ctx, decision.category);
+        if (decision.category === 'delicado') return this.flowDelicadoContenido(req, contact, ctx, interpretation, gate, decision);
+        if (!gate || gate.changes.length === 0) return this.flowYaEstaAsi(req, contact);
+        return this.flowSimpleContenido(req, contact, ctx, interpretation, gate, decision);
+      case 'nuevo':
+        return this.flowNuevo(req, contact, ctx, interpretation);
       case 'consulta':
         return this.flowConsulta(req, contact, ctx, inventory);
       case 'bloqueado':
@@ -491,6 +528,21 @@ export class Worker {
         return;
       case 'derivado':
         return this.derive(req.id, new Error(decision.reasons.join('; ') || 'Derivado por las reglas'), { expected: true });
+    }
+  }
+
+  /** Relabeled requests of the same agency, most similar first. A failure never stops the request. */
+  private async examplesFor(ctx: Ctx, req: RequestRow): Promise<LabeledExample[]> {
+    try {
+      const source = exampleSourceOf(this.d.store);
+      return await withTimeout(
+        source.similarExamples({ factoryId: ctx.factory.id, projectId: ctx.project.id, text: req.raw_text, limit: MAX_PROMPT_EXAMPLES }),
+        3_000,
+        'Ejemplos',
+      );
+    } catch (err) {
+      this.log(`[ejemplos] ${this.redact(errMsg(err))}`);
+      return [];
     }
   }
 
@@ -532,10 +584,14 @@ export class Worker {
     return u.toString();
   }
 
-  private async flowPermitido(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation, gate: GateResult): Promise<void> {
+  /**
+   * Simple change by content: draft, preview with "Dale" and "No era eso", published by the client
+   * without the agency. Warnings (a price that moves a lot, low contrast) travel with the preview.
+   */
+  private async flowSimpleContenido(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation, gate: GateResult, decision: Decision): Promise<void> {
     await this.say(contact, req.id, { text: copy.entendido(it.summary) });
     const { photo, previewUrl } = await this.draftAndCapture(req, gate, ctx);
-    const text = photo ? copy.vistaPrevia(it.summary) : `${copy.vistaPrevia(it.summary)}\n${copy.linkVistaPrevia(previewUrl)}`;
+    const text = withBlock(withBlock(copy.vistaPrevia(it.summary), warningsBlock(decision.warnings)), photo ? '' : copy.linkVistaPrevia(previewUrl));
     await this.step(req, 'enviado', () =>
       this.say(contact, req.id, {
         text,
@@ -553,8 +609,8 @@ export class Worker {
     it: Interpretation,
     options: { label: string; gate: GateResult }[],
   ): Promise<void> {
-    await this.event(req, 'decidido', 'ok', 0, { categoria: 'permitido', carril: 'contenido', opciones: options.map((o) => o.label) });
-    await this.d.store.updateRequest(req.id, { category: 'permitido', lane: 'contenido', gate: { outcome: 'auto', reasons: [] } });
+    await this.event(req, 'decidido', 'ok', 0, { categoria: 'simple', carril: 'contenido', opciones: options.map((o) => o.label) });
+    await this.d.store.updateRequest(req.id, { category: 'simple', lane: 'contenido', gate: { outcome: 'auto', reasons: [] } });
     await this.say(contact, req.id, { text: copy.entendido(it.summary) });
     const drafts: string[] = [];
     for (const [i, o] of options.entries()) {
@@ -564,7 +620,7 @@ export class Worker {
       const label = o.label.slice(0, 30);
       await this.step(req, 'enviado', () =>
         this.say(contact, req.id, {
-          text: `${copy.opcion(i + 1, label)}${photo ? '' : `\n${copy.linkVistaPrevia(previewUrl)}`}`,
+          text: withBlock(withBlock(copy.opcion(i + 1, label), warningsBlock(o.gate.warnings)), photo ? '' : copy.linkVistaPrevia(previewUrl)),
           photo,
           buttons: [[{ text: label, data: `opt:${req.short_id}:${i}` }]],
         }),
@@ -600,7 +656,22 @@ export class Worker {
     await this.publish(req.id, 'cliente', via);
   }
 
-  private async flowRiesgosoContenido(
+  /** Nothing concrete to preview yet: one question to the client. Its next message continues this request. */
+  private async flowClarify(req: RequestRow, contact: ContactRow, it: Interpretation): Promise<void> {
+    const question = it.question?.trim().slice(0, 400) || copy.pedirDetalle();
+    await this.d.store.updateRequest(req.id, { status: 'respondido' });
+    await this.step(req, 'respondido', () => this.say(contact, req.id, { text: question }), () => ({ pregunta: question }));
+    this.awaitingCorrection.set(contact.id, req.id);
+  }
+
+  /** The operations change nothing: it is already like that on the site. */
+  private async flowYaEstaAsi(req: RequestRow, contact: ContactRow): Promise<void> {
+    await this.d.store.updateRequest(req.id, { status: 'respondido' });
+    await this.step(req, 'respondido', () => this.say(contact, req.id, { text: copy.yaEstaAsi() }), () => ({ sinCambios: true }));
+  }
+
+  /** Delicate by content: an agency policy (or the monthly quota) asks for its approval before the client's preview. */
+  private async flowDelicadoContenido(
     req: RequestRow,
     contact: ContactRow,
     ctx: Ctx,
@@ -625,11 +696,12 @@ export class Worker {
   }
 
   /**
-   * Code lane: the agent prepares the change in a branch right away; the agency approves it with the PR
-   * and its diff in view, and only then the client gets the preview and publishes it.
+   * Code lane: the agent prepares the change in a branch right away. Simple: the client gets the preview
+   * and publishes it, without the agency, unless the diff touches a delicate zone (then it becomes
+   * delicado). Delicado: the agency approves the PR with its diff in view, then the client previews it.
    */
-  private async flowRiesgosoCodigo(req: RequestRow, contact: ContactRow, ctx: Ctx): Promise<void> {
-    await this.say(contact, req.id, { text: copy.preparandoCodigo(ctx.agencyName) });
+  private async flowCodigo(req: RequestRow, contact: ContactRow, ctx: Ctx, category: 'simple' | 'delicado'): Promise<void> {
+    await this.say(contact, req.id, { text: category === 'simple' ? copy.preparandoCambio() : copy.preparandoCodigo(ctx.agencyName) });
     await this.d.store.updateRequest(req.id, { status: 'agente_trabajando' });
     if (!this.slow.push(() => this.runAgent(req.id))) throw new Error('La cola del agente está llena');
   }
@@ -642,6 +714,19 @@ export class Worker {
     const ctx = await this.ctxFor(req.project_id);
     await this.d.store.addApproval({ request_id: req.id, actor: 'agencia', decision: 'aprobado', via });
     await this.event(req, 'aprobado_agencia', 'ok', 0, { via });
+    const summary = (req.interpretation as Interpretation | null)?.summary ?? req.raw_text;
+    await this.previewToClient(req, copy.revisadoAgencia(ctx.agencyName, summary));
+  }
+
+  /** Simple change by code, clean diff: the client gets the PR's preview with "Dale" and "No era eso". */
+  private async sendCodePreview(req: RequestRow): Promise<void> {
+    const it = req.interpretation as Interpretation | null;
+    const warnings = (req.gate as { warnings?: string[] } | null)?.warnings ?? [];
+    await this.previewToClient(req, withBlock(copy.vistaPrevia(it?.summary ?? req.raw_text), warningsBlock(warnings)));
+  }
+
+  /** Capture of the request's preview (if any) to the client, with "Dale" and "No era eso"; waits for the client. */
+  private async previewToClient(req: RequestRow, text: string): Promise<void> {
     const previewUrl = req.preview_url;
     let photo: Buffer | null = null;
     if (previewUrl && this.d.screenshots.enabled) {
@@ -650,11 +735,9 @@ export class Worker {
       photo = await this.d.screenshots.capture(previewUrl);
       await this.event(req, 'captura', photo ? 'ok' : 'falla', Math.round(performance.now() - t0), photo ? { bytes: photo.length } : { error: 'Sin captura: se manda el link' });
     }
-    const summary = (req.interpretation as Interpretation | null)?.summary ?? req.raw_text;
-    const text = copy.revisadoAgencia(ctx.agencyName, summary) + (photo || !previewUrl ? '' : `\n${copy.linkVistaPrevia(previewUrl)}`);
     await this.step(req, 'enviado', () =>
       this.sayTo(req.contact_id, req.id, {
-        text,
+        text: withBlock(text, photo || !previewUrl ? '' : copy.linkVistaPrevia(previewUrl)),
         photo,
         buttons: [[{ text: B.dale, data: `ok:${req.short_id}` }, { text: B.noEraEso, data: `no:${req.short_id}` }]],
       }),
@@ -673,7 +756,8 @@ export class Worker {
     }
   }
 
-  private async flowFueraDeAlcance(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation): Promise<void> {
+  /** Algo nuevo: a draft quote with scope, deadline and price; the agency reviews it and sends it from the panel. */
+  private async flowNuevo(req: RequestRow, contact: ContactRow, ctx: Ctx, it: Interpretation): Promise<void> {
     await this.d.store.updateRequest(req.id, { status: 'cotizando' });
     const past = await this.d.store.listQuotes(req.project_id, 20);
     const { quote, usage } = await this.step(
@@ -684,6 +768,8 @@ export class Worker {
           this.d.ai.draftQuote({
             text: req.raw_text,
             pastQuotes: past.map((q) => ({ title: q.title, description: q.description, amountUsd: q.amount_usd, etaDays: q.eta_days, status: q.status })),
+            summary: it.summary,
+            why: it.why,
           }),
           TIMEOUTS.ai,
           'Presupuesto',
@@ -699,9 +785,9 @@ export class Worker {
     });
     req = await this.addUsage(req, [usage]);
     await this.d.store.updateRequest(req.id, { quote_id: row.id, status: 'cotizado' });
-    await this.say(contact, req.id, { text: copy.fueraDeAlcance(ctx.agencyName) });
+    await this.say(contact, req.id, { text: copy.algoNuevo(ctx.agencyName) });
     await this.notifyAgency(ctx, req.id, {
-      text: copy.agenciaFueraDeAlcance(ctx.project.client_name, it.summary, quote.title, quote.amountUsd, quote.etaDays),
+      text: copy.agenciaNuevo(ctx.project.client_name, it.summary, quote.title, quote.amountUsd, quote.etaDays),
       buttons: this.panelRow(),
     });
   }
@@ -788,8 +874,8 @@ export class Worker {
           if (((req.ops as Op[] | null) ?? []).length === 0) return await this.sayTo(req.contact_id, req.id, { text: copy.elegiUna() });
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'aprobado', via });
           await this.event(req, 'aprobado_cliente', 'ok', 0, { via });
-          // A risky change that reaches the client already has the agency's approval.
-          return await this.publish(req.id, 'cliente', via, { agencyApproved: req.category === 'riesgoso' });
+          // A delicate change that reaches the client already has the agency's approval.
+          return await this.publish(req.id, 'cliente', via, { agencyApproved: normalizeCategory(req.category) === 'delicado' });
         case 'no':
           if (req.status !== 'esperando_cliente') return;
           await this.d.store.addApproval({ request_id: req.id, actor: 'cliente', decision: 'rechazado', via });
@@ -858,14 +944,40 @@ export class Worker {
     if (v?.status === 'borrador') await this.d.store.updateVersion(v.id, { status: 'descartada' });
   }
 
+  /**
+   * The client answers a quote. Accepted: the deposit link goes to the client (test mode in R1, nothing
+   * is charged) and the agency is told; the real payment and what follows it are R2.
+   */
   private async answerQuote(req: RequestRow, accepted: boolean): Promise<void> {
     if (!req.quote_id) return;
     const quote = await this.d.store.getQuote(req.quote_id);
     if (!quote || quote.status !== 'enviado') return;
     await this.d.store.updateQuote(quote.id, { status: accepted ? 'aceptado' : 'rechazado' });
     const ctx = await this.ctxFor(req.project_id);
+    const deposit = accepted ? depositAmount(quote.amount_usd, (await this.configFor(req.project_id)).depositPct) : 0;
+    if (deposit > 0) {
+      try {
+        const link = await this.step(
+          req,
+          'link_pago',
+          () => this.payments.createDepositLink({ quoteId: quote.id, shortId: req.short_id, title: quote.title, amountUsd: deposit }),
+          (l) => ({ monto: l.amountUsd, proveedor: l.provider, modo: l.mode, url: l.url }),
+        );
+        await this.sayTo(req.contact_id, req.id, { text: withBlock(copy.linkSena(deposit, link.url), link.mode === 'prueba' ? copy.pagoDePrueba() : '') });
+        await this.notifyAgency(ctx, req.id, { text: copy.agenciaSena(ctx.project.client_name, quote.title, deposit), buttons: this.panelRow() });
+        return;
+      } catch (err) {
+        // Without a link the acceptance still stands: the agency follows up.
+        this.log(`[link de pago #${req.short_id}] ${this.redact(errMsg(err))}`);
+      }
+    }
     await this.sayTo(req.contact_id, req.id, { text: accepted ? copy.presupuestoAceptado(ctx.agencyName) : copy.presupuestoAhoraNo() });
     await this.notifyAgency(ctx, req.id, { text: copy.agenciaPresupuesto(ctx.project.client_name, quote.title, accepted) });
+  }
+
+  /** The project's rules config (latest version), with the defaults for rules from before R1. */
+  private async configFor(projectId: string) {
+    return rulesConfig((await this.d.store.latestRules(projectId))?.rules ?? DEFAULT_RULES);
   }
 
   // ───────────────────────── publicar y revertir ─────────────────────────
@@ -909,7 +1021,7 @@ export class Worker {
     }
     if (gate.outcome === 'agencia' && actor === 'cliente' && !opts.agencyApproved) {
       // Rules changed between the preview and the approval: now the agency decides.
-      await store.updateRequest(req.id, { status: 'esperando_agencia', category: 'riesgoso', lane: 'contenido', gate: { outcome: gate.outcome, reasons: gate.reasons } });
+      await store.updateRequest(req.id, { status: 'esperando_agencia', category: 'delicado', lane: 'contenido', gate: { outcome: gate.outcome, reasons: gate.reasons } });
       await this.event(req, 'publicando', 'falla', Math.round(performance.now() - t0), { razones: gate.reasons, aLaAgencia: true });
       const contact = req.contact_id ? await store.getContact(req.contact_id) : null;
       const it = (req.interpretation as Interpretation | null) ?? ({ summary: req.raw_text } as Interpretation);
@@ -1019,13 +1131,24 @@ export class Worker {
   async runAgent(requestId: string): Promise<void> {
     try {
       let req = (await this.d.store.getRequest(requestId))!;
-      const ctx = await this.ctxFor(req.project_id);
+      const [ctx, rulesRow] = await Promise.all([this.ctxFor(req.project_id), this.d.store.latestRules(req.project_id)]);
+      const config = rulesConfig(rulesRow?.rules ?? DEFAULT_RULES);
       const it = req.interpretation as Interpretation | null;
-      const instruction = it?.codeInstruction ?? it?.summary ?? 'Cambio pedido por el cliente';
+      // Anything that is not simple is reviewed by the agency (a delicate request never goes down).
+      const intent = normalizeCategory(req.category) === 'simple' ? 'simple' : 'delicado';
+      const brief = it?.codeInstruction ?? it?.summary ?? 'Cambio pedido por el cliente';
+      const instruction = intent === 'simple' ? `${brief}\n\n${SIMPLE_CHANGE_HINT}` : brief;
       const t0 = performance.now();
       await this.event(req, 'agente_inicio', 'inicio', null, null);
       const res = await withTimeout(
-        this.d.agent.runCodeChange({ repo: this.repoRef(ctx.project), requestId: req.id, shortId: req.short_id, instruction, timeoutMs: TIMEOUTS.agent }),
+        this.d.agent.runCodeChange({
+          repo: this.repoRef(ctx.project),
+          requestId: req.id,
+          shortId: req.short_id,
+          instruction,
+          protectedGlobs: protectedGlobsFor(config),
+          timeoutMs: TIMEOUTS.agent,
+        }),
         TIMEOUTS.agent + 30_000,
         'Agente',
       );
@@ -1044,12 +1167,44 @@ export class Worker {
       });
       if (res.previewUrl) await this.event(req, 'agente_preview', 'ok', tm?.preview ?? null, { url: res.previewUrl });
       for (const l of res.logs) this.log(`[agente #${req.short_id}] ${this.redact(l)}`);
-      req = await this.d.store.updateRequest(req.id, { status: 'agente_listo', pr_url: res.prUrl, pr_number: res.prNumber, preview_url: res.previewUrl ?? null });
+
+      // Double classification: the real diff against the delicate zones. It can raise simple to delicado, never lower.
+      const verdict = classifyDiff({ diff: res.diff, files: res.changedFiles, config, secrets: this.d.secrets });
+      const escalated = intent === 'simple' && verdict.category === 'delicado';
+      await this.event(req, 'revision_diff', 'ok', null, {
+        categoria: verdict.category,
+        razones: verdict.reasons,
+        archivos: verdict.paths.map((p) => p.path),
+        ...(escalated ? { subeA: 'delicado' } : {}),
+      });
+      req = await this.d.store.updateRequest(req.id, {
+        status: 'agente_listo',
+        pr_url: res.prUrl,
+        pr_number: res.prNumber,
+        preview_url: res.previewUrl ?? null,
+        ...(escalated ? { category: 'delicado' as const, gate: { outcome: 'agencia', reasons: verdict.reasons, warnings: [] } } : {}),
+      });
+
+      // Simple and clean, with a preview: straight to the client, without the agency.
+      if (intent === 'simple' && !escalated && res.previewUrl) return await this.sendCodePreview(req);
+
+      const summary = it?.summary ?? req.raw_text;
       const links: Button[] = [];
       if (res.previewUrl) links.push({ text: B.verPreview, url: res.previewUrl });
       links.push({ text: B.verPr, url: res.prUrl });
+      let text: string;
+      if (escalated) {
+        await this.sayTo(req.contact_id, req.id, { text: copy.pasaADelicado(ctx.agencyName) });
+        text = copy.agenciaPasaADelicado(req.short_id, summary, verdict.reasons.map(asClause).join('; '));
+      } else if (intent === 'simple') {
+        // No preview to show the client: the agency looks at the PR first.
+        await this.sayTo(req.contact_id, req.id, { text: copy.revisaAgencia(ctx.agencyName) });
+        text = copy.agenciaSinVistaPrevia(req.short_id, summary);
+      } else {
+        text = copy.agenciaAgenteListo(req.short_id, summary);
+      }
       await this.notifyAgency(ctx, req.id, {
-        text: copy.agenciaAgenteListo(req.short_id, it?.summary ?? req.raw_text),
+        text,
         buttons: [links, [{ text: B.aprobar, data: `gok:${req.short_id}` }, { text: B.rechazar, data: `gno:${req.short_id}` }]],
       });
     } catch (err) {
@@ -1197,9 +1352,13 @@ export class Worker {
     const patch: Record<string, unknown> = { status: 'enviado' };
     for (const k of ['title', 'description', 'amount_usd', 'eta_days'] as const) if (payload[k] !== undefined) patch[k] = payload[k];
     const quote = await this.d.store.updateQuote(quoteId, patch);
-    const ctx = await this.ctxFor(req.project_id);
+    const [ctx, config] = await Promise.all([this.ctxFor(req.project_id), this.configFor(req.project_id)]);
+    const deposit = depositAmount(quote.amount_usd, config.depositPct);
     await this.sayTo(req.contact_id, req.id, {
-      text: copy.presupuesto(ctx.agencyName, quote.title, quote.amount_usd, quote.eta_days),
+      text:
+        deposit > 0
+          ? copy.presupuestoConSena(ctx.agencyName, quote.title, quote.amount_usd, quote.eta_days, quote.description, deposit)
+          : copy.presupuesto(ctx.agencyName, quote.title, quote.amount_usd, quote.eta_days),
       buttons: [[{ text: B.aceptar, data: `qok:${req.short_id}` }, { text: B.ahoraNo, data: `qno:${req.short_id}` }]],
     });
   }

@@ -43,6 +43,8 @@ export const copy = {
   /** Double classification: the diff touched a delicate zone, so a simple request goes to the agency. */
   pasaADelicado: (agencia: string) =>
     `Al prepararlo vi que toca una parte delicada de tu web, así que antes de mostrártelo lo revisa ${agencia}. Te aviso apenas esté.`,
+  /** A simple code change without a preview to show: the agency looks at the PR first. */
+  revisaAgencia: (agencia: string) => `Ya lo preparé. Antes de mostrártelo lo revisa ${agencia}; te aviso apenas esté.`,
   /** Ambiguity goes to the client, never to the agency. */
   pedirDetalle: () => 'Para hacerlo bien me falta un dato. ¿Me contás un poco más qué querés cambiar y cómo?',
   yaEstaAsi: () => 'Revisé tu web y eso ya está así. Si querés otra cosa, contame qué cambiarías.',
@@ -102,6 +104,8 @@ export const copy = {
     `Listo el cambio de código de #${shortId}: ${resumen}. Revisá el PR y aprobalo: después el cliente ve la vista previa y lo publica.`,
   agenciaPasaADelicado: (shortId: string, resumen: string, razones: string) =>
     `#${shortId}: «${resumen}» parecía un cambio simple, pero el diff toca zonas delicadas (${razones}). Revisá el PR y aprobalo: después el cliente ve la vista previa y lo publica.`,
+  agenciaSinVistaPrevia: (shortId: string, resumen: string) =>
+    `#${shortId}: el cambio simple «${resumen}» está listo, pero no hay vista previa para mostrarle al cliente. Revisá el PR y aprobalo: después el cliente lo ve y lo publica.`,
   agenciaSena: (cliente: string, titulo: string, monto: number) =>
     `${cliente} aceptó el presupuesto «${titulo}». Le mandé el link de la seña de USD ${formatAmount(monto)} (de prueba: todavía no se cobra).`,
   agenciaPublicado: (shortId: string) => `Publicado #${shortId}.`,
