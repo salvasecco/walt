@@ -1379,7 +1379,8 @@ export class Worker {
   }
 
   private panelRow(): Button[][] {
-    return this.d.panelUrl ? [[{ text: B.verPanel, url: this.d.panelUrl }]] : [];
+    // The panel's root is the public landing now: the button goes straight to Atención (login first if needed).
+    return this.d.panelUrl ? [[{ text: B.verPanel, url: new URL('/atencion', this.d.panelUrl).toString() }]] : [];
   }
 
   /** Sends and saves an outgoing message. A channel failure is logged, never thrown. */
