@@ -7,6 +7,7 @@ Fecha: 2026-10-20. Sesión "plan", rama `r1-plan`. Responde a la sección 9, pun
 - **Precio (propuesta, §1):** plan por agencia según proyectos activos: Freelancer USD 29 (3 proyectos), Agencia USD 99 (10) y Estudio USD 249 (30), con cambios de contenido sin límite, un cupo de cambios de código y USD 1 por cada extra, WhatsApp incluido desde Agencia, y comisión del 5% sobre lo que la agencia cobra por Walt y del 10% sobre las oportunidades que trae Walt. Queda entre Atarim (USD 67), Duda Agency (USD 52 a 69) y GoHighLevel (USD 97 a 497).
 - **Unit economics (§2):** medido, la IA cuesta USD 0,0053 por interpretación y unos USD 0,05 por cambio de código; el pedido completo, unos USD 0,03 con Telegram y USD 0,06 con WhatsApp. Margen bruto de 79% a 87% según el plan (hipótesis, con 6,5% de procesador de pagos). CAC (USD 150 a 500) y repago (1 a 6 meses) son hipótesis.
 - **Competencia (§3):** nadie junta lo de Walt. Los más cercanos venden a agencias por email o panel (Atarim, GoWP AI Editor) o venden directo a la pyme por WhatsApp o Telegram a USD 20 a 25 por mes (nanogent, autoSite).
+- **¿Alcanza Telegram? (§4.5):** para la beta sí, para vender no. En Uruguay el 98% de quienes usan internet usa WhatsApp (94% a diario) y Telegram no aparece en la medición oficial; en Brasil WhatsApp está en el 99% de los smartphones y Telegram en el 57%; en México, 91% contra 30%.
 - **Canales (§4):** WhatsApp con Kapso al arrancar el R2, con un número por agencia (desde el 2026-10-01 Meta cobra los mensajes de servicio desde el 1.001 de cada número por mes); Telegram para la beta, con Managed Bots para el bot propio de cada agencia en el R2. WhatsApp completo cuesta entre USD 6 y 9 por agencia por mes.
 - **IA (§5):** BYOK y créditos de Walt cumplen; el login o el token de la suscripción no. "Usar la suscripción" de forma legal es cargar como BYOK una API key pagada con los créditos de API de Max o Team (desde el 2026-10-07). El agente de código usa la credencial de la agencia hasta que Anthropic confirme por escrito que Walt puede pagarlo.
 - **Cobros:** SAS digital en Uruguay; Mercado Pago en Uruguay y Paddle en Brasil; Stripe recién con una entidad de EE.UU., porque no admite Uruguay.
@@ -172,7 +173,25 @@ Con los supuestos de este plan (10 pedidos por cliente y mes, unos 4 mensajes de
 
 ### 4.4 Adopción de WhatsApp y Telegram por país
 
-_En curso: la investigación se cortó por el límite de uso; se completa en el próximo commit._
+Solo datos con fuente; las bases no son iguales entre países, así que no se comparan entre sí como si fueran la misma medida.
+
+| País | WhatsApp | Telegram | Base y fuente | Fecha |
+|---|---|---|---|---|
+| Uruguay | Lo usa el **98%** de las personas que usan internet, y el 94% de ellas todos los días. Internet lo usa el 92% de las personas de 14 años o más | **Sin fuente pública:** la encuesta oficial no lo mide | EUTIC 2024 (AGESIC e INE), encuesta a hogares, población de 14 años o más [UY-EUTIC] | informe publicado en 2025 (PDF del 2025-11-25) |
+| Brasil | Instalado en el **99%** de los smartphones | Instalado en el **57%** (63% un año antes) y solo el 38% de quienes lo tienen lo abre todos o casi todos los días | Mobile Time y Opinion Box, "Assistentes de IA e mensageria no Brasil": 2.099 personas de 16 años o más con smartphone, campo del 15 al 30 de enero de 2025, margen de 2,1 puntos [BR-MT] | 2025-02-27 (la edición de 2026 es de acceso pago) |
+| Brasil, contexto | El 92% de quienes usan internet mandó mensajes instantáneos en los tres meses anteriores; el 85% de la población de 10 años o más usa internet | — | TIC Domicílios 2025 (Cetic.br), entrevistas presenciales de marzo a septiembre de 2025 [BR-CETIC] | 2026-05-11 |
+| México | El **91%** tiene una cuenta activa | El **30%** tiene una cuenta activa | Asociación de Internet MX, "Estudio sobre los hábitos de los usuarios de internet en México 2026", 1.200 personas que usan internet [MX-AIMX] | PDF del 2026-05-18 |
+| México, contexto | El 90,6% de quienes usan smartphone usó aplicaciones de mensajería instantánea | — | INEGI, ENDUTIH 2025 [MX-INEGI] | 2026-06-16 |
+| Argentina | "Alcanza 99%", según un proveedor de mensajería, sin base publicada | **Sin fuente** | Infobip, Messaging Trends Report 2026, citado por la revista Mercado [AR-INFOBIP]. No hay encuesta oficial por aplicación; los datos de Statista están detrás de un muro de pago | 2026-09-04 |
+
+### 4.5 ¿Alcanza Telegram para cerrar las primeras agencias?
+
+**Para la beta, sí; para vender, no.**
+
+- **Por qué alcanza para la beta:** el objetivo del R1 es aprender (clasificación, flujos, reetiquetado, costos) con 3 a 5 agencias y 2 clientes cada una. Telegram cuesta cero, el alta es inmediata y el bot, los links y los botones ya funcionan.
+- **Por qué no alcanza para vender:** el cliente final tiene que pedir, y pide por la app que abre todos los días. En Uruguay, WhatsApp lo usa el 98% de quienes usan internet y el 94% de ellos a diario, y Telegram ni aparece en la medición oficial. En Brasil, WhatsApp está en el 99% de los smartphones y Telegram en el 57%, cayendo, con 38% de uso diario entre quienes lo tienen. En México, 91% contra 30%. La agencia que evalúa Walt va a preguntar "¿mis clientes lo van a usar?", y con Telegram la respuesta es "algunos, si instalan algo".
+- **Cuánto interés se pierde (cuenta propia sobre esos datos, no medición):** en Brasil, los clientes finales que usan Telegram a diario serían alrededor de 1 de cada 5 dueños de smartphone (57% × 38%); en México, como mucho 3 de cada 10; en Uruguay no hay dato. Con WhatsApp, casi todos.
+- **Recomendación:** beta por Telegram como está, eligiendo agencias cuyos clientes ya usan Telegram o aceptan instalarlo; empezar durante el R1 lo que tarda (SAS, dominio, verificación del negocio en Meta, cuenta de Kapso) para tener WhatsApp al principio del R2; y en las demos de venta mostrar el flujo por WhatsApp con un número de prueba, para no perder la venta mientras tanto.
 
 ---
 
@@ -303,4 +322,13 @@ Consultadas el 2026-10-20. "Sin fecha" = la página no muestra fecha de publicac
 | GDPR | Reglamento 2016/679 (arts. 3, 27, 28, 33), cláusulas tipo 2021/914 y DPA de Anthropic | https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679 · https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32021D0914 · https://www.anthropic.com/legal/data-processing-addendum | DPA vigente desde 2025-02-24 |
 | META-DOCS | Documentos que Meta acepta para verificar el negocio | https://www.facebook.com/business/help/159334372093366 | sin fecha |
 
-**Adopción por país:** en curso (ver §4.4).
+**Adopción por país**
+
+| Clave | Qué | Link | Fecha |
+|---|---|---|---|
+| UY-EUTIC | EUTIC 2024, Informe de resultados (AGESIC e INE): uso de internet y de WhatsApp | https://www.gub.uy/agencia-gobierno-electronico-sociedad-informacion-conocimiento/sites/agencia-gobierno-electronico-sociedad-informacion-conocimiento/files/2025-11/_Informe_EUTIC_2025.pdf | publicado en 2025; PDF del 2025-11-25 |
+| BR-MT | Mobile Time: "Telegram: penetração no Brasil cai 6 pontos percentuais em um ano" (pesquisa Mobile Time/Opinion Box) | https://www.mobiletime.com.br/noticias/27/02/2025/telegram/ | 2025-02-27 |
+| BR-CETIC | TIC Domicílios 2025, Resumo Executivo (Cetic.br) | https://www.cetic.br/media/docs/publicacoes/2/pt-br/20260511173151/tic_domicilios_2025_resumoexecutivo%20pt.pdf | 2026-05-11 |
+| MX-AIMX | Asociación de Internet MX: Estudio sobre los hábitos de los usuarios de internet en México 2026 | https://irp.cdn-website.com/81280eda/files/uploaded/Estudio-Habitos-de-los-Usuarios-de-Internet-2026-Version-publica.pdf | PDF del 2026-05-18 |
+| MX-INEGI | INEGI: ENDUTIH 2025, reporte de resultados | https://www.inegi.org.mx/contenidos/saladeprensa/boletines/2026/endutih/ENDUTIH_25_RR.pdf | 2026-06-16 |
+| AR-INFOBIP | Revista Mercado sobre el Messaging Trends Report 2026 de Infobip | https://mercado.com.ar/tendencias/el-informe-de-infobip-describe-a-whatsapp-como-infraestructura-social-en-argentina | 2026-09-04 |
