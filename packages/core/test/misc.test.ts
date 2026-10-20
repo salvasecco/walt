@@ -92,6 +92,17 @@ describe('pricing', () => {
     // Unknown model: priced like Opus so it is never under-reported.
     expect(costUsd({ model: 'modelo-raro', inputTokens: 1_000_000, outputTokens: 0 })).toBe(4);
   });
+  it('lecturas de caché a 0,05x en Sonnet 5.5 y Opus 5.5 (página de precios, 2026-10-20)', () => {
+    expect(costUsd({ model: 'claude-sonnet-5-5', inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBe(0.1);
+    expect(costUsd({ model: 'claude-opus-5-5', inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBe(0.2);
+    expect(costUsd({ model: 'claude-haiku-5-5', inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000 })).toBe(0.05);
+  });
+  it('Haiku 5.5 cobra la tarifa de prompt largo si el prompt pasa los 100.000 tokens', () => {
+    expect(costUsd({ model: 'claude-haiku-5-5', inputTokens: 5_000, outputTokens: 1_000, cacheReadTokens: 4_000 })).toBeCloseTo(0.00104, 6);
+    expect(costUsd({ model: 'claude-haiku-5-5', inputTokens: 100_000, outputTokens: 0 })).toBe(0.01);
+    // 100,001 tokens of prompt: the whole request goes to the long card.
+    expect(costUsd({ model: 'claude-haiku-5-5', inputTokens: 90_001, outputTokens: 10_000, cacheReadTokens: 10_000 })).toBe(0.070501);
+  });
 });
 
 describe('ids', () => {
