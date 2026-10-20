@@ -81,7 +81,7 @@ R1, con lo que se suma después marcado entre paréntesis.
  │   borrador y captura (Playwright con filtro anti-SSRF) · publicar y volver atrás             │
  │   agente        @walt/agent: clon temporal → Claude Agent SDK → PR con la GitHub App         │
  │                 (R2) dentro de Vercel Sandbox con salida solo a Anthropic y GitHub (ADR-P10) │
- │   presupuesto con link de pago (R1 de la agencia; R2 Mercado Pago y Paddle)                  │
+ │   presupuesto con link de pago (R1 de la agencia; R2 split de Mercado Pago)                  │
  │   cron: un tick que encola jobs con clave por período                                       │
  │   salida por canal, con rate limit por proveedor y circuit breaker                          │
  └───────────────┬──────────────────────────────────────────────────────────┬─────────────────┘
