@@ -25,101 +25,84 @@ export interface DecideContext {
 export interface Decision {
   category: Category;
   lane: Lane | null;
+  /** Why it is this category, in Spanish, for the agency and the panel. */
   reasons: string[];
+  /** For the client, next to the preview ("Pan de masa madre baja de $220 a $95"). They never change the category. */
+  warnings: string[];
+  /**
+   * Nothing concrete to show yet: Walt asks the client for the missing detail. Ambiguity goes to the
+   * client with options or a question, never to the agency (brief §1).
+   */
+  clarify?: boolean;
 }
 
-/** Below this, even concrete operations go to the agency instead of the client's preview. */
-export const LOW_CONFIDENCE_FLOOR = 0.4;
+const unique = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
 
-// Most restrictive wins (all or nothing).
-const RANK: Record<string, number> = {
-  permitido: 0,
-  'riesgoso:contenido': 1,
-  'riesgoso:codigo': 2,
-  derivado: 3,
-  bloqueado: 4,
-};
+function decision(category: Category, lane: Lane | null, reasons: string[] = [], warnings: string[] = [], clarify = false): Decision {
+  return { category, lane, reasons: unique(reasons), warnings: unique(warnings), ...(clarify ? { clarify: true } : {}) };
+}
 
 /**
- * Decides the category of a request from the interpretation and the gate (SPEC §8).
- * No AI. `gate` may be null when there are no operations to check.
+ * Decides the category of a request from the interpretation and the gate (R1 taxonomy). No AI: the
+ * model's kind is the intention, and code has the last word.
+ *
+ * | Situation | Category | Lane |
+ * |---|---|---|
+ * | the client's text carries HTML or code | bloqueado | — |
+ * | kind consulta / charla, aprobacion, revertir / bloqueado / nuevo | the same (charla for the three) | — |
+ * | the gate blocks (security, a `bloqueado` policy) | bloqueado | — |
+ * | needs code and the project doesn't allow it | derivado | — |
+ * | needs code (or the project is in code mode), unclear | the intention, asking the client | — |
+ * | needs code (or the project is in code mode) | the intention (delicado if a policy asks the agency) | codigo |
+ * | no operations | the intention, asking the client | — |
+ * | a policy or the monthly quota asks the agency | delicado | contenido |
+ * | operations the gate lets through | the intention (simple, or delicado by the agency's policy) | contenido |
+ *
+ * The code lane no longer means delicado; after the agent builds the diff, the paths it touches can
+ * raise a simple request to delicado (`delicatePaths`), never lower it. Price limits, low contrast and
+ * low confidence are warnings for the client's preview.
  */
-export function decide(
-  interpretation: Interpretation,
-  gate: GateResult | null,
-  rules: Rules,
-  ctx: DecideContext,
-): Decision {
-  if (containsCode(ctx.rawText)) {
-    return { category: 'bloqueado', lane: null, reasons: ['El pedido trae HTML o código, y eso nunca se aplica'] };
-  }
-  const { kind } = interpretation;
-  if (kind === 'consulta') return { category: 'consulta', lane: null, reasons: [] };
-  if (kind === 'charla' || kind === 'aprobacion' || kind === 'revertir') {
-    return {
-      category: 'charla',
-      lane: null,
-      reasons: ctx.hasOpenRequest ? ['Respuesta a un pedido abierto'] : [],
-    };
-  }
-  if (kind === 'funcion_nueva') {
-    return { category: 'fuera_de_alcance', lane: null, reasons: ['Es una función nueva para la web'] };
-  }
-
-  // kind === 'cambio'
-  const allowCode = ctx.allowCode ?? true;
-  if (ctx.projectMode === 'codigo') {
-    return allowCode
-      ? { category: 'riesgoso', lane: 'codigo', reasons: ['El proyecto está en modo código: lo hace el agente con aprobación'] }
-      : { category: 'derivado', lane: null, reasons: ['El proyecto no permite cambios de código'] };
-  }
-
-  const parts: { key: keyof typeof RANK; reason: string }[] = [];
-  if (gate?.outcome === 'bloqueado') {
-    for (const r of gate.reasons) parts.push({ key: 'bloqueado', reason: r });
-  }
-  const detail = interpretation.unexpressedParts.length > 0 ? `: ${interpretation.unexpressedParts.join('; ')}` : '';
-  if (!interpretation.needsCode && interpretation.unexpressedParts.length > 0) {
-    // Leftovers the model did not flag as code (often process instructions): the agency looks, no agent.
-    parts.push({ key: 'riesgoso:contenido', reason: `Hay partes del pedido que no entraron en el cambio${detail}` });
-  }
-  if (interpretation.needsCode) {
-    parts.push(
-      allowCode
-        ? { key: 'riesgoso:codigo', reason: `Hay partes que necesitan código${detail}` }
-        : { key: 'derivado', reason: `Hay partes que necesitan código y el proyecto no lo permite${detail}` },
-    );
-  }
-  // Low confidence with concrete operations the gate lets through: the client's own preview ("¿Así?",
-  // with Dale / No era eso) is the check, not the agency. Only a very unsure reading goes to the agency.
-  const previewIsEnough =
-    interpretation.confidence >= LOW_CONFIDENCE_FLOOR && gate?.outcome === 'auto' && gate.changes.length > 0 && !interpretation.needsCode;
-  if (interpretation.confidence < rules.limits.minConfidence && !previewIsEnough) {
-    parts.push({
-      key: 'riesgoso:contenido',
-      reason: `Lo entendí con poca confianza (${Math.round(interpretation.confidence * 100)}%)`,
-    });
-  }
-  if (gate?.outcome === 'agencia') {
-    for (const r of gate.reasons) parts.push({ key: 'riesgoso:contenido', reason: r });
-  }
-  if (parts.length === 0) {
-    if (interpretation.ops.length === 0 || !gate) {
-      return { category: 'derivado', lane: null, reasons: ['No pude traducir el pedido a cambios concretos'] };
-    }
-    return { category: 'permitido', lane: 'contenido', reasons: gate.reasons };
-  }
-
-  const top = parts.reduce((a, b) => (RANK[b.key]! > RANK[a.key]! ? b : a));
-  const reasons = [...new Set(parts.map((p) => p.reason))];
-  switch (top.key) {
+export function decide(it: Interpretation, gate: GateResult | null, rules: Rules, ctx: DecideContext): Decision {
+  if (containsCode(ctx.rawText)) return decision('bloqueado', null, ['El pedido trae HTML o código, y eso nunca se aplica']);
+  const why = it.why?.trim();
+  switch (it.kind) {
+    case 'consulta':
+      return decision('consulta', null);
+    case 'charla':
+    case 'aprobacion':
+    case 'revertir':
+      return decision('charla', null, ctx.hasOpenRequest ? ['Respuesta a un pedido abierto'] : []);
     case 'bloqueado':
-      return { category: 'bloqueado', lane: null, reasons };
-    case 'derivado':
-      return { category: 'derivado', lane: null, reasons };
-    case 'riesgoso:codigo':
-      return { category: 'riesgoso', lane: 'codigo', reasons };
-    default:
-      return { category: 'riesgoso', lane: 'contenido', reasons };
+      return decision('bloqueado', null, [why || 'El pedido no está permitido']);
+    case 'nuevo':
+      return decision('nuevo', null, [why || 'Es algo nuevo: va con presupuesto']);
   }
+
+  // A change: simple or delicado by intention. What the gate blocks stays blocked (all or nothing).
+  const intent = it.kind;
+  const intentReasons = intent === 'delicado' ? [why || 'Toca una zona delicada'] : [];
+  if (gate?.outcome === 'bloqueado') return decision('bloqueado', null, gate.reasons);
+  const unexpressed = it.unexpressedParts.map((p) => p.trim()).filter(Boolean);
+  const detail = unexpressed.length ? `: ${unexpressed.join('; ')}` : '';
+  const unsure = it.confidence < rules.limits.minConfidence;
+  const agency = gate?.outcome === 'agencia';
+
+  if (ctx.projectMode === 'codigo' || it.needsCode) {
+    if (ctx.allowCode === false) return decision('derivado', null, [`Necesita cambios de código y el proyecto no los permite${detail}`]);
+    // Running the agent on a guess costs a minute and money: ask first.
+    if (unsure) return decision(intent, null, [...intentReasons, 'No quedó claro qué hay que cambiar: le pregunto al cliente'], [], true);
+    return decision(agency ? 'delicado' : intent, 'codigo', [...intentReasons, ...(agency ? gate.reasons : [])], gate?.warnings ?? []);
+  }
+
+  if (it.ops.length === 0) {
+    return decision(intent, null, [...intentReasons, 'No pude armar un cambio concreto: le pregunto al cliente'], [], true);
+  }
+  if (!gate) return decision('derivado', null, ['No pude validar el cambio contra la web']);
+  const warnings = [
+    ...(unsure ? ['No estoy del todo seguro de haberlo entendido: revisalo bien antes de darle el OK'] : []),
+    ...gate.warnings,
+    ...(unexpressed.length ? [`Esto no lo pude hacer: ${unexpressed.join('; ')}`] : []),
+  ];
+  if (agency) return decision('delicado', 'contenido', [...intentReasons, ...gate.reasons], warnings);
+  return decision(intent, 'contenido', intentReasons, warnings);
 }
