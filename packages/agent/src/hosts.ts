@@ -1,3 +1,4 @@
+import { createPrivateKey, createSign, type KeyObject } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -188,4 +189,146 @@ export class LocalHost implements CodeHost {
   async deployStateOnce() {
     return 'success' as const;
   }
+}
+
+// ───────────────────────── GitHub App (one installation per agency) ─────────────────────────
+
+/** Credentials of Walt's GitHub App (GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY). Never log the key. */
+export interface GitHubAppCredentials {
+  appId: string;
+  /** PEM. Accepts literal `\\n` (one-line env files) and base64 of the PEM. */
+  privateKey: string;
+}
+
+function b64url(data: string | Buffer): string {
+  return Buffer.from(data).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+/** The PEM from an env value: with real newlines, `\\n` escapes, or base64 of the whole PEM. */
+export function parsePrivateKey(value: string): KeyObject {
+  let pem = value.trim();
+  if (!pem.includes('BEGIN')) pem = Buffer.from(pem, 'base64').toString('utf8');
+  pem = pem.replace(/\\n/g, '\n');
+  return createPrivateKey(pem);
+}
+
+/** JWT of the App (RS256): issued 60 s in the past for clock skew, valid 9 minutes (GitHub allows 10). */
+export function githubAppJwt(appId: string, key: KeyObject, nowSec = Math.floor(Date.now() / 1000)): string {
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({ iat: nowSec - 60, exp: nowSec + 9 * 60, iss: appId }));
+  const signature = createSign('RSA-SHA256').update(`${header}.${payload}`).sign(key);
+  return `${header}.${payload}.${b64url(signature)}`;
+}
+
+export interface InstallationToken {
+  token: string;
+  expiresAt: string;
+}
+
+/**
+ * Installation tokens of the App (`POST /app/installations/{id}/access_tokens`, valid one hour), cached
+ * until 5 minutes before they expire. Only the permissions Walt uses are requested.
+ */
+export class GitHubAppTokens {
+  private readonly key: KeyObject;
+  private readonly cache = new Map<number, InstallationToken>();
+  private readonly inflight = new Map<number, Promise<InstallationToken>>();
+
+  constructor(
+    private readonly app: GitHubAppCredentials,
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly apiUrl = 'https://api.github.com',
+  ) {
+    this.key = parsePrivateKey(app.privateKey);
+  }
+
+  /** Least privilege for what Walt does with a repo: branches, commits, PRs, merge, and reading deploy statuses. */
+  static readonly PERMISSIONS = { contents: 'write', pull_requests: 'write', statuses: 'read', deployments: 'read', metadata: 'read' } as const;
+
+  async token(installationId: number): Promise<InstallationToken> {
+    const hit = this.cache.get(installationId);
+    if (hit && Date.parse(hit.expiresAt) - Date.now() > 5 * 60_000) return hit;
+    let p = this.inflight.get(installationId);
+    if (!p) {
+      p = this.mint(installationId).finally(() => this.inflight.delete(installationId));
+      this.inflight.set(installationId, p);
+    }
+    return p;
+  }
+
+  private async mint(installationId: number): Promise<InstallationToken> {
+    const res = await this.fetchImpl(`${this.apiUrl}/app/installations/${installationId}/access_tokens`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${githubAppJwt(this.app.appId, this.key)}`,
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'walt-agent',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ permissions: GitHubAppTokens.PERMISSIONS }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (res.status !== 201) {
+      // GitHub's message only (never the JWT).
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      throw Object.assign(new Error(`GitHub no dio un token para la instalación ${installationId}: HTTP ${res.status} ${body?.message ?? ''}`.trim()), {
+        status: res.status,
+        headers: res.headers,
+      });
+    }
+    const data = (await res.json()) as { token: string; expires_at: string };
+    const t = { token: data.token, expiresAt: data.expires_at };
+    this.cache.set(installationId, t);
+    return t;
+  }
+}
+
+export interface RepoToken {
+  token: string;
+  /** `app`: an installation token of the agency; `token`: the GITHUB_TOKEN fallback. */
+  source: 'app' | 'token';
+  installationId?: number;
+}
+
+/** Where the GitHub credentials for a repo come from. */
+export interface GitHubTokenSource {
+  tokenFor(target: { factoryId: string | null; owner: string }): Promise<RepoToken>;
+}
+
+export interface TokenSourceOptions {
+  /** Walt's App; without it every repo uses `fallbackToken`. */
+  app?: GitHubAppCredentials | null;
+  /** GITHUB_TOKEN: used when the agency has no installation for the repo's owner. */
+  fallbackToken?: string | null;
+  /** The agency's installation for an owner (`github_installations`). */
+  findInstallation: (factoryId: string, owner: string) => Promise<{ installation_id: number } | null>;
+  /** Each new token, to add it to the values that are redacted. */
+  onToken?: (token: string) => void;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * The agency's App installation for the repo's owner if there is one; otherwise GITHUB_TOKEN. An
+ * installation is only used for its own agency's projects (the factory comes from the project), so an
+ * agency can never act on another agency's repos through the App.
+ */
+export function githubTokenSource(opts: TokenSourceOptions): GitHubTokenSource {
+  const tokens = opts.app ? new GitHubAppTokens(opts.app, opts.fetchImpl) : null;
+  return {
+    async tokenFor({ factoryId, owner }) {
+      if (tokens && factoryId) {
+        const inst = await opts.findInstallation(factoryId, owner);
+        if (inst) {
+          const t = await tokens.token(Number(inst.installation_id));
+          opts.onToken?.(t.token);
+          return { token: t.token, source: 'app', installationId: Number(inst.installation_id) };
+        }
+      }
+      if (!opts.fallbackToken) {
+        throw new Error(`No hay credenciales de GitHub para ${owner}: falta instalar la GitHub App en esa cuenta (o GITHUB_TOKEN)`);
+      }
+      return { token: opts.fallbackToken, source: 'token' };
+    },
+  };
 }
