@@ -1,0 +1,30 @@
+{"id":"t01","text":"agregá una migración que sume la columna teléfono a la tabla de clientes","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","migracion","base_de_datos"],"source":"sintetico"}
+{"id":"t02","text":"necesito un endpoint nuevo en la API que devuelva los productos en JSON","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","endpoint","api"],"source":"sintetico"}
+{"id":"t03","text":"poné un login con usuario y contraseña para entrar a la página de administración","expected":{"category":["delicado","nuevo"]},"tags":["delicado","login"],"source":"sintetico"}
+{"id":"t04","text":"guardá en la base de datos los mensajes que llegan por el formulario de contacto","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","base_de_datos","formulario"],"source":"sintetico"}
+{"id":"t05","text":"actualizá Next.js a la última versión","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","dependencias"],"source":"sintetico"}
+{"id":"t06","text":"cambiá la clave de la API de Mercado Pago en las variables de entorno","expected":{"category":["delicado","bloqueado"]},"tags":["delicado","secretos"],"source":"sintetico"}
+{"id":"t07","text":"borrá todos los pedidos viejos de la base de datos","expected":{"category":["delicado","bloqueado"]},"tags":["delicado","borrado","base_de_datos"],"source":"sintetico"}
+{"id":"t08","text":"que solo los administradores puedan ver la página de pedidos","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","permisos"],"source":"sintetico"}
+{"id":"t09","text":"el webhook de Mercado Pago tiene que avisar también a otro mail","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","pagos_existentes"],"source":"sintetico"}
+{"id":"t10","text":"agregá la librería de Stripe al package.json","expected":{"category":["delicado","nuevo"]},"tags":["delicado","dependencias"],"source":"sintetico"}
+{"id":"t11","text":"cambiá el cron del servidor para que mande el resumen de ventas a las 8","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","infra","backend"],"source":"sintetico"}
+{"id":"t12","text":"sacá el chequeo de permisos del panel de admin, que molesta","expected":{"category":["delicado","bloqueado"]},"tags":["delicado","permisos"],"source":"sintetico"}
+{"id":"t13","text":"hacé que el formulario de reservas guarde las reservas en Supabase","expected":{"category":"delicado","lane":"codigo"},"tags":["delicado","base_de_datos","formulario"],"source":"sintetico"}
+{"id":"t14","text":"subí el pan flauta a 95 y guardá las reservas en la base de datos","expected":{"category":"delicado"},"tags":["delicado","varios_pedidos","base_de_datos"],"source":"sintetico"}
+{"id":"n01","text":"quiero cobrar las tortas online con Mercado Pago","expected":{"category":"nuevo"},"tags":["nuevo","pagos"],"source":"sintetico"}
+{"id":"n02","text":"armame un agente que conteste solo los WhatsApp de los clientes y tome los pedidos","expected":{"category":"nuevo"},"tags":["nuevo","agente"],"source":"sintetico"}
+{"id":"n03","text":"conectá la web con la facturación electrónica de DGI para que salgan las facturas solas","expected":{"category":"nuevo"},"tags":["nuevo","integracion"],"source":"sintetico"}
+{"id":"n04","text":"quiero que los clientes tengan su cuenta y acumulen puntos por cada compra","expected":{"category":"nuevo"},"tags":["nuevo","modulo_grande"],"source":"sintetico"}
+{"id":"n05","text":"integrá Stripe para cobrar suscripciones mensuales a la caja de desayunos","expected":{"category":"nuevo"},"tags":["nuevo","pagos"],"source":"sintetico"}
+{"id":"n06","text":"necesito que el stock se sincronice solo con mi sistema de gestión","expected":{"category":"nuevo"},"tags":["nuevo","integracion"],"source":"sintetico"}
+{"id":"n07","text":"quiero una tienda online completa, con carrito y envíos a domicilio","expected":{"category":"nuevo"},"tags":["nuevo","modulo_grande"],"source":"sintetico"}
+{"id":"c01","text":"agregá un aviso de envío gratis en el footer","expected":{"category":"simple","lane":"codigo"},"tags":["simple","codigo","aviso"],"source":"sintetico"}
+{"id":"c02","text":"agregá un formulario para reservar tortas que me mande el pedido por WhatsApp","expected":{"category":"simple","lane":"codigo"},"tags":["simple","codigo","formulario"],"source":"sintetico"}
+{"id":"c03","text":"subí los panes a 95","expected":{"category":"simple","lane":"contenido","ops":[{"type":"set_price","productId":"pan-flauta","value":95},{"type":"set_price","productId":"pan-masa-madre","value":95},{"type":"set_price","productId":"baguette","value":95}]},"tags":["simple","precio","advertencia","varios_productos"],"source":"sintetico"}
+{"id":"c04","text":"sumá una sección de preguntas frecuentes al final de la página","expected":{"category":"simple","lane":"codigo"},"tags":["simple","codigo","seccion_nueva"],"source":"sintetico"}
+{"id":"c05","text":"poné un botón de WhatsApp flotante abajo a la derecha","expected":{"category":"simple","lane":"codigo"},"tags":["simple","codigo"],"source":"sintetico"}
+{"id":"c06","text":"agregá un mapa con la dirección del local en la parte de contacto","expected":{"category":"simple","lane":"codigo"},"tags":["simple","codigo"],"source":"sintetico"}
+{"id":"c07","text":"bajá todo un 15% por el día de la madre","expected":{"category":"simple","lane":"contenido","ops":[{"type":"adjust_prices","filter":{"all":true},"percent":-15,"rounding":"nearest_5"}]},"tags":["simple","precio"],"source":"sintetico"}
+{"id":"c08","text":"agregá torta de chocolate a 650 en tortas","expected":{"category":"simple","lane":"contenido","ops":[{"type":"add_product","name":"*","category":"tortas","price":650}]},"tags":["simple","producto_nuevo"],"source":"sintetico"}
+{"id":"c09","text":"sacá la sección de horarios por ahora","expected":{"category":"simple","lane":"contenido","ops":[{"type":"toggle_section","section":"hours","visible":false}]},"tags":["simple","seccion"],"source":"sintetico"}
