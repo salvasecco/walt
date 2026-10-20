@@ -8,26 +8,35 @@ const gate = (ops: Op[], extra: { rules?: Rules; secrets?: string[]; autoPublish
   runGate({ config, content: bakeryContent(), schema, ops, rules: extra.rules ?? defaultRules(), ...extra });
 
 describe('runGate', () => {
-  it('un cambio de precio chico pasa solo', () => {
+  it('un cambio de precio chico pasa solo, sin advertencias', () => {
     const r = gate([{ type: 'set_price', productId: 'pan-flauta', value: 95 }]);
     expect(r.outcome).toBe('auto');
     expect(r.changes).toHaveLength(1);
+    expect(r.warnings).toEqual([]);
   });
 
   it('subir 10% todos los precios pasa solo', () => {
     expect(gate([{ type: 'adjust_prices', filter: { all: true }, percent: 10, rounding: 'nearest_5' }]).outcome).toBe('auto');
   });
 
-  it('el cartel va a la agencia por regla', () => {
+  it('el cartel pasa solo con las reglas por defecto (R1)', () => {
     const r = gate([{ type: 'set_banner', enabled: true, text: 'Black Friday: 25% en todo', discountPercent: 25, startsAt: null, endsAt: '2026-10-18T23:59:00-03:00' }]);
+    expect(r.outcome).toBe('auto');
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('con la regla del cartel en agencia, va a la agencia', () => {
+    const rules = defaultRules();
+    rules.policies.set_banner = 'agencia';
+    const r = gate([{ type: 'set_banner', enabled: true, text: 'Black Friday', discountPercent: 25 }], { rules });
     expect(r.outcome).toBe('agencia');
     expect(r.reasons.join(' ')).toMatch(/agencia/);
   });
 
-  it('con la regla en auto, el mismo cartel pasa solo', () => {
-    const rules = defaultRules();
-    rules.policies.set_banner = 'auto';
-    expect(gate([{ type: 'set_banner', enabled: true, text: 'Black Friday', discountPercent: 25 }], { rules }).outcome).toBe('auto');
+  it('un descuento grande en el cartel es una advertencia', () => {
+    const r = gate([{ type: 'set_banner', enabled: true, text: 'Liquidación', discountPercent: 50 }]);
+    expect(r.outcome).toBe('auto');
+    expect(r.warnings).toEqual(['El cartel aplica 50% de descuento a todos los precios']);
   });
 
   it('una política bloqueado bloquea', () => {
@@ -40,39 +49,39 @@ describe('runGate', () => {
     it('un fondo violeta claro pasa solo', () => {
       expect(gate([{ type: 'set_color', token: 'background', value: '#EDE9FE' }]).outcome).toBe('auto');
     });
-    it('un fondo violeta pleno deja el texto ilegible y va a la agencia', () => {
+    it('un fondo violeta pleno deja el texto difícil de leer: advertencia, no agencia', () => {
       const r = gate([{ type: 'set_color', token: 'background', value: '#7C3AED' }]);
-      expect(r.outcome).toBe('agencia');
-      expect(r.reasons.join(' ')).toMatch(/contraste/);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings.join(' ')).toMatch(/El texto queda con poco contraste sobre el fondo \(\d+,\d:1, se recomienda 4.5:1\)/);
     });
     it('cambiar el color principal no mira el contraste del texto', () => {
       expect(gate([{ type: 'set_color', token: 'primary', value: '#7C3AED' }]).outcome).toBe('auto');
     });
     it('el título naranja legible pasa solo; uno muy claro va a la agencia', () => {
-      expect(gate([{ type: 'set_color', token: 'title', value: '#EA580C' }]).outcome).toBe('auto');
+      expect(gate([{ type: 'set_color', token: 'title', value: '#EA580C' }]).warnings).toEqual([]);
       const r = gate([{ type: 'set_color', token: 'title', value: '#FACC15' }]);
-      expect(r.outcome).toBe('agencia');
-      expect(r.reasons.join(' ')).toMatch(/El título queda con poco contraste sobre el fondo/);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings.join(' ')).toMatch(/El título queda con poco contraste sobre el fondo/);
     });
     it('un fondo nuevo también se mide contra el título', () => {
       const r = gate([{ type: 'set_color', token: 'background', value: '#1C1917' }]);
-      expect(r.reasons.join(' ')).toMatch(/título/);
+      expect(r.warnings.join(' ')).toMatch(/título/);
     });
     it('botones: texto del botón contra el color del botón', () => {
-      expect(gate([{ type: 'set_color', token: 'button', value: '#15803D' }]).outcome).toBe('auto');
+      expect(gate([{ type: 'set_color', token: 'button', value: '#15803D' }]).warnings).toEqual([]);
       const r = gate([{ type: 'set_color', token: 'button', value: '#16A34A' }]);
-      expect(r.outcome).toBe('agencia');
-      expect(r.reasons.join(' ')).toMatch(/texto de los botones/);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings.join(' ')).toMatch(/texto de los botones/);
       expect(
         gate([
           { type: 'set_color', token: 'button', value: '#FACC15' },
           { type: 'set_color', token: 'buttonText', value: '#1C1917' },
-        ]).outcome,
-      ).toBe('auto');
+        ]).warnings,
+      ).toEqual([]);
     });
     it('el color del texto se puede cambiar y se mide contra el fondo', () => {
-      expect(gate([{ type: 'set_color', token: 'text', value: '#292524' }]).outcome).toBe('auto');
-      expect(gate([{ type: 'set_color', token: 'text', value: '#FDE68A' }]).outcome).toBe('agencia');
+      expect(gate([{ type: 'set_color', token: 'text', value: '#292524' }]).warnings).toEqual([]);
+      expect(gate([{ type: 'set_color', token: 'text', value: '#FDE68A' }]).warnings).toHaveLength(1);
     });
   });
 
@@ -84,20 +93,35 @@ describe('runGate', () => {
     });
   });
 
-  describe('límite de precio', () => {
-    it('justo en el límite (30%) pasa', () => {
-      expect(gate([{ type: 'set_price', productId: 'pan-flauta', value: 104 }]).outcome).toBe('auto');
+  describe('límite de precio: advertencia para la vista previa (R1)', () => {
+    it('justo en el límite (30%) no avisa', () => {
+      const r = gate([{ type: 'set_price', productId: 'pan-flauta', value: 104 }]);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings).toEqual([]);
     });
-    it('más del límite pide a la agencia', () => {
+    it('más del límite pasa igual, con la advertencia con el nombre del producto', () => {
       const r = gate([{ type: 'set_price', productId: 'pan-flauta', value: 105 }]);
-      expect(r.outcome).toBe('agencia');
-      expect(r.reasons.join(' ')).toMatch(/31%/);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings).toEqual(['Pan flauta sube de $80 a $105 (+31%)']);
     });
-    it('una baja grande también', () => {
-      expect(gate([{ type: 'set_price', productId: 'pan-flauta', value: 40 }]).outcome).toBe('agencia');
+    it('una baja grande también: «la masa madre baja de $220 a $95»', () => {
+      const r = gate([{ type: 'set_price', productId: 'pan-masa-madre', value: 95 }]);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings).toEqual(['Pan de masa madre baja de $220 a $95 (-57%)']);
     });
-    it('cambiar el precio a 500 pide a la agencia', () => {
-      expect(gate([{ type: 'set_price', productId: 'pan-flauta', value: 500 }]).outcome).toBe('agencia');
+    it('el umbral de la config gana sobre el límite viejo', () => {
+      const rules = defaultRules();
+      rules.config = { ...rules.config!, priceWarnPct: 10 };
+      expect(gate([{ type: 'set_price', productId: 'pan-flauta', value: 95 }], { rules }).warnings).toEqual(['Pan flauta sube de $80 a $95 (+19%)']);
+    });
+    it('muchos precios: las primeras advertencias y un resumen', () => {
+      const r = gate([{ type: 'adjust_prices', filter: { all: true }, percent: 500, rounding: 'nearest_5' }]);
+      expect(r.outcome).toBe('auto');
+      expect(r.warnings).toHaveLength(5);
+      expect(r.warnings.at(-1)).toBe('Y 5 precios más cambian más de 30%');
+    });
+    it('decimales con coma', () => {
+      expect(gate([{ type: 'set_price', productId: 'alfajor-maicena', value: 99.5 }]).warnings).toEqual(['Alfajor de maicena sube de $45 a $99,50 (+121%)']);
     });
   });
 
@@ -113,11 +137,13 @@ describe('runGate', () => {
     });
   });
 
-  it('demasiadas operaciones piden a la agencia', () => {
+  it('muchas operaciones juntas: advertencia, no agencia', () => {
     const rules = defaultRules();
     rules.limits.maxOpsPerRequest = 2;
     const ops: Op[] = ['pan-flauta', 'baguette', 'cafe'].map((id) => ({ type: 'set_availability', productId: id, available: false }));
-    expect(gate(ops, { rules }).outcome).toBe('agencia');
+    const r = gate(ops, { rules });
+    expect(r.outcome).toBe('auto');
+    expect(r.warnings).toEqual(['Son 3 cambios juntos: revisalos bien']);
   });
 
   it('un texto con un secreto se bloquea', () => {
@@ -188,10 +214,15 @@ describe('runGate', () => {
   });
 
   it('todo o nada: una parte que pide agencia lleva todo a la agencia', () => {
-    const r = gate([
-      { type: 'set_price', productId: 'pan-flauta', value: 95 },
-      { type: 'toggle_section', section: 'about', visible: false },
-    ]);
+    const rules = defaultRules();
+    rules.policies.toggle_section = 'agencia';
+    const r = gate(
+      [
+        { type: 'set_price', productId: 'pan-flauta', value: 95 },
+        { type: 'toggle_section', section: 'about', visible: false },
+      ],
+      { rules },
+    );
     expect(r.outcome).toBe('agencia');
   });
 
