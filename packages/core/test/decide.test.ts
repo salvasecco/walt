@@ -125,6 +125,22 @@ describe('decide: taxonomía R1', () => {
     });
   });
 
+  it('delicado por la agencia con todo expresado en operaciones: la agencia aprueba la vista previa, sin agente', () => {
+    // A relabel says big discounts are delicate; the model sometimes adds needsCode just for being delicate.
+    const ops: Op[] = [{ type: 'set_banner', enabled: true, text: '40% en todo', discountPercent: 40 }];
+    const i = interp({ kind: 'delicado', why: 'Los descuentos grandes los aprueba la agencia', ops, needsCode: true, codeInstruction: 'Revisar el cartel' });
+    expect(decide(i, gateFor(ops), defaultRules(), { rawText: 'poné un cartel con 40% de descuento en todo' })).toMatchObject({
+      category: 'delicado',
+      lane: 'contenido',
+    });
+    // Something left out of the operations still goes to the agent.
+    const partial = interp({ ...i, unexpressedParts: ['un contador regresivo'] });
+    expect(decide(partial, gateFor(ops), defaultRules(), { rawText: 'x' })).toMatchObject({ category: 'delicado', lane: 'codigo' });
+    // A simple request keeps the agent when the model asks for code.
+    const simple = interp({ ops, needsCode: true, codeInstruction: 'Animar el cartel' });
+    expect(decide(simple, gateFor(ops), defaultRules(), { rawText: 'x' })).toMatchObject({ category: 'simple', lane: 'codigo' });
+  });
+
   it('código sin permiso en el proyecto: derivado', () => {
     const i = interp({ needsCode: true, unexpressedParts: ['un formulario de contacto'] });
     expect(decide(i, null, defaultRules(), { rawText: 'agregá un formulario', allowCode: false })).toMatchObject({ category: 'derivado', lane: null });

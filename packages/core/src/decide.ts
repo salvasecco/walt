@@ -87,7 +87,11 @@ export function decide(it: Interpretation, gate: GateResult | null, rules: Rules
   const unsure = it.confidence < rules.limits.minConfidence;
   const agency = gate?.outcome === 'agencia';
 
-  if (ctx.projectMode === 'codigo' || it.needsCode) {
+  // Delicate by the agency's policy or examples (a big discount, a price) but fully expressed in operations:
+  // the agency approves the content preview. The model sometimes adds needsCode just because it is delicate;
+  // running the agent there costs a minute and money for a change the operations already make.
+  const coveredByOps = intent === 'delicado' && it.ops.length > 0 && unexpressed.length === 0;
+  if (ctx.projectMode === 'codigo' || (it.needsCode && !coveredByOps)) {
     if (ctx.allowCode === false) return decision('derivado', null, [`Necesita cambios de código y el proyecto no los permite${detail}`]);
     // Running the agent on a guess costs a minute and money: ask first.
     if (unsure) return decision(intent, null, [...intentReasons, 'No quedó claro qué hay que cambiar: le pregunto al cliente'], [], true);
