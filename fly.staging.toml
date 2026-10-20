@@ -1,0 +1,61 @@
+# Staging del worker: otra app de Fly, otro bot de Telegram y, idealmente, otro proyecto de Supabase.
+#   fly apps create walt-worker-staging
+#   fly secrets set --app walt-worker-staging … (las mismas que producción, con el bot y la base de staging)
+#   fly deploy --config fly.staging.toml
+# Se prueba acá y después se despliega producción con la misma imagen:
+#   fly deploy --config fly.staging.toml --build-only --push   (o la imagen que dejó el deploy de staging)
+#   fly deploy --app walt-worker --image <esa imagen>
+
+app = "walt-worker-staging"
+primary_region = "gru"
+kill_signal = "SIGTERM"
+kill_timeout = 300
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  strategy = "bluegreen"
+  wait_timeout = "10m"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  LOG_FORMAT = "json"
+  TELEGRAM_MODE = "webhook"
+  PUBLIC_WORKER_URL = "https://walt-worker-staging.fly.dev"
+  WORKER_QUEUE = "durable"
+  GITHUB_MODE = "real"
+  LLM_PROVIDER = "anthropic"
+  SCREENSHOTS = "on"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "40s"
+    interval = "15s"
+    method = "GET"
+    path = "/readyz"
+    timeout = "5s"
+
+[checks.vivo]
+  type = "http"
+  port = 8080
+  path = "/healthz"
+  method = "get"
+  grace_period = "40s"
+  interval = "30s"
+  timeout = "5s"
+
+[metrics]
+  port = 8080
+  path = "/metrics"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "2gb"

@@ -211,6 +211,8 @@ export interface Store {
   markUpdateProcessed(updateId: number): Promise<boolean>;
 
   getProject(id: string): Promise<ProjectRow | null>;
+  /** Projects connected to a repo (owner and name, case-insensitive). */
+  projectsByRepo(owner: string, name: string): Promise<ProjectRow[]>;
   getFactory(id: string): Promise<FactoryRow | null>;
   getContactByChat(chatId: number): Promise<ContactRow | null>;
   getContact(id: string): Promise<ContactRow | null>;

@@ -108,6 +108,11 @@ export class MemoryStore implements Store {
   async getFactory(id: string) {
     return clone(this.factories.find((f) => f.id === id) ?? null);
   }
+  async projectsByRepo(owner: string, name: string) {
+    const o = owner.toLowerCase();
+    const n = name.toLowerCase();
+    return clone(this.projects.filter((p) => p.repo_owner.toLowerCase() === o && p.repo_name.toLowerCase() === n));
+  }
   async getContactByChat(chatId: number) {
     return clone(this.contacts.find((c) => c.telegram_chat_id === chatId) ?? null);
   }

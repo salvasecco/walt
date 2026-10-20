@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFakeProvider, type AiProvider } from '@walt/ai';
-import { copy, loadEnv, SEED_IDS, type Usage } from '@walt/core';
+import { assistantName, copy, DEFAULT_RULES, loadEnv, SEED_IDS, type Usage } from '@walt/core';
 import { bakeryContent } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import { buildApp, type App, type BuildOptions } from '../src/app.js';
@@ -14,6 +14,8 @@ import { createLogger } from '../src/log.js';
 import { JobRunner } from '../src/queue.js';
 import { FakeSiteRepo } from '../src/site/repo.js';
 import { MemoryStore, seedMemory } from '../src/store/memory.js';
+import { PgStore } from '../src/store/pg.js';
+import { freshPglite, pgliteDb } from './pglite.js';
 import { AGENCY_CHAT, CLIENT_CHAT, livePrice, okAgent } from './helpers.js';
 
 const NOWHERE = mkdtempSync(join(tmpdir(), 'walt-durable-'));
@@ -334,5 +336,44 @@ describe('JobRunner con hilos reales', () => {
     await until(() => store.jobs.every((j) => j.status === 'done'));
     await runner.stop(1_000);
     expect(store.jobs.map((j) => j.status)).toEqual(['done', 'done', 'done']);
+  });
+});
+
+describe('cola durable sobre Postgres (PGlite con las migraciones reales)', () => {
+  it('pedido, vista previa y publicación con claim_job, leases y publish_version_v2', async () => {
+    const pg = await freshPglite();
+    await pg.query('insert into factories (id, name, assistant_name) values ($1, $2, $3)', [SEED_IDS.agency, 'Estudio Faro', assistantName('Estudio Faro')]);
+    await pg.query(
+      `insert into projects (id, factory_id, name, client_name, repo_owner, repo_name, site_url, config_path) values ($1, $2, 'Panadería Mabel', 'Mabel', 'salvasecco', 'walt-demo', 'https://sitio.example', 'walt.config.json')`,
+      [SEED_IDS.project, SEED_IDS.agency],
+    );
+    await pg.query('insert into rules (project_id, version, policies, limits) values ($1, 1, $2::jsonb, $3::jsonb)', [
+      SEED_IDS.project, JSON.stringify(DEFAULT_RULES.policies), JSON.stringify(DEFAULT_RULES.limits),
+    ]);
+    await pg.query(`insert into content_versions (project_id, status, content, published_at) values ($1, 'viva', $2::jsonb, now())`, [SEED_IDS.project, JSON.stringify(bakeryContent())]);
+    const store = new PgStore(pgliteDb(pg));
+    await store.ensureContact({ project_id: SEED_IDS.project, role: 'cliente', display_name: 'Mabel', telegram_chat_id: CLIENT_CHAT });
+    const channel = new ConsoleChannel(null);
+    const app = await buildApp(env, {
+      channel, store, ai: pricedAi(), agent: okAgent(), repo: new FakeSiteRepo(null), transcribe: null, durable: true, extra, log: () => {},
+    });
+    await app.intake(text('subí el pan flauta a 95', 1));
+    await app.intake(text('subí el pan flauta a 95', 1));
+    await app.idle();
+    const [req] = (await pg.query<{ id: string; short_id: string; status: string; category: string }>('select id, short_id, status, category from requests')).rows;
+    expect(req).toMatchObject({ status: 'esperando_cliente', category: 'simple' });
+    await app.intake(press(`ok:${req!.short_id}`, 2));
+    await app.idle();
+    const live = await store.getLiveVersion(SEED_IDS.project);
+    expect((live!.content as { products: { id: string; price: number }[] }).products.find((p) => p.id === 'pan-flauta')!.price).toBe(95);
+    const jobs = (await pg.query<{ kind: string; status: string; attempts: number }>('select kind, status, attempts from jobs order by created_at')).rows;
+    expect(jobs).toEqual([
+      { kind: JOB.incoming, status: 'done', attempts: 1 },
+      { kind: JOB.processRequest, status: 'done', attempts: 1 },
+      { kind: JOB.incoming, status: 'done', attempts: 1 },
+    ]);
+    const ledger = (await pg.query<{ mode: string; request_id: string }>('select mode, request_id from usage_ledger')).rows;
+    expect(ledger).toEqual([{ mode: 'platform', request_id: req!.id }]);
+    await app.close();
   });
 });

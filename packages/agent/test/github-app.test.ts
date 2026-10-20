@@ -1,6 +1,6 @@
 import { createPublicKey, createVerify, generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { GitHubAppTokens, githubAppJwt, githubTokenSource, parsePrivateKey } from '../src/hosts.js';
+import { GitHubAccessError, GitHubAppTokens, githubAppJwt, githubTokenSource, parsePrivateKey } from '../src/hosts.js';
 
 const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
@@ -61,6 +61,25 @@ describe('GitHub App', () => {
     expect(seen).toEqual(['ghs_token_1']);
     const none = githubTokenSource({ findInstallation: async () => null });
     await expect(none.tokenFor({ factoryId: 'f1', owner: 'x' })).rejects.toThrow(/instalar la GitHub App/);
+  });
+
+  it('GITHUB_TOKEN solo para las agencias de la instancia: las demás necesitan su instalación', async () => {
+    const gh = fakeGitHub();
+    const source = githubTokenSource({
+      app: { appId: '1', privateKey: PEM },
+      fallbackToken: 'ghp_de_la_instancia',
+      fallbackFactories: ['seed'],
+      findInstallation: async (factoryId, owner) => (factoryId === 'agencia' && owner === 'suya' ? { installation_id: 3 } : null),
+      fetchImpl: gh.fetchImpl,
+    });
+    expect(await source.tokenFor({ factoryId: 'seed', owner: 'salvasecco' })).toEqual({ token: 'ghp_de_la_instancia', source: 'token' });
+    expect((await source.tokenFor({ factoryId: 'agencia', owner: 'suya' })).source).toBe('app');
+    await expect(source.tokenFor({ factoryId: 'agencia', owner: 'ajena' })).rejects.toBeInstanceOf(GitHubAccessError);
+    await expect(source.tokenFor({ factoryId: null, owner: 'salvasecco' })).rejects.toThrow(/GitHub App de Walt no está instalada en salvasecco/);
+    // Without the App configured at all, the rule still holds.
+    const noApp = githubTokenSource({ fallbackToken: 'ghp_de_la_instancia', fallbackFactories: ['seed'], findInstallation: async () => null });
+    await expect(noApp.tokenFor({ factoryId: 'agencia', owner: 'ajena' })).rejects.toBeInstanceOf(GitHubAccessError);
+    expect(gh.calls).toHaveLength(1);
   });
 
   it('un error de GitHub no muestra el JWT', async () => {

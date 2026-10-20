@@ -13,6 +13,7 @@
     "ai:key": "tsx scripts/ai.ts key",
     "ai:mode": "tsx scripts/ai.ts mode",
     "ai:credit": "tsx scripts/ai.ts credit",
+    "github:install": "tsx scripts/github-install.ts",
     "seed": "tsx scripts/seed.ts",
     "dry-run": "pnpm --filter @walt/worker dry-run",
     "voice-test": "tsx scripts/voice-test.ts",

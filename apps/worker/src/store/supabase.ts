@@ -172,6 +172,10 @@ export class SupabaseStore implements Store {
   getFactory(id: string) {
     return this.one<FactoryRow>(this.db.from('factories').select().eq('id', id).maybeSingle(), 'factories');
   }
+  projectsByRepo(owner: string, name: string) {
+    const esc = (v: string) => v.replace(/[%_\\]/g, '\\$&');
+    return this.many<ProjectRow>(this.db.from('projects').select().ilike('repo_owner', esc(owner)).ilike('repo_name', esc(name)), 'projects');
+  }
   getContactByChat(chatId: number) {
     return this.one<ContactRow>(this.db.from('contacts').select().eq('telegram_chat_id', chatId).maybeSingle(), 'contacts');
   }
