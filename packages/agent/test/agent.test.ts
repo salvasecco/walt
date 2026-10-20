@@ -308,6 +308,21 @@ describe('findPreviewUrl', () => {
     const h = new LocalHost(base);
     expect(await findPreviewUrlWith({ repo, sha: 'abc1234', timeoutMs: 30 }, h, 10)).toBeUndefined();
   });
+
+  it('si el build de la vista previa falló, deja de esperar enseguida', async () => {
+    let polls = 0;
+    const h = {
+      previewUrlOnce: async () => {
+        polls++;
+        return undefined;
+      },
+      deployStateOnce: async () => 'failure' as const,
+    } as unknown as Parameters<typeof findPreviewUrlWith>[1];
+    const t0 = Date.now();
+    expect(await findPreviewUrlWith({ repo, sha: 'abc1234', timeoutMs: 60_000 }, h, 1_000)).toBeUndefined();
+    expect(polls).toBe(1);
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
 });
 
 describe('vista previa desde el comentario de vercel[bot]', () => {

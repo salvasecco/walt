@@ -298,6 +298,8 @@ export async function findPreviewUrlWith(
     try {
       const url = await host.previewUrlOnce(input.repo, input.sha, input.prNumber);
       if (url) return url;
+      // A failed build never brings a preview: stop waiting (the agency gets the PR without one).
+      if ((await host.deployStateOnce(input.repo, input.sha)) === 'failure') return undefined;
     } catch {
       // Transient API errors: keep polling until the deadline.
     }
