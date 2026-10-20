@@ -38,6 +38,8 @@ export interface SchemaStatus {
   anonClosed: boolean | null;
   /** 0006 applied: get_preview_version exists and new projects default to walt.config.json. */
   previews: boolean;
+  /** 0007 applied: factories.plan_intent and landing_events (the public landing). */
+  landing: boolean;
 }
 
 /** Tables, columns and functions that 0004 adds; each one is probed over REST. */
@@ -104,7 +106,10 @@ export async function schemaStatus(db: SupabaseClient, env: WaltEnv): Promise<Sc
   // 0006: the preview RPC answers (an empty list for a nil id) instead of PGRST202.
   const preview = await db.rpc('get_preview_version', { p_id: NIL });
   const previews = !preview.error;
-  return { missingTables, publishVersion, anonBlocked, clients, r1: { ok: r1Missing.length === 0, missing: r1Missing }, anonClosed, previews };
+  const l1 = await db.from('factories').select('plan_intent, plan_cycle, plan_intent_at').limit(0);
+  const l2 = await db.from('landing_events').select('id').limit(0);
+  const landing = !l1.error && !l2.error;
+  return { missingTables, publishVersion, anonBlocked, clients, r1: { ok: r1Missing.length === 0, missing: r1Missing }, anonClosed, previews, landing };
 }
 
 /** Runs a script's main and prints errors without secrets. */

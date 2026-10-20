@@ -45,6 +45,7 @@ runMain('db:migrate', async () => {
   );
 
   console.log(`${s.previews ? '✅' : '⏳'} 0006_r1_vistas_previas.sql${s.previews ? '' : '  (la anon deja de leer borradores; el sitio ya está listo)'}`);
+  console.log(`${s.landing ? '✅' : '⏳'} 0007_landing.sql${s.landing ? '' : '  (plan elegido en la landing y eventos de conversión; la landing anda sin ella)'}`);
 
   const pending = [
     ...(init ? [] : ['0001']),
@@ -54,6 +55,7 @@ runMain('db:migrate', async () => {
     // 0006 before 0005: 0005 closes anon and goes last, once the panel uses Supabase Auth.
     ...(s.previews ? [] : ['0006']),
     ...(closed || s.anonClosed === null ? [] : ['0005']),
+    ...(s.landing ? [] : ['0007']),
   ];
   if (pending.length === 0) {
     console.log('La base está al día.');
