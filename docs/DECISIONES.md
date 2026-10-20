@@ -274,3 +274,15 @@ Sesión "plan" (2026-10-20). Formato corto: contexto, decisión y consecuencias.
 - `pnpm demo:r1`: los cuatro casos de la demo en memoria con el pipeline real (para el plan B y para probar sin la 0004). Los dry-runs de contenido de la demo se corrieron con `GITHUB_MODE=fake` para no commitear en el repo del sitio; los de código, con GitHub y Vercel reales (PR #13 mergeado y revertido, #14 y #15 cerrados).
 - Host del worker: plan recomendó Railway Pro e infra eligió Fly.io (São Paulo, blue-green). La regla que manda es correr en la misma región que el proyecto de Supabase (el worker hace muchas idas y vueltas a la base). La región del Supabase actual no se ve desde acá: va a la lista de Salva.
 - El costo del agente no se suma a `requests.cost_usd` (lo anota el ledger de uso con la 0004): el costo por pedido del panel sin la 0004 subestima los cambios de código. Pendiente.
+
+## Landing (20/10)
+
+- La landing vive en `/` del panel y no en un proyecto aparte: un solo deploy, el mismo dominio que el registro y nada que crear en Vercel. Con sesión, el proxy manda `/` a `/atencion` (salvo `?landing`); En vivo pasó a `/en-vivo` y el botón «Ver panel» de Telegram va a `/atencion`.
+- Voseo en la landing: el público de la beta es de Uruguay y Argentina y el producto ya habla así; los textos están en `copy.es.ts` para sumar `copy.pt.ts`.
+- El plan elegido viaja en la URL de `/registro`, en campos ocultos y en la metadata del usuario de Supabase Auth (sobrevive a la confirmación por mail) y se guarda en `factories.plan_intent` al crear la agencia (0007). Sin la 0007 se ignora sin error.
+- Eventos de la landing en una tabla propia (`landing_events`, 0007) con lista cerrada de eventos y propiedades, sin IP, mail ni identificadores; se escriben con la service role desde `/api/eventos`, que siempre responde 204. Sin servicios pagos de analítica.
+- Cobros construidos y apagados: `PAYMENTS_ENABLED` vale 0 y `createCheckout` siempre falla con «todavía no está conectado», aunque haya credenciales. `/plan/pagar` vuelve al panel. Nada de checkouts falsos.
+- Calculadora con supuestos conservadores (5 pedidos por cliente, 60% simples, 20 minutos) para no exagerar: con los valores por defecto da unas 10 horas y un neto de unos USD 295 por mes con el plan Agencia; a igual costo elige el plan que incluye más; el retorno se muestra en veces y dice cuando da negativo.
+- Cotizaciones fijas y fechadas (BCU y PTAX del 19/10/2026) en `lib/landing/config.ts`, igual que precios y contacto público (vacío hasta que Salva lo confirme).
+- Los globos del teléfono animado entran con recorte y movimiento, no con transparencia: Lighthouse medía contraste a mitad de la animación y bajaba accesibilidad a 97 en una de cada tres corridas.
+- `metadataBase` va en el layout raíz: la imagen para compartir de `app/opengraph-image.tsx` aplica a todas las páginas.
