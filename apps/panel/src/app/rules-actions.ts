@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { dataMode } from "@/lib/env";
 import { cleanRules, insertRulesVersion, lines } from "@/lib/rules";
-import { AccessError, agencyNameOf, requireProject, requireViewer } from "@/lib/session";
+import { AccessError, agencyNameOf, githubTokenFor, requireProject, requireViewer } from "@/lib/session";
 import { classifyPaths, simulate, type SimulationResult } from "@/lib/simulate";
 import type { EditableRules } from "@/lib/types";
 
@@ -57,7 +57,7 @@ export async function simulateRules(input: { projectId: string; text: string; ru
     if (!allow(viewer.userId ?? `instancia:${viewer.kind}`)) return { ok: false, error: "Probaste muchos pedidos seguidos: esperá un minuto." };
     const rules = await cleanRules(input.rules);
     const paths = lines(input.paths, 50).map((p) => p.slice(0, 300));
-    const result = await simulate({ db, project, agencyName: agencyNameOf(viewer), text, rules, paths });
+    const result = await simulate({ db, project, agencyName: agencyNameOf(viewer), text, rules, paths, githubToken: githubTokenFor(viewer) });
     return { ok: true, data: result };
   } catch (e) {
     return { ok: false, error: errorText(e) };

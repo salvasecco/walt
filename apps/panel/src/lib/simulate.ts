@@ -89,13 +89,22 @@ async function similarExamples(db: SupabaseClient, factoryId: string, text: stri
  * agencia, sin guardar nada ni mandar mensajes. Con rutas, suma la mitad determinística de la doble
  * clasificación (lo que diría la revisión del diff de un cambio de código).
  */
-export async function simulate(input: { db: SupabaseClient; project: Project; agencyName: string; text: string; rules: Rules; paths: string[] }): Promise<SimulationResult> {
+export async function simulate(input: {
+  db: SupabaseClient;
+  project: Project;
+  agencyName: string;
+  text: string;
+  rules: Rules;
+  paths: string[];
+  /** Token de GitHub que puede usar quien simula (`githubTokenFor`). */
+  githubToken: string;
+}): Promise<SimulationResult> {
   const { project, text, rules, paths } = input;
   const started = Date.now();
   const env = aiEnv();
   const notes: string[] = [];
   const [{ contract, source, note }, content, examples] = await Promise.all([
-    loadContract(project),
+    loadContract(project, input.githubToken),
     project.mode === "contenido" ? liveContent(input.db, project) : Promise.resolve(null),
     similarExamples(input.db, project.factory_id, text).catch(() => [] as LabeledExample[]),
   ]);

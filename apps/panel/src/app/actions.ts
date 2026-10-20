@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import QRCode from "qrcode";
 import { dataMode, env } from "@/lib/env";
 import { insertRulesVersion, toEditable } from "@/lib/rules";
-import { AccessError, dbFor, requireProject, requireRequest, requireViewer } from "@/lib/session";
+import { AccessError, dbFor, githubTokenFor, requireProject, requireRequest, requireViewer } from "@/lib/session";
 import type { CommandType } from "@/lib/types";
 import { SEED_FACTORY_ID } from "@/lib/types";
 
@@ -63,7 +63,7 @@ const REPO_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 
 export async function testRepoConnection(input: { owner: string; repo: string; branch: string }): Promise<ActionResult<RepoCheck>> {
   try {
-    await requireViewer("configurar");
+    const viewer = await requireViewer("configurar");
     const owner = input.owner.trim();
     const repo = input.repo.trim().replace(/\.git$/, "");
     const branch = input.branch.trim() || "main";
@@ -74,10 +74,17 @@ export async function testRepoConnection(input: { owner: string; repo: string; b
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "walt-panel",
     };
-    const authenticated = !!env.githubToken;
-    if (authenticated) headers.Authorization = `Bearer ${env.githubToken}`;
+    // Con usuarios de agencias, sin el token de la instancia: solo repos públicos (ver githubTokenFor).
+    const token = githubTokenFor(viewer);
+    const authenticated = !!token;
+    if (authenticated) headers.Authorization = `Bearer ${token}`;
     const notes: string[] = [];
-    if (!authenticated) notes.push("Sin GITHUB_TOKEN: la prueba solo ve repos públicos y el worker no va a poder escribir.");
+    if (!authenticated)
+      notes.push(
+        viewer.kind === "user"
+          ? "La prueba solo ve repos públicos: los privados se conectan con la GitHub App de la agencia."
+          : "Sin GITHUB_TOKEN: la prueba solo ve repos públicos y el worker no va a poder escribir.",
+      );
 
     const r = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers, cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!r.ok) {

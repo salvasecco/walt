@@ -288,6 +288,15 @@ export async function createAgency(userId: string, name: string): Promise<Factor
   return factory as Factory;
 }
 
+/**
+ * El token de GitHub de la instancia (`GITHUB_TOKEN`) solo para el acceso de la instancia. Un usuario de una
+ * agencia no lo usa: con él podría mirar repos privados ajenos a los que ese token llega (el registro es
+ * abierto). Para sus repos, la GitHub App de su agencia (pendiente de conectar en el panel).
+ */
+export function githubTokenFor(viewer: Viewer | null): string {
+  return viewer && viewer.kind !== "user" ? env.githubToken : "";
+}
+
 /** Nombre de la agencia para mostrar: la activa, o la de DEMO_AGENCY_NAME con el acceso de la instancia. */
 export function agencyNameOf(viewer: Viewer | null): string {
   return viewer?.factory?.name ?? env.agencyName;
