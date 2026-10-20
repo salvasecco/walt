@@ -12,6 +12,7 @@ export const SECRET_KEYS = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_DB_URL',
   'GITHUB_TOKEN',
+  'GITHUB_APP_PRIVATE_KEY',
   'ANTHROPIC_API_KEY',
   'AWS_ACCESS_KEY_ID',
   'AWS_SECRET_ACCESS_KEY',
@@ -44,6 +45,11 @@ export const EnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: opt,
   SUPABASE_DB_URL: opt,
   GITHUB_TOKEN: opt,
+  /** Walt's GitHub App (R1): with both, each agency works with its installation token instead of GITHUB_TOKEN. */
+  GITHUB_APP_ID: opt,
+  GITHUB_APP_PRIVATE_KEY: opt,
+  /** Agencies that may use the instance's GITHUB_TOKEN, comma-separated (default: the seed's agency). */
+  GITHUB_TOKEN_FACTORIES: opt,
   GITHUB_MODE: z.enum(['real', 'fake']).default('fake'),
   LLM_PROVIDER: z.enum(['anthropic', 'bedrock', 'fake']).default('fake'),
   ANTHROPIC_API_KEY: opt,
@@ -59,6 +65,19 @@ export const EnvSchema = z.object({
   DEMO_AGENCY_NAME: z.string().default('Estudio Faro'),
   DEMO_REPO: z.string().regex(/^[\w.-]+\/[\w.-]+$/).default('salvasecco/walt-demo'),
   DEMO_SITE_URL: opt,
+  /**
+   * Worker deployment (R1 infra; `apps/worker/src/extra-env.ts` parses them): queue `auto` | `durable` | `memoria`,
+   * HTTP port for health checks and the webhook (0 turns it off), worker id, concurrency per queue, requests per
+   * agency every 10 minutes, `json` logs, and the Fly machine id that Fly sets.
+   */
+  WORKER_QUEUE: opt,
+  PORT: opt,
+  WORKER_ID: opt,
+  WORKER_CONCURRENCY: opt,
+  AGENT_CONCURRENCY: opt,
+  AGENCY_RATE_LIMIT: opt,
+  LOG_FORMAT: opt,
+  FLY_MACHINE_ID: opt,
 });
 
 export type WaltEnvValues = z.infer<typeof EnvSchema>;
@@ -153,7 +172,8 @@ export function missingCredentials(v: WaltEnvValues): MissingCredential[] {
   };
   if (v.LLM_PROVIDER === 'anthropic') need('LLM_PROVIDER', ['ANTHROPIC_API_KEY']);
   if (v.LLM_PROVIDER === 'bedrock') need('LLM_PROVIDER', ['AWS_REGION', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY']);
-  if (v.GITHUB_MODE === 'real') need('GITHUB_MODE', ['GITHUB_TOKEN']);
+  // Real GitHub works with the instance's token or with Walt's GitHub App (both of its keys).
+  if (v.GITHUB_MODE === 'real' && !(v.GITHUB_APP_ID && v.GITHUB_APP_PRIVATE_KEY)) need('GITHUB_MODE', ['GITHUB_TOKEN']);
   if (v.TELEGRAM_MODE === 'polling') need('TELEGRAM_MODE', ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME']);
   if (v.TELEGRAM_MODE === 'webhook') {
     need('TELEGRAM_MODE', ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_BOT_USERNAME', 'TELEGRAM_WEBHOOK_SECRET', 'PUBLIC_WORKER_URL']);

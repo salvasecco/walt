@@ -7,9 +7,10 @@ import { HOME_ENV_FILE, SEED_IDS } from '@walt/core';
 import type { GitHubAppCredentials } from '@walt/agent';
 
 /**
- * Worker settings that are not (yet) in `@walt/core`'s EnvSchema, read with the same order as `loadEnv`:
- * `~/.walt/.env`, then a local `.env`, then `process.env` (the last one wins; empty counts as unset).
- * Pending for the 90: move them to EnvSchema (GITHUB_APP_PRIVATE_KEY into SECRET_KEYS).
+ * Worker deployment settings, read with the same order as `loadEnv`: `~/.walt/.env`, then a local `.env`,
+ * then `process.env` (the last one wins; empty counts as unset). They are also declared in `@walt/core`'s
+ * EnvSchema (GITHUB_APP_PRIVATE_KEY is in SECRET_KEYS, and the App counts as GitHub credentials); this
+ * module turns them into typed settings.
  */
 export interface ExtraEnv {
   /** Walt's GitHub App; null without GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY. */

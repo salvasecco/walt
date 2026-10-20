@@ -162,6 +162,16 @@ describe('env', () => {
     expect(fake.downgraded.sort()).toEqual(['LLM_PROVIDER', 'TELEGRAM_MODE']);
   });
 
+  it('GitHub real con la GitHub App de Walt en vez de GITHUB_TOKEN; la clave privada es secreta', () => {
+    const key = '-----BEGIN RSA PRIVATE KEY-----\nMIIEclave\n-----END RSA PRIVATE KEY-----';
+    const onlyToken = loadEnv({ homeFile: join(dir, 'no-existe'), cwd: dir, overrides: { GITHUB_MODE: 'real' } });
+    expect(missingCredentials(onlyToken)).toEqual([{ mode: 'GITHUB_MODE', keys: ['GITHUB_TOKEN'] }]);
+    const app = loadEnv({ homeFile: join(dir, 'no-existe'), cwd: dir, overrides: { GITHUB_MODE: 'real', GITHUB_APP_ID: '123', GITHUB_APP_PRIVATE_KEY: key } });
+    expect(missingCredentials(app)).toEqual([]);
+    expect(app.secrets).toContain(key);
+    expect(redact(`clave ${key}`, app.secrets)).toBe('clave [secreto]');
+  });
+
   it('por defecto todo en modo falso', () => {
     const env = loadEnv({ homeFile: join(dir, 'no-existe'), cwd: dir, overrides: {} });
     expect(env).toMatchObject({ LLM_PROVIDER: 'fake', GITHUB_MODE: 'fake', TELEGRAM_MODE: 'console', SCREENSHOTS: 'off' });
