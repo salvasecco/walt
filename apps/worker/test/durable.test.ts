@@ -89,7 +89,8 @@ describe('cola durable de punta a punta (memoria)', () => {
     const req = store.requests.at(-1)!;
     expect(store.jobs.find((j) => j.kind === JOB.runAgent)).toMatchObject({ queue: 'agent', status: 'done', request_id: req.id });
     expect(agent.calls.some((c) => c.startsWith('run:'))).toBe(true);
-    expect(store.requests.at(-1)!.status).toBe('agente_listo');
+    // R1: a simple code change with its preview goes straight to the client (no agency).
+    expect(store.requests.at(-1)!.status).toBe('esperando_cliente');
     await app.close();
   });
 
