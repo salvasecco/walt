@@ -10,8 +10,8 @@
 # Sin esos tres, el job de migraciones se saltea y lo dice.
 #
 # Antes del primer `db push`, una sola vez: marcar como aplicadas las migraciones que se pegaron a mano en el
-# SQL Editor, o la CLI las vuelve a correr:
-#   supabase link --project-ref <ref> && supabase migration repair --status applied 0001 0002 0003 [0004 …]
+# SQL Editor, o la CLI las vuelve a correr. Como la red de la compu solo deja salir el 443 (la CLI usa
+# Postgres directo), se hace desde Actions → CI → Run workflow con `repair` = "0001 0002 0003 0004 0006".
 # Ojo: `db push` aplica todas las pendientes, también 0005 (cierra la anon): activarlo con el panel ya en
 # Supabase Auth en producción.
 
@@ -20,6 +20,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      repair:
+        description: 'Versiones ya aplicadas a mano, separadas por espacios (supabase migration repair --status applied)'
+        required: false
+        default: ''
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -74,7 +80,7 @@ jobs:
   migrations:
     name: migraciones (Supabase CLI)
     needs: [check]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -98,6 +104,11 @@ jobs:
           version: latest
       - if: steps.creds.outputs.ok == 'true'
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - name: Marcar como aplicadas las migraciones pegadas a mano
+        if: steps.creds.outputs.ok == 'true' && github.event_name == 'workflow_dispatch' && inputs.repair != ''
+        env:
+          REPAIR: ${{ inputs.repair }}
+        run: supabase migration repair --status applied $REPAIR
       - if: steps.creds.outputs.ok == 'true'
         run: supabase migration list
       - if: steps.creds.outputs.ok == 'true'
