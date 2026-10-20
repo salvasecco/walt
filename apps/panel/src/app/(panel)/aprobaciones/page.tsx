@@ -25,10 +25,14 @@ export default async function AprobacionesPage() {
   const sample = dataMode() === "ejemplo";
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Aprobaciones" subtitle="Lo que las reglas mandan a la agencia. Al aprobar, el cliente recibe la vista previa y lo publica él; rechazar le avisa." right={sample && <SampleBadge />} />
+      <PageHeader
+        title="Aprobaciones"
+        subtitle="Solo lo delicado: base de datos, auth, backend, pagos, secretos, infraestructura o dependencias. Al aprobar, el cliente recibe la vista previa y lo publica él; rechazar le avisa."
+        right={sample && <SampleBadge />}
+      />
       {items.length === 0 ? (
         <EmptyState icon={<CheckCheck className="size-5" />} title="Nada esperando">
-          Cuando un pedido necesite tu visto bueno, aparece acá y en tu Telegram.
+          Lo simple se publica con el «Dale» del cliente, sin pasar por acá. Cuando algo delicado necesite tu visto bueno, aparece acá y en tu Telegram.
         </EmptyState>
       ) : (
         <div className="flex flex-col gap-5">
@@ -62,7 +66,7 @@ export default async function AprobacionesPage() {
                     {r.interpretation?.summary && <p className="mt-1 text-sm text-muted-foreground">{r.interpretation.summary}</p>}
                   </div>
                   <section>
-                    <PanelTitle>Por qué lo tenés que aprobar</PanelTitle>
+                    <PanelTitle>Por qué es delicado</PanelTitle>
                     <div className="mt-2">
                       <GateReasons request={r} />
                     </div>

@@ -7,7 +7,9 @@ import { CategoryChip, EmptyState, Surface, Mono, PageHeader, SampleBadge, Statu
 import { getRequests, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { CATEGORY_LABEL, STATUS_LABEL, dateTime } from "@/lib/labels";
-import { CATEGORIES, STATUSES, type Category, type RequestStatus } from "@/lib/types";
+import { getLabelsFor, latestLabelByRequest } from "@/lib/relabel";
+import { normalizeCategory } from "@/lib/taxonomy";
+import { CATEGORIES, STATUSES, type RequestStatus } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Historial" };
 
@@ -15,7 +17,8 @@ const selectCls = "h-9 rounded-lg border border-input bg-surface px-3 text-sm te
 
 export default async function HistorialPage({ searchParams }: PageProps<"/historial">) {
   const sp = await searchParams;
-  const category = typeof sp.categoria === "string" && (CATEGORIES as readonly string[]).includes(sp.categoria) ? (sp.categoria as Category) : undefined;
+  // Acepta también los nombres viejos en el link (?categoria=permitido → simple).
+  const category = typeof sp.categoria === "string" ? (normalizeCategory(sp.categoria) ?? undefined) : undefined;
   const status = typeof sp.estado === "string" && (STATUSES as readonly string[]).includes(sp.estado) ? (sp.estado as RequestStatus) : undefined;
   const q = typeof sp.q === "string" ? sp.q.slice(0, 100) : undefined;
   let data;
@@ -26,6 +29,7 @@ export default async function HistorialPage({ searchParams }: PageProps<"/histor
     throw e;
   }
   const { rows, projects } = data;
+  const relabeled = latestLabelByRequest((await getLabelsFor(rows.map((r) => r.id))).labels);
   const filtered = !!(category || status || q);
   return (
     <div className="flex flex-col gap-6">
@@ -86,8 +90,13 @@ export default async function HistorialPage({ searchParams }: PageProps<"/histor
                       {projects.find((p) => p.id === r.project_id)?.name} {r.interpretation?.summary ? `· ${r.interpretation.summary}` : ""}
                     </span>
                   </span>
-                  <span className="col-start-2 row-start-1 justify-self-end md:col-auto md:row-auto md:justify-self-start">
+                  <span className="col-start-2 row-start-1 flex flex-wrap items-center gap-1 justify-self-end md:col-auto md:row-auto md:justify-self-start">
                     <CategoryChip category={r.category} />
+                    {relabeled.has(r.id) && (
+                      <span className="text-[11px] text-muted-foreground" title="La agencia lo reetiquetó">
+                        → {CATEGORY_LABEL[normalizeCategory(relabeled.get(r.id)!.to_category) ?? "simple"]}
+                      </span>
+                    )}
                   </span>
                   <span>
                     <StatusChip status={r.status} />

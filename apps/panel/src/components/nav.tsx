@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, BarChart3, CheckCheck, FolderGit2, History, LayoutGrid, type LucideIcon, Receipt, SlidersHorizontal, Users } from "lucide-react";
+import { Activity, BarChart3, BrainCircuit, CheckCheck, FolderGit2, Gauge, History, LayoutGrid, type LucideIcon, Receipt, SlidersHorizontal, UserRoundCog, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: "/atencion" | "/clientes" | "/" | "/aprobaciones" | "/historial" | "/proyectos" | "/reglas" | "/lo-que-piden" | "/presupuestos"; label: string; icon: LucideIcon };
+type NavItem = {
+  href: "/atencion" | "/clientes" | "/" | "/aprobaciones" | "/historial" | "/proyectos" | "/reglas" | "/ia" | "/equipo" | "/calidad" | "/lo-que-piden" | "/presupuestos";
+  label: string;
+  icon: LucideIcon;
+};
 
 export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   {
@@ -22,12 +26,15 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/proyectos", label: "Proyectos", icon: FolderGit2 },
       { href: "/reglas", label: "Reglas", icon: SlidersHorizontal },
+      { href: "/ia", label: "IA y costos", icon: BrainCircuit },
+      { href: "/equipo", label: "Equipo", icon: UserRoundCog },
     ],
   },
   {
     title: "Negocio",
     items: [
       { href: "/clientes", label: "Clientes", icon: Users },
+      { href: "/calidad", label: "Calidad", icon: Gauge },
       { href: "/lo-que-piden", label: "Lo que piden", icon: BarChart3 },
       { href: "/presupuestos", label: "Presupuestos", icon: Receipt },
     ],

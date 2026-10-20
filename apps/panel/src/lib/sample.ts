@@ -1,5 +1,6 @@
 // Datos de ejemplo: SOLO en desarrollo y sin Supabase. Se muestran con la etiqueta "datos de ejemplo".
 // Reproducen los casos de la demo (SPEC §1) sobre la Panadería Mabel (SPEC §14).
+import { DEFAULT_RULES as CORE_DEFAULT_RULES, ruleTemplate } from "@walt/core";
 import { buildSampleClientRows, MABEL_CLIENT } from "./sample-clients.mts";
 import type {
   Approval,
@@ -15,6 +16,7 @@ import type {
   Op,
   Project,
   Quote,
+  RequestLabel,
   RequestStatus,
   Rules,
   SiteContent,
@@ -57,19 +59,38 @@ export const BAKERY: SiteContent = {
   sections: { about: true, hours: true, contact: true },
 };
 
+/** Reglas por defecto del R1 (@walt/core): carteles y secciones ya no pasan por la agencia. */
 export const DEFAULT_RULES: Pick<Rules, "policies" | "limits"> = {
-  policies: {
-    set_text: "auto",
-    set_price: "auto",
-    adjust_prices: "auto",
-    set_availability: "auto",
-    set_color: "auto",
-    set_hours: "auto",
-    set_banner: "agencia",
-    toggle_section: "agencia",
-    add_product: "auto",
-  },
+  policies: structuredClone(CORE_DEFAULT_RULES.policies) as Rules["policies"],
+  limits: structuredClone(CORE_DEFAULT_RULES.limits),
+};
+
+/** Reglas de antes del R1 (versiones 1 y 2 de ejemplo): carteles y secciones los aprobaba la agencia. */
+const PRE_R1_RULES: Pick<Rules, "policies" | "limits"> = {
+  policies: { ...DEFAULT_RULES.policies, set_banner: "agencia", toggle_section: "agencia" },
   limits: { maxPriceChangePct: 30, monthlyQuota: 200, minConfidence: 0.6, maxOpsPerRequest: 40 },
+};
+
+/**
+ * Versión 3 de ejemplo: la plantilla genérica sin `**\/api/**` (la agencia lo sacó porque el formulario de
+ * contacto manda mails por app/api). Después reetiquetó tres pedidos de app/api como delicados: Calidad y
+ * Reglas proponen volver a agregarlo.
+ */
+const generic = ruleTemplate("generic");
+const SAMPLE_RULES_R1: Pick<Rules, "policies" | "limits" | "policy_text" | "config"> = {
+  ...DEFAULT_RULES,
+  policy_text: [
+    "Es simple todo lo que se ve en la web de la panadería: textos, precios, horarios, fotos, colores, avisos y secciones.",
+    "Es delicado lo que toca la base de datos, los pagos o el login.",
+    "Es algo nuevo cobrar online, reservas con seña o cualquier integración con un sistema de terceros.",
+  ].join("\n"),
+  config: {
+    ...generic.config,
+    delicateGlobs: generic.config.delicateGlobs.filter((g) => g !== "**/api/**"),
+    alwaysNew: ["cobrar online o integrar Mercado Pago", "reservas con seña", "un sistema de pedidos para mayoristas"],
+    priceWarnPct: 30,
+    depositPct: 50,
+  },
 };
 
 type Spec = {
@@ -89,7 +110,7 @@ type Spec = {
   replies: string[];
   cost: number;
   confidence?: number;
-  pr?: { url: string; number: number; preview: string; diff?: string };
+  pr?: { url: string; number: number; preview: string; diff?: string; files?: string[] };
 };
 
 const MAP_DIFF = `diff --git a/components/Site.tsx b/components/Site.tsx
@@ -111,12 +132,44 @@ index 3f2a1c4..9b7e0d2 100644
            </a>
 `;
 
+const RESERVAS_DIFF = `diff --git a/supabase/migrations/0007_reservas.sql b/supabase/migrations/0007_reservas.sql
+new file mode 100644
+--- /dev/null
++++ b/supabase/migrations/0007_reservas.sql
+@@ -0,0 +1,9 @@
++create table reservas (
++  id uuid primary key default gen_random_uuid(),
++  created_at timestamptz not null default now(),
++  nombre text not null,
++  telefono text not null,
++  torta text not null,
++  retiro date not null
++);
++alter table reservas enable row level security;
+diff --git a/app/api/reservas/route.ts b/app/api/reservas/route.ts
+new file mode 100644
+--- /dev/null
++++ b/app/api/reservas/route.ts
+@@ -0,0 +1,12 @@
++import { createClient } from "@/lib/supabase";
++import { sendMail } from "@/lib/mail";
++
++export async function POST(req: Request) {
++  const body = await req.json();
++  const db = createClient();
++  const { error } = await db.from("reservas").insert(body);
++  if (error) return Response.json({ ok: false }, { status: 400 });
++  await sendMail({ to: "pedidos@panaderiamabel.uy", subject: "Reserva nueva", text: JSON.stringify(body) });
++  return Response.json({ ok: true });
++}
+`;
+
 const SPECS: Spec[] = [
   {
     short: "A7K2",
     minutesAgo: 2,
     text: "subí el pan flauta a 95",
-    category: "permitido",
+    category: "simple",
     status: "publicado",
     summary: "Subo el pan flauta de $80 a $95",
     ops: [{ type: "set_price", productId: "pan-flauta", value: 95 }],
@@ -144,8 +197,8 @@ const SPECS: Spec[] = [
     short: "B3M9",
     minutesAgo: 14,
     text: "poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo",
-    category: "riesgoso",
-    status: "esperando_agencia",
+    category: "simple",
+    status: "esperando_cliente",
     summary: "Pongo un cartel de Black Friday con 25% de descuento en todo hasta el domingo",
     ops: [
       { type: "set_banner", enabled: true, text: "Black Friday: 25% en todo", discountPercent: 25, startsAt: null, endsAt: "2026-10-18T23:59:00-03:00" },
@@ -156,8 +209,8 @@ const SPECS: Spec[] = [
       { pointer: "/banner/discountPercent", before: null, after: 25 },
       { pointer: "/banner/endsAt", before: null, after: "2026-10-18T23:59:00-03:00" },
     ],
-    outcome: "agencia",
-    reasons: ["Los carteles de promoción los aprueba la agencia (regla set_banner)"],
+    outcome: "auto",
+    reasons: ["Cartel de promoción: automático"],
     steps: [
       ["recibido", 120],
       ["interpretado", 2870],
@@ -167,15 +220,44 @@ const SPECS: Spec[] = [
       ["captura", 3610],
       ["enviado", 540],
     ],
-    replies: ["Recibido, ya lo veo.", "Esto lo aprueba Estudio Faro porque los carteles de promoción los revisa la agencia. Te aviso apenas esté."],
+    replies: ["Recibido, ya lo veo.", "¿Así? Pongo un cartel de Black Friday con 25% de descuento en todo hasta el domingo"],
     cost: 0.0188,
     confidence: 0.93,
+  },
+  {
+    short: "N5D2",
+    minutesAgo: 22,
+    text: "guardá cada reserva de torta en la base y mandame un mail con cada una",
+    category: "delicado",
+    status: "agente_listo",
+    lane: "codigo",
+    summary: "Guarda las reservas en la base de datos y avisa por mail",
+    reasons: ["Toca la base de datos: supabase/migrations/0007_reservas.sql", "Toca el backend: app/api/reservas/route.ts"],
+    outcome: "agencia",
+    steps: [
+      ["recibido", 120],
+      ["interpretado", 2900],
+      ["decidido", 8],
+      ["agente_inicio", 11200],
+      ["agente_pr", 2600],
+      ["agente_preview", 13900],
+    ],
+    replies: ["Recibido, ya lo veo.", "Esto toca la base de datos. Lo preparo y Estudio Faro lo revisa antes de mostrártelo. Te aviso apenas esté."],
+    cost: 0.5230,
+    confidence: 0.86,
+    pr: {
+      url: "https://github.com/salvasecco/walt-demo/pull/14",
+      number: 14,
+      preview: "https://walt-demo-git-walt-n5d2-salvasecco.vercel.app",
+      diff: RESERVAS_DIFF,
+      files: ["supabase/migrations/0007_reservas.sql", "app/api/reservas/route.ts"],
+    },
   },
   {
     short: "C9P4",
     minutesAgo: 31,
     text: "subí 10% todos los precios",
-    category: "permitido",
+    category: "simple",
     status: "publicado",
     summary: "Subo 10% todos los precios, redondeando a múltiplos de 5",
     ops: [{ type: "adjust_prices", filter: { all: true }, percent: 10, rounding: "nearest_5" }],
@@ -243,11 +325,12 @@ const SPECS: Spec[] = [
   {
     short: "F8T6",
     minutesAgo: 75,
-    text: "quiero que la gente pueda reservar tortas online",
-    category: "fuera_de_alcance",
+    text: "quiero cobrar las reservas de tortas con Mercado Pago",
+    category: "nuevo",
     status: "cotizado",
     kind: "funcion_nueva",
-    summary: "Quiere un sistema de reservas de tortas online",
+    summary: "Quiere cobrar las reservas online con Mercado Pago",
+    reasons: ["Integrar una pasarela de pagos es algo nuevo"],
     steps: [
       ["recibido", 120],
       ["interpretado", 2420],
@@ -255,7 +338,7 @@ const SPECS: Spec[] = [
       ["presupuesto", 4810],
       ["enviado", 500],
     ],
-    replies: ["Recibido, ya lo veo.", "Eso es algo nuevo para tu web. Se lo paso a Estudio Faro para que te mande un presupuesto."],
+    replies: ["Recibido, ya lo veo.", "Eso es algo nuevo: cobrar online. Te armo un presupuesto con alcance, plazo y precio."],
     cost: 0.0312,
     confidence: 0.91,
   },
@@ -263,7 +346,7 @@ const SPECS: Spec[] = [
     short: "G1N3",
     minutesAgo: 96,
     text: "no tenemos más medialunas hoy",
-    category: "permitido",
+    category: "simple",
     status: "publicado",
     summary: "Marco las medialunas como sin stock",
     ops: [{ type: "set_availability", productId: "medialunas", available: false }],
@@ -291,7 +374,7 @@ const SPECS: Spec[] = [
     short: "H4V7",
     minutesAgo: 130,
     text: "poné el fondo violeta",
-    category: "permitido",
+    category: "simple",
     status: "revertido",
     summary: "Cambio el color de fondo a violeta (#EDE9FE)",
     ops: [{ type: "set_color", token: "background", value: "#EDE9FE" }],
@@ -320,12 +403,12 @@ const SPECS: Spec[] = [
     short: "J6R2",
     minutesAgo: 160,
     text: "agregá un mapa de google abajo de la dirección",
-    category: "riesgoso",
-    status: "agente_listo",
+    category: "simple",
+    status: "publicado",
     lane: "codigo",
     summary: "Agrega un mapa de Google debajo de la dirección",
-    reasons: ["Necesita código: no entra en las operaciones de contenido"],
-    outcome: "agencia",
+    reasons: ["Cambio de interfaz: no toca zonas delicadas"],
+    outcome: "auto",
     steps: [
       ["recibido", 120],
       ["interpretado", 2600],
@@ -333,8 +416,13 @@ const SPECS: Spec[] = [
       ["agente_inicio", 9800],
       ["agente_pr", 2400],
       ["agente_preview", 12600],
+      ["enviado", 600],
+      ["aprobado_cliente", 9100],
+      ["publicando", 900],
+      ["publicado", 1500],
+      ["en_la_web", 21000],
     ],
-    replies: ["Recibido, ya lo veo.", "Esto lleva cambios en el código. Lo preparo y Estudio Faro lo revisa antes de mostrártelo. Te aviso apenas esté."],
+    replies: ["Recibido, ya lo veo.", "Lo armo en el código y te mando la vista previa.", "¿Así? Agrego un mapa de Google debajo de la dirección", "Listo, ya está en la web."],
     cost: 0.4120,
     confidence: 0.88,
     pr: {
@@ -342,13 +430,14 @@ const SPECS: Spec[] = [
       number: 12,
       preview: "https://walt-demo-git-walt-j6r2-salvasecco.vercel.app",
       diff: MAP_DIFF,
+      files: ["components/Site.tsx"],
     },
   },
   {
     short: "K3L5",
     minutesAgo: 190,
     text: "el sábado abrimos hasta las 14",
-    category: "permitido",
+    category: "simple",
     status: "publicado",
     summary: "El sábado cierro a las 14:00",
     ops: [{ type: "set_hours", day: "sab", open: "07:00", close: "14:00" }],
@@ -376,7 +465,7 @@ const SPECS: Spec[] = [
     short: "L8C1",
     minutesAgo: 260,
     text: "subí el café a 95",
-    category: "permitido",
+    category: "simple",
     status: "publicado",
     summary: "Subo el café de $90 a $95",
     ops: [{ type: "set_price", productId: "cafe", value: 95 }],
@@ -404,7 +493,7 @@ const SPECS: Spec[] = [
     short: "M2W9",
     minutesAgo: 300,
     text: "bajá la baguette a 85",
-    category: "permitido",
+    category: "simple",
     status: "publicado",
     summary: "Bajo la baguette de $90 a $85",
     ops: [{ type: "set_price", productId: "baguette", value: 85 }],
@@ -430,6 +519,11 @@ const SPECS: Spec[] = [
   },
 ];
 
+const CODE_INSTRUCTION: Record<string, string> = {
+  J6R2: "Agregar un iframe de Google Maps con la dirección del contacto, debajo de la dirección, responsive.",
+  N5D2: "Crear la tabla reservas con una migración y un endpoint POST /api/reservas que guarde la reserva y mande un mail a la panadería.",
+};
+
 const uuid = (n: number, prefix = "aaaaaaaa") =>
   `${prefix}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
@@ -444,6 +538,8 @@ export type SampleData = {
   versions: ContentVersion[];
   approvals: Approval[];
   quotes: Quote[];
+  /** Reetiquetados de la agencia (tabla request_labels, migración 0004). */
+  labels: RequestLabel[];
 };
 
 export function buildSample(now = Date.now()): SampleData {
@@ -466,8 +562,8 @@ export function buildSample(now = Date.now()): SampleData {
     id: uuid(v, "cccccccc"),
     project_id: SEED_PROJECT_ID,
     version: v,
-    ...structuredClone(DEFAULT_RULES),
-    created_by: v === 1 ? "seed" : "panel",
+    ...structuredClone(v === 3 ? SAMPLE_RULES_R1 : PRE_R1_RULES),
+    created_by: v === 1 ? "seed" : v === 2 ? "panel" : "sofia@estudiofaro.uy",
     created_at: new Date(now - 86_400_000 * (3 - v) - 3_600_000).toISOString(),
   }));
 
@@ -498,7 +594,7 @@ export function buildSample(now = Date.now()): SampleData {
             status === "falla"
               ? { error: "GitHub no respondió en 20 s" }
               : step === "agente_pr" && s.pr
-                ? { pr: s.pr.url, numero: s.pr.number, archivos: ["components/Site.tsx"], diff: s.pr.diff ?? "" }
+                ? { pr: s.pr.url, numero: s.pr.number, archivos: s.pr.files ?? ["components/Site.tsx"], diff: s.pr.diff ?? "" }
                 : null,
           duration_ms: dur,
           at: new Date(t).toISOString(),
@@ -534,17 +630,18 @@ export function buildSample(now = Date.now()): SampleData {
       });
       if (published) approvals.push({ id: uuid(i + 1, "ffffffff"), request_id: id, actor: "cliente", decision: "aprobado", via: "telegram", at: new Date(t - 2000).toISOString() });
     }
-    if (s.lane === "codigo")
-      approvals.push({ id: uuid(i + 101, "ffffffff"), request_id: id, actor: "agencia", decision: "aprobado", via: "panel", at: new Date(created + 45_000).toISOString() });
+    // Código publicado: el cliente lo aprobó con la vista previa. Solo lo delicado pasa antes por la agencia.
+    if (s.lane === "codigo" && ["publicado", "revertido"].includes(s.status))
+      approvals.push({ id: uuid(i + 1, "ffffffff"), request_id: id, actor: "cliente", decision: "aprobado", via: "telegram", at: new Date(t - 20_000).toISOString() });
     let quoteId: string | null = null;
-    if (s.category === "fuera_de_alcance") {
+    if (s.category === "nuevo") {
       quoteId = uuid(i + 1, "abababab");
       quotes.push({
         id: quoteId,
         request_id: id,
-        title: "Reservas de tortas online",
+        title: "Pago online con Mercado Pago",
         description:
-          "Formulario de reserva con fecha de retiro, sabor y tamaño. Aviso por WhatsApp a la panadería y confirmación al cliente. Incluye panel simple para ver las reservas del día.",
+          "Cobro de la seña de cada reserva con Mercado Pago: link de pago, confirmación automática y aviso a la panadería. Incluye la configuración de la cuenta y pruebas con pagos reales.",
         amount_usd: 450,
         eta_days: 7,
         status: "borrador",
@@ -557,8 +654,8 @@ export function buildSample(now = Date.now()): SampleData {
       confidence: s.confidence ?? 0.9,
       ops: s.ops ?? [],
       needsCode: s.lane === "codigo",
-      codeInstruction: s.lane === "codigo" ? "Agregar un iframe de Google Maps con la dirección del contacto, debajo de la dirección, responsive." : undefined,
-      unexpressedParts: s.lane === "codigo" ? ["mapa de Google"] : [],
+      codeInstruction: s.lane === "codigo" ? (CODE_INSTRUCTION[s.short] ?? s.summary) : undefined,
+      unexpressedParts: s.lane === "codigo" ? [s.summary] : [],
     };
     requests.push({
       id,
@@ -619,6 +716,111 @@ export function buildSample(now = Date.now()): SampleData {
     });
   });
 
+  // Pedidos de código que salieron simples y la agencia reetiquetó como delicados: los tres tocaban app/api/**.
+  // Con eso Calidad y Reglas proponen agregar el glob (sugerencias de reglas).
+  const labels: RequestLabel[] = [];
+  const RELABELED: { short: string; text: string; files: string[]; days: number; reason: string }[] = [
+    { short: "R2C4", text: "que el formulario de contacto me mande un mail", files: ["app/api/contacto/route.ts", "components/ContactForm.tsx"], days: 3, reason: "Manda mails desde el servidor" },
+    { short: "R3S7", text: "sumá un endpoint para consultar el stock desde la caja", files: ["app/api/stock/route.ts"], days: 5, reason: "Es un endpoint nuevo" },
+    { short: "R4W9", text: "que las reservas me lleguen por WhatsApp", files: ["app/api/reservas/notify/route.ts", "lib/whatsapp.ts"], days: 9, reason: "" },
+  ];
+  RELABELED.forEach((x, k) => {
+    const id = uuid(700 + k);
+    const created = now - 86_400_000 * x.days;
+    const steps: [string, number][] = [["recibido", 120], ["interpretado", 2500], ["decidido", 8], ["agente_inicio", 10_400], ["agente_pr", 2300], ["agente_preview", 12_000], ["enviado", 600], ["aprobado_cliente", 30_000], ["publicando", 800], ["publicado", 1400]];
+    let t = created;
+    for (const [step, dur] of steps) {
+      t += dur;
+      events.push({
+        id: evId++, request_id: id, step, status: "ok", duration_ms: dur, at: new Date(t).toISOString(),
+        detail: step === "agente_pr" ? { pr: `https://github.com/salvasecco/walt-demo/pull/${8 + k}`, numero: 8 + k, archivos: x.files, diff: "" } : null,
+      });
+    }
+    requests.push({
+      ...requests[0],
+      id,
+      short_id: x.short,
+      raw_text: x.text,
+      status: "publicado",
+      category: "simple",
+      lane: "codigo",
+      interpretation: { kind: "cambio", summary: x.text, confidence: 0.9, ops: [], needsCode: true, codeInstruction: x.text, unexpressedParts: [x.text] },
+      ops: [],
+      changes: null,
+      gate: { outcome: "auto", reasons: ["Cambio de interfaz: no toca zonas delicadas"] },
+      draft_version_id: null,
+      live_version_id: null,
+      pr_url: `https://github.com/salvasecco/walt-demo/pull/${8 + k}`,
+      pr_number: 8 + k,
+      cost_usd: 0.38 + k * 0.03,
+      created_at: new Date(created).toISOString(),
+      updated_at: new Date(t).toISOString(),
+    });
+    approvals.push({ id: uuid(700 + k, "ffffffff"), request_id: id, actor: "cliente", decision: "aprobado", via: "telegram", at: new Date(t - 2000).toISOString() });
+    labels.push({
+      id: uuid(700 + k, "bcbcbcbc"), request_id: id, factory_id: SEED_FACTORY_ID, from_category: "simple", to_category: "delicado",
+      reason: x.reason || null, actor_user_id: null, created_at: new Date(t + 3_600_000).toISOString(),
+    });
+  });
+  // Uno al revés: con las reglas viejas, ocultar una sección iba a la agencia; la agencia lo marcó simple.
+  {
+    const id = uuid(710);
+    const created = now - 86_400_000 * 6;
+    requests.push({
+      ...requests[0],
+      id,
+      short_id: "R5H2",
+      raw_text: "sacá la sección de contacto por esta semana",
+      status: "publicado",
+      category: "riesgoso",
+      lane: "contenido",
+      interpretation: { kind: "cambio", summary: "Oculto la sección contacto", confidence: 0.93, ops: [{ type: "toggle_section", section: "contact", visible: false }], needsCode: false, unexpressedParts: [] },
+      ops: [{ type: "toggle_section", section: "contact", visible: false }],
+      changes: [{ pointer: "/sections/contact", before: true, after: false }],
+      gate: { outcome: "agencia", reasons: ["Las reglas piden que la agencia apruebe mostrar u ocultar secciones"] },
+      draft_version_id: null,
+      cost_usd: 0.013,
+      created_at: new Date(created).toISOString(),
+      updated_at: new Date(created + 600_000).toISOString(),
+    });
+    labels.push({
+      id: uuid(710, "bcbcbcbc"), request_id: id, factory_id: SEED_FACTORY_ID, from_category: "delicado", to_category: "simple",
+      reason: "Ocultar una sección no es delicado", actor_user_id: null, created_at: new Date(created + 7_200_000).toISOString(),
+    });
+  }
+
+  // Un «No era eso» y su corrección: para «Aprobados al primer intento» y la tasa de «No era eso» en Calidad.
+  {
+    const first = uuid(720);
+    const retry = uuid(721);
+    const created = now - 86_400_000 * 4;
+    const base = { ...requests[0], lane: "contenido" as const, category: "simple" as const, draft_version_id: null, live_version_id: null, cost_usd: 0.014 };
+    requests.push({
+      ...base,
+      id: first,
+      short_id: "R6N1",
+      raw_text: "cambiá el subtítulo por «Pan casero»",
+      status: "descartado",
+      interpretation: { kind: "simple", summary: "Cambio el subtítulo del encabezado de productos", confidence: 0.71, ops: [], needsCode: false, unexpressedParts: [] },
+      created_at: new Date(created).toISOString(),
+      updated_at: new Date(created + 90_000).toISOString(),
+    });
+    requests.push({
+      ...base,
+      id: retry,
+      short_id: "R6N2",
+      raw_text: "no, el subtítulo de arriba de todo",
+      status: "publicado",
+      parent_request_id: first,
+      interpretation: { kind: "simple", summary: "Cambio el subtítulo principal por «Pan casero»", confidence: 0.95, ops: [], needsCode: false, unexpressedParts: [] },
+      created_at: new Date(created + 120_000).toISOString(),
+      updated_at: new Date(created + 160_000).toISOString(),
+    });
+    approvals.push({ id: uuid(720, "ffffffff"), request_id: first, actor: "cliente", decision: "rechazado", via: "telegram", at: new Date(created + 80_000).toISOString() });
+    approvals.push({ id: uuid(721, "ffffffff"), request_id: retry, actor: "cliente", decision: "aprobado", via: "telegram", at: new Date(created + 150_000).toISOString() });
+    events.push({ id: evId++, request_id: retry, step: "publicado", status: "ok", detail: null, duration_ms: 240, at: new Date(created + 152_000).toISOString() });
+  }
+
   versions.push({
     id: uuid(999, "eeeeeeee"),
     project_id: SEED_PROJECT_ID,
@@ -647,7 +849,7 @@ export function buildSample(now = Date.now()): SampleData {
   const contacts: Contact[] = extra.contacts.map((c) => ({ id: c.id, project_id: c.project_id, display_name: c.display_name, role: c.role, created_at: c.created_at }));
   requests.sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-  return { clients, contacts, projects: [project, ...extra.projects], rules, requests, events, messages, versions, approvals, quotes };
+  return { clients, contacts, projects: [project, ...extra.projects], rules, requests, events, messages, versions, approvals, quotes, labels };
 }
 
 /** Guion para animar el recorrido en En vivo con datos de ejemplo. */

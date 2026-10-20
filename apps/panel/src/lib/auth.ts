@@ -1,5 +1,4 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
 import { env } from "./env";
 
 export const SESSION_COOKIE = "walt_panel";
@@ -49,17 +48,4 @@ export function checkPassword(input: string): boolean {
   const a = createHash("sha256").update(input).digest();
   const b = createHash("sha256").update(env.panelPassword).digest();
   return timingSafeEqual(a, b);
-}
-
-/** Para usar dentro de cada acción de servidor: no alcanza con el proxy. */
-export async function isAuthed(): Promise<boolean> {
-  const mode = authMode();
-  if (mode === "abierto") return true;
-  if (mode === "sin_configurar") return false;
-  const jar = await cookies();
-  return verifySessionValue(jar.get(SESSION_COOKIE)?.value);
-}
-
-export async function requireAuth() {
-  if (!(await isAuthed())) throw new Error("No autorizado");
 }

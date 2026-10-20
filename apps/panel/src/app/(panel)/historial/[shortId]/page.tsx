@@ -9,10 +9,13 @@ import { ChangesDiff, GateReasons, OpsList, Phone } from "@/components/request-p
 import { CategoryChip, Chip, IdTag, Surface, Mono, PanelTitle, SampleBadge, StatusChip } from "@/components/ui-walt";
 import { buttonVariants } from "@/components/ui/button";
 import { getRequestDetail, NotConfiguredError } from "@/lib/data";
-import { dataMode, env } from "@/lib/env";
+import { dataMode } from "@/lib/env";
+import { agencyNameOf, getScope } from "@/lib/session";
 import { buildJourney } from "@/lib/journey";
 import { STEP_LABEL, clock, dateTime, ms, usd } from "@/lib/labels";
+import { normalizeCategory } from "@/lib/taxonomy";
 import { cn } from "@/lib/utils";
+import { Relabel } from "./relabel";
 
 export async function generateMetadata({ params }: PageProps<"/historial/[shortId]">): Promise<Metadata> {
   const { shortId } = await params;
@@ -31,7 +34,8 @@ export default async function PedidoPage({ params }: PageProps<"/historial/[shor
     throw e;
   }
   if (!d) notFound();
-  const { request: r, project, events, messages, approvals, versions, liveVersion, quote } = d;
+  const { viewer } = await getScope();
+  const { request: r, project, events, messages, approvals, versions, liveVersion, quote, labels, labelsReady } = d;
   const nodes = buildJourney(r, events);
   const published = versions.find((v) => v.published_at);
   const gitError = versions.find((v) => v.git_error && !v.git_commit_sha);
@@ -78,7 +82,7 @@ export default async function PedidoPage({ params }: PageProps<"/historial/[shor
 
       <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)_minmax(0,0.8fr)]">
         <div className="h-[520px]">
-          <Phone messages={messages} assistantName={`Asistente de ${env.agencyName}`} />
+          <Phone messages={messages} assistantName={`Asistente de ${agencyNameOf(viewer)}`} />
         </div>
 
         <div className="flex flex-col gap-5">
@@ -131,6 +135,15 @@ export default async function PedidoPage({ params }: PageProps<"/historial/[shor
               </section>
             )}
           </Surface>
+          {r.category && (
+            <Relabel
+              requestId={r.id}
+              decided={normalizeCategory(r.category)}
+              labels={labels.map((l) => ({ id: l.id, from_category: l.from_category, to_category: l.to_category, reason: l.reason, actor_email: l.actor_email, created_at: l.created_at }))}
+              ready={labelsReady}
+              sample={dataMode() === "ejemplo" || !!r.is_sample}
+            />
+          )}
           {(r.ops || r.interpretation) && (
             <details className="rounded-xl border border-line bg-surface p-5 text-sm">
               <summary className="label-xs cursor-pointer">JSON del pedido</summary>

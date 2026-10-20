@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, Database, Inbox } from "lucide-react";
-import { CATEGORY_LABEL, CATEGORY_TONE, STATUS_LABEL, STATUS_TONE, type Tone, toneChip, toneDot } from "@/lib/labels";
-import type { Category, RequestStatus } from "@/lib/types";
+import { CATEGORY_HELP, CATEGORY_LABEL, CATEGORY_TONE, STATUS_LABEL, STATUS_TONE, type Tone, toneChip, toneDot } from "@/lib/labels";
+import { normalizeCategory } from "@/lib/taxonomy";
+import type { RequestStatus, StoredCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Tarjeta plana: superficie de nivel 1 con borde de 1px. */
@@ -25,9 +26,9 @@ export function PanelTitle({ icon, children, right, className }: { icon?: ReactN
   );
 }
 
-export function Chip({ tone = "muted", children, className, dot }: { tone?: Tone; children: ReactNode; className?: string; dot?: boolean }) {
+export function Chip({ tone = "muted", children, className, dot, title }: { tone?: Tone; children: ReactNode; className?: string; dot?: boolean; title?: string }) {
   return (
-    <span className={cn("inline-flex h-5 items-center gap-1.5 rounded-md border px-1.5 text-[11px] leading-none font-medium whitespace-nowrap", toneChip[tone], className)}>
+    <span title={title} className={cn("inline-flex h-5 items-center gap-1.5 rounded-md border px-1.5 text-[11px] leading-none font-medium whitespace-nowrap", toneChip[tone], className)}>
       {dot && <span className={cn("size-1.5 rounded-full", toneDot[tone])} />}
       {children}
     </span>
@@ -47,11 +48,13 @@ export function DotLabel({ tone = "muted", children, className, pulse }: { tone?
   );
 }
 
-export function CategoryChip({ category, className }: { category: Category | null; className?: string }) {
-  if (!category) return <Chip className={className}>Sin decidir</Chip>;
+/** Categoría del pedido con la taxonomía nueva; lee también los valores viejos (permitido, riesgoso, fuera_de_alcance). */
+export function CategoryChip({ category, className }: { category: StoredCategory | string | null; className?: string }) {
+  const c = normalizeCategory(category);
+  if (!c) return <Chip className={className}>Sin decidir</Chip>;
   return (
-    <Chip tone={CATEGORY_TONE[category]} className={className}>
-      {CATEGORY_LABEL[category]}
+    <Chip tone={CATEGORY_TONE[c]} className={className} title={CATEGORY_HELP[c]}>
+      {CATEGORY_LABEL[c]}
     </Chip>
   );
 }

@@ -6,6 +6,7 @@ import { EmptyState, Surface, PageHeader, PanelTitle, SampleBadge } from "@/comp
 import { getInsightsData, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { CATEGORY_LABEL, OP_LABEL, TZ } from "@/lib/labels";
+import { normalizeCategory, resolvedWithoutAgency } from "@/lib/taxonomy";
 import { CATEGORIES, OP_TYPES, type WaltRequest, type OpType, type Project } from "@/lib/types";
 import { HBar } from "./charts";
 
@@ -32,7 +33,7 @@ function normalize(t: string) {
 }
 
 function analyze(requests: WaltRequest[], projects: Project[]) {
-  const byCat = CATEGORIES.map((c) => ({ name: CATEGORY_LABEL[c], value: requests.filter((r) => r.category === c).length })).filter((x) => x.value);
+  const byCat = CATEGORIES.map((c) => ({ name: CATEGORY_LABEL[c], value: requests.filter((r) => normalizeCategory(r.category) === c).length })).filter((x) => x.value);
   const opCount = new Map<OpType, number>();
   const perProjectOp = new Map<string, number>();
   for (const r of requests) {
@@ -45,7 +46,7 @@ function analyze(requests: WaltRequest[], projects: Project[]) {
   }
   const byOp = OP_TYPES.map((t) => ({ name: OP_LABEL[t], value: opCount.get(t) ?? 0 })).filter((x) => x.value);
   const decided = requests.filter((r) => r.category);
-  const auto = decided.filter((r) => r.category === "permitido" || r.category === "consulta" || r.category === "charla").length;
+  const auto = decided.filter((r) => resolvedWithoutAgency(r.category)).length;
   const groups = new Map<string, WaltRequest[]>();
   for (const r of requests) {
     const k = `${r.project_id}|${normalize(r.raw_text)}`;
@@ -62,7 +63,7 @@ function analyze(requests: WaltRequest[], projects: Project[]) {
     })
     .filter((x): x is string => !!x)
     .slice(0, 5);
-  const outOfScope = requests.filter((r) => r.category === "fuera_de_alcance");
+  const outOfScope = requests.filter((r) => normalizeCategory(r.category) === "nuevo");
   // Pedidos por día, últimos 30 días (día en America/Montevideo).
   const day = (t: number | string) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(t));
   const perDay = new Map<string, number>();
@@ -91,8 +92,8 @@ export default async function LoQuePidenPage() {
         <>
           <div className="grid gap-4 md:grid-cols-3">
             <StatTile
-              label="Resuelto automático"
-              help="Pedidos con categoría permitido, consulta o charla, sobre los que tienen categoría."
+              label="Resuelto sin la agencia"
+              help="Pedidos simples, consultas, charlas o bloqueados, sobre los que tienen categoría."
               value={`${a.autoPct}%`}
               context={`${a.auto} de ${a.decided} sin intervención de la agencia`}
             />
@@ -104,8 +105,8 @@ export default async function LoQuePidenPage() {
               trendLabel="Pedidos por día, últimos 30 días"
             />
             <StatTile
-              label="Funciones nuevas pedidas"
-              help="Pedidos fuera de alcance: los que terminan en presupuesto."
+              label="Algo nuevo"
+              help="Pedidos de algo nuevo: los que terminan en presupuesto."
               value={a.outOfScope.length}
               context={a.outOfScope.map((r) => r.raw_text).join(" · ") || "Ninguna"}
             />

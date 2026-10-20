@@ -14,13 +14,14 @@ import { CategoryChip, Chip, EmptyState, IdTag, Surface, Mono, PanelTitle, Sampl
 import type { LiveSnapshot } from "@/lib/data";
 import { buildJourney, timeToPublish } from "@/lib/journey";
 import { OPEN_STATUSES, TZ, clock, ms, relative } from "@/lib/labels";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { normalizeCategory, resolvedWithoutAgency } from "@/lib/taxonomy";
+import { authRealtime, supabaseBrowser, type RealtimeConfig } from "@/lib/supabase/browser";
 import { SEED_PROJECT_ID, type ContentVersion, type WaltEvent, type WaltRequest, type Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   initial: LiveSnapshot;
-  supabase: { url: string; anonKey: string } | null;
+  supabase: RealtimeConfig | null;
   sample: boolean;
   siteUrl: string;
 };
@@ -55,7 +56,8 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
   // ── Realtime: requests, events, messages y content_versions ──────────────
   useEffect(() => {
     if (!supabase || sample) return;
-    const db = supabaseBrowser(supabase.url, supabase.anonKey);
+    const db = supabaseBrowser(supabase);
+    let cancelled = false;
     const ch = db
       .channel("panel-en-vivo")
       .on("postgres_changes", { event: "*", schema: "public", table: "requests" }, (p) => {
@@ -76,11 +78,15 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
           return v.status === "viva" ? [v, ...others] : others;
         });
         setSiteNonce((n) => n + 1);
-      })
-      .subscribe((status) => {
+      });
+    void authRealtime(db, supabase).then(() => {
+      if (cancelled) return;
+      ch.subscribe((status) => {
         setConn(status === "SUBSCRIBED" ? "en_vivo" : status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "sin_conexion" : "conectando");
       });
+    });
     return () => {
+      cancelled = true;
       void db.removeChannel(ch);
     };
   }, [supabase, sample]);
@@ -118,7 +124,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
     const today = dayKey(now);
     const todays = requests.filter((r) => dayKey(r.created_at) === today);
     const decided = todays.filter((r) => r.category);
-    const solo = decided.filter((r) => r.category === "permitido" || r.category === "consulta" || r.category === "charla");
+    const solo = decided.filter((r) => resolvedWithoutAgency(r.category));
     const times = todays.map((r) => timeToPublish(r, events)).filter((x): x is number => x != null);
     const cost = todays.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
     // Tendencias reales: pedidos y costo por hora en las últimas 24 h (el snapshot trae 36 h).
@@ -194,7 +200,7 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
         />
         <StatTile
           label="Resuelto sin la agencia"
-          help="Pedidos de hoy con categoría permitido, consulta o charla, sobre los que ya tienen categoría."
+          help="Pedidos de hoy simples, consultas, charlas o bloqueados, sobre los que ya tienen categoría."
           value={<CountUp value={kpis.autoPct} format={fmtPct} />}
           context={kpis.decided ? `${kpis.solo} de ${kpis.decided} decididos hoy` : "Sin pedidos decididos hoy"}
         />
@@ -272,8 +278,8 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
                     <p className="text-sm text-muted-foreground sm:text-base">
                       {active.category === "consulta"
                         ? "Contesta con lo que dice la web."
-                        : active.category === "fuera_de_alcance"
-                          ? "Arma un borrador de presupuesto para la agencia."
+                        : normalizeCategory(active.category) === "nuevo"
+                          ? "Arma un presupuesto con alcance, plazo y precio."
                           : active.category === "bloqueado"
                             ? "Nada: el pedido quedó bloqueado."
                             : active.lane === "codigo"
@@ -408,7 +414,7 @@ function useSimulation(
   const round = useRef(0);
   useEffect(() => {
     if (!enabled) return;
-    const scripts = initial.requests.filter((r) => ["permitido", "riesgoso", "consulta", "fuera_de_alcance"].includes(r.category ?? "") && r.lane !== "codigo");
+    const scripts = initial.requests.filter((r) => ["simple", "delicado", "consulta", "nuevo"].includes(normalizeCategory(r.category) ?? "") && r.lane !== "codigo");
     if (!scripts.length) return;
     let timers: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;

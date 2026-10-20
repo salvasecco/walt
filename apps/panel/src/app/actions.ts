@@ -1,16 +1,14 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import QRCode from "qrcode";
-import { checkPassword, createSessionValue, requireAuth, SESSION_COOKIE, authMode } from "@/lib/auth";
 import { dataMode, env } from "@/lib/env";
-import { DEFAULT_RULES } from "@/lib/sample";
+import { insertRulesVersion, toEditable } from "@/lib/rules";
+import { AccessError, requireProject, requireRequest, requireViewer } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import type { CommandType, OpType, Policy, Rules } from "@/lib/types";
-import { OP_TYPES, SEED_FACTORY_ID } from "@/lib/types";
+import type { CommandType } from "@/lib/types";
+import { SEED_FACTORY_ID } from "@/lib/types";
 
 export type ActionResult<T = undefined> =
   | { ok: true; demo?: boolean; message?: string; data?: T }
@@ -19,38 +17,6 @@ export type ActionResult<T = undefined> =
 const DEMO_MSG = "Datos de ejemplo: no se guardó nada. Conectá Supabase para que llegue al worker.";
 const SAMPLE_MSG = "Es un pedido de ejemplo: no se manda al worker.";
 
-/** Pedidos de ejemplo (migración 0003): nunca llegan al worker. Sin la columna, nada es de ejemplo. */
-async function isSampleRequest(requestId: string | null): Promise<boolean> {
-  if (!requestId) return false;
-  const { data, error } = await supabaseAdmin().from("requests").select("is_sample").eq("id", requestId).maybeSingle();
-  return !error && !!data?.is_sample;
-}
-
-// ── Entrada ────────────────────────────────────────────────────────────────
-
-export async function login(_prev: { error?: string } | undefined, form: FormData) {
-  if (authMode() === "sin_configurar") return { error: "Falta configurar PANEL_PASSWORD en este entorno." };
-  const password = String(form.get("password") ?? "");
-  if (!checkPassword(password)) {
-    await new Promise((r) => setTimeout(r, 400));
-    return { error: "Contraseña incorrecta." };
-  }
-  const { value, maxAge } = createSessionValue();
-  (await cookies()).set(SESSION_COOKIE, value, {
-    httpOnly: true,
-    secure: env.isProduction,
-    sameSite: "lax",
-    path: "/",
-    maxAge,
-  });
-  const desde = String(form.get("desde") || "/atencion");
-  redirect(safeRedirect(desde));
-}
-
-export async function logout() {
-  (await cookies()).delete(SESSION_COOKIE);
-  redirect("/entrar");
-}
 
 // ── Comandos (SPEC §9): el worker los lee cada segundo ────────────────────
 
@@ -60,61 +26,17 @@ export async function sendCommand(
   payload: Record<string, unknown> = {},
 ): Promise<ActionResult> {
   try {
-    await requireAuth();
+    // El pedido tiene que ser de la agencia de quien aprieta el botón.
+    const target = requestId ? (await requireRequest(requestId)).request : (await requireViewer(), null);
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
-    if (await isSampleRequest(requestId)) return { ok: true, demo: true, message: SAMPLE_MSG };
+    // Pedidos de ejemplo (migración 0003): nunca llegan al worker.
+    if (target?.is_sample) return { ok: true, demo: true, message: SAMPLE_MSG };
     const { error } = await supabaseAdmin()
       .from("commands")
       .insert({ type, request_id: requestId, payload: { via: "panel", actor: "agencia", ...payload }, status: "pendiente" });
     if (error) throw new Error(error.message);
     revalidatePath("/", "layout");
     return { ok: true, message: "Enviado al worker." };
-  } catch (e) {
-    return { ok: false, error: errorText(e) };
-  }
-}
-
-// ── Reglas (SPEC §8): guardar inserta una versión nueva ───────────────────
-
-export async function saveRules(
-  projectId: string,
-  policies: Record<OpType, Policy>,
-  limits: Rules["limits"],
-): Promise<ActionResult<{ version: number; at: string }>> {
-  try {
-    await requireAuth();
-    for (const t of OP_TYPES) if (!["auto", "agencia", "bloqueado"].includes(policies[t])) throw new Error(`Política inválida en ${t}`);
-    const clean = {
-      maxPriceChangePct: clampNum(limits.maxPriceChangePct, 1, 100),
-      monthlyQuota: Math.round(clampNum(limits.monthlyQuota, 0, 100_000)),
-      minConfidence: clampNum(limits.minConfidence, 0, 1),
-      maxOpsPerRequest: Math.round(clampNum(limits.maxOpsPerRequest, 1, 500)),
-    };
-    if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG, data: { version: 4, at: new Date().toISOString() } };
-    const db = supabaseAdmin();
-    // Reintenta si otra pestaña guardó la misma versión al mismo tiempo (unique project_id, version).
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data: last, error: e1 } = await db
-        .from("rules")
-        .select("version")
-        .eq("project_id", projectId)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (e1) throw new Error(e1.message);
-      const version = (last?.version ?? 0) + 1;
-      const { data, error } = await db
-        .from("rules")
-        .insert({ project_id: projectId, version, policies, limits: clean, created_by: "panel" })
-        .select("version, created_at")
-        .single();
-      if (!error) {
-        revalidatePath("/reglas");
-        return { ok: true, data: { version: data.version, at: data.created_at } };
-      }
-      if (error.code !== "23505") throw new Error(error.message);
-    }
-    throw new Error("No se pudo guardar: otra versión se guardó al mismo tiempo. Probá de nuevo.");
   } catch (e) {
     return { ok: false, error: errorText(e) };
   }
@@ -140,7 +62,7 @@ const REPO_RE = /^[A-Za-z0-9_.-]{1,100}$/;
 
 export async function testRepoConnection(input: { owner: string; repo: string; branch: string }): Promise<ActionResult<RepoCheck>> {
   try {
-    await requireAuth();
+    await requireViewer("configurar");
     const owner = input.owner.trim();
     const repo = input.repo.trim().replace(/\.git$/, "");
     const branch = input.branch.trim() || "main";
@@ -222,16 +144,21 @@ export async function connectProject(input: {
   mode: "contenido" | "codigo";
 }): Promise<ActionResult<{ id: string }>> {
   try {
-    await requireAuth();
+    const viewer = await requireViewer("configurar");
     if (!input.name.trim() || !REPO_RE.test(input.owner) || !REPO_RE.test(input.repo)) return { ok: false, error: "Completá nombre, owner y repo." };
     if (input.siteUrl && !/^https:\/\//.test(input.siteUrl)) return { ok: false, error: "La URL del sitio tiene que empezar con https://" };
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG, data: { id: "demo" } };
     const db = supabaseAdmin();
-    const { data: factory } = await db.from("factories").select("id").order("created_at").limit(1).maybeSingle();
+    // El proyecto va a la agencia activa; con el acceso de la instancia (sin agencias por usuario), a la primera.
+    let factoryId = viewer.factory?.id ?? null;
+    if (!factoryId) {
+      const { data: first } = await db.from("factories").select("id").order("created_at").limit(1).maybeSingle();
+      factoryId = first?.id ?? SEED_FACTORY_ID;
+    }
     const { data, error } = await db
       .from("projects")
       .insert({
-        factory_id: factory?.id ?? SEED_FACTORY_ID,
+        factory_id: factoryId,
         name: input.name.trim(),
         client_name: input.clientName.trim() || input.name.trim(),
         repo_owner: input.owner,
@@ -243,10 +170,8 @@ export async function connectProject(input: {
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    const { error: e2 } = await db
-      .from("rules")
-      .insert({ project_id: data.id, version: 1, ...DEFAULT_RULES, created_by: "panel" });
-    if (e2) throw new Error(e2.message);
+    // Reglas v1: las de por defecto del R1 (plantilla genérica; la agencia elige la de su stack en Reglas).
+    await insertRulesVersion(data.id, toEditable(null), viewer.email ?? "panel");
     revalidatePath("/proyectos");
     return { ok: true, data: { id: data.id } };
   } catch (e) {
@@ -258,7 +183,7 @@ export type InviteQR = { role: "cliente" | "agencia"; link: string; svg: string;
 
 export async function createInvites(projectId: string): Promise<ActionResult<InviteQR[]>> {
   try {
-    await requireAuth();
+    await requireProject(projectId, "configurar");
     const bot = env.botUsername || "tu_bot";
     const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
     const roles = ["cliente", "agencia"] as const;
@@ -292,13 +217,16 @@ export async function saveQuote(
   send: boolean,
 ): Promise<ActionResult> {
   try {
-    await requireAuth();
+    await requireViewer();
     if (!fields.title.trim()) return { ok: false, error: "El presupuesto necesita un título." };
     if (!(fields.amount_usd > 0) || !(fields.eta_days > 0)) return { ok: false, error: "Monto y días tienen que ser mayores a cero." };
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
     const db = supabaseAdmin();
     const { data: owner } = await db.from("quotes").select("request_id").eq("id", quoteId).maybeSingle();
-    if (send && (await isSampleRequest(owner?.request_id ?? null))) return { ok: true, demo: true, message: SAMPLE_MSG };
+    if (!owner?.request_id) return { ok: false, error: "No encontré el presupuesto." };
+    // El presupuesto tiene que ser de un pedido de la agencia de quien lo edita.
+    const { request } = await requireRequest(owner.request_id);
+    if (send && request.is_sample) return { ok: true, demo: true, message: SAMPLE_MSG };
     const { data: q, error } = await db
       .from("quotes")
       .update({
@@ -324,23 +252,7 @@ export async function saveQuote(
   }
 }
 
-function clampNum(n: number, min: number, max: number) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) throw new Error("Número inválido");
-  return Math.min(max, Math.max(min, v));
-}
-
 function errorText(e: unknown) {
+  if (e instanceof AccessError) return e.message;
   return e instanceof Error ? e.message : "Error inesperado";
-}
-
-/** Only same-site paths: rejects "//x", "/\\x" and anything that resolves to another origin. */
-function safeRedirect(desde: string): string {
-  if (!desde.startsWith("/") || desde.includes("\\")) return "/";
-  try {
-    const u = new URL(desde, "http://panel.local");
-    return u.origin === "http://panel.local" ? u.pathname + u.search + u.hash : "/";
-  } catch {
-    return "/";
-  }
 }

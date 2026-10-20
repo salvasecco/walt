@@ -20,6 +20,8 @@ export const env = {
   botUsername: read("TELEGRAM_BOT_USERNAME"),
   agencyName: read("DEMO_AGENCY_NAME") || "Estudio Faro",
   demoSiteUrl: read("DEMO_SITE_URL"),
+  /** URL pública del panel, para los links de los mails de Supabase Auth. Sin ella se arma con el host del pedido. */
+  panelUrl: read("PANEL_URL").replace(/\/$/, ""),
   isProduction: process.env.NODE_ENV === "production",
 };
 
