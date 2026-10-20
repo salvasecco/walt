@@ -69,7 +69,9 @@ async function checkSchema(env: WaltEnv): Promise<Row> {
   const s = await schemaStatus(connect(env), env);
   if (s.missingTables.length || !s.publishVersion) return { name, ok: false, detail: '0001 sin aplicar: corré pnpm db:migrate para ver qué pegar' };
   if (s.anonBlocked === false) return { name, ok: false, detail: '0001 aplicada, falta 0002 (pnpm db:migrate --copy 0002)' };
-  return { name, ok: true, detail: '0001 y 0002 aplicadas' };
+  if (!s.clients) return { name, ok: false, detail: 'falta 0003 (pnpm db:migrate --copy 0003)' };
+  if (!s.r1.ok) return { name, ok: false, detail: `falta 0004, la del R1 (pnpm db:migrate --copy 0004): ${s.r1.missing.slice(0, 3).join(', ')}` };
+  return { name, ok: true, detail: `0001 a 0004 aplicadas${s.anonClosed ? ' y la anon cerrada (0005)' : '; 0005 (cerrar la anon) pendiente'}` };
 }
 
 async function checkGithub(env: WaltEnv): Promise<Row> {
