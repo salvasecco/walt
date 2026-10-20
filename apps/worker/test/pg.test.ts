@@ -59,8 +59,8 @@ describe('PgStore sobre la migración real (PGlite)', () => {
     await worker.handle({ kind: 'text', chatId: 9_000_000_001, fromName: 'Mabel', text: 'subí el pan flauta a 95', updateId: 3 });
     await worker.idle();
     const req = (await store.latestRequestOfContact(contact.id, ['esperando_cliente']))!;
-    // 0004 renames the categories (a legacy 'permitido' is stored as 'simple').
-    expect(['permitido', 'simple']).toContain(req.category);
+    // R1: the worker writes the new categories (0004 also translates a legacy 'permitido' to 'simple').
+    expect(req.category).toBe('simple');
     expect(req.confidence).toBe(0.9);
     expect(req.changes).toEqual([{ pointer: '/products/0/price', before: 80, after: 95 }]);
 
@@ -89,7 +89,7 @@ describe('PgStore sobre la migración real (PGlite)', () => {
   });
 
   it('comandos del panel y presupuestos', async () => {
-    await worker.handle({ kind: 'text', chatId: 9_000_000_001, fromName: 'Mabel', text: 'quiero que la gente pueda reservar tortas online' });
+    await worker.handle({ kind: 'text', chatId: 9_000_000_001, fromName: 'Mabel', text: 'quiero cobrar las tortas online con Mercado Pago' });
     await worker.idle();
     const contact = (await store.getContactByChat(9_000_000_001))!;
     const req = (await store.latestRequestOfContact(contact.id, ['cotizado']))!;
@@ -100,6 +100,7 @@ describe('PgStore sobre la migración real (PGlite)', () => {
     const { rows } = await pg.query<{ status: string }>('select status from commands');
     expect(rows[0]!.status).toBe('hecho');
     expect((await store.getQuote(req.quote_id!))!.status).toBe('enviado');
-    expect(channel.sent.at(-1)!.text).toMatch(/USD 500/);
+    expect(channel.sent.at(-1)!.text).toMatch(/USD 500, con una seña de USD 250/);
+    expect((await store.getRequest(req.id))!.category).toBe('nuevo');
   });
 });

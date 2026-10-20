@@ -109,7 +109,7 @@ export function nextWeekdayEnd(nowIso: string, dayWord: string): string {
   return `${d.toISOString().slice(0, 10)}T23:59:00-03:00`;
 }
 
-const base = (p: Partial<Interpretation> & Pick<Interpretation, 'kind' | 'summary'>): Interpretation => ({
+const baseOf = (p: Partial<Interpretation> & Pick<Interpretation, 'kind' | 'summary'>): Interpretation => ({
   confidence: 0.9,
   ops: [],
   needsCode: false,
@@ -117,26 +117,37 @@ const base = (p: Partial<Interpretation> & Pick<Interpretation, 'kind' | 'summar
   ...p,
 });
 
+/** Patterns for the fake classifier (Spanish and Portuguese, normalized without accents). */
+const SECRETS = /(mostr|deci|pasa|revela|dame|manda)\w*\b.*\b(instruccion|instrucoes|variables de entorno|variaveis de ambiente|claves|senhas|tokens?|api key|chave da api|secretos?)/;
+const NEW_THING =
+  /(mercado ?pago|stripe|paypal|\bpix\b|pasarela|medio de pago|meio de pagamento|cobrar online|cobrar en linea|receber (os )?pagamentos|carrito|tienda online|loja online|suscripci|assinatura|\bagente\b|workflow|automatic|automatiz|\berp\b|facturaci|faturamento|nota fiscal|\bdgi\b|\bcrm\b|logistica|\bapp\b|aplicacion movil|aplicativo|cuentas de usuario|contas de usuario|tengan su cuenta|area privada|acumul\w* puntos|programa de puntos|fideliza|sincroni\w* .*(stock|estoque|inventario|sistema)|sistema de gestion|sistema de reservas|turnos online|agenda online)/;
+const DELICATE =
+  /(base de datos|banco de dados|\btabla|\btabela|migraci|migracao|supabase|endpoint|\bapi\b|backend|servidor|\blogin\b|iniciar sesion|contrasena|\bsenha|permis|admin|variables de entorno|variaveis de ambiente|\.env|dependenc|package\.json|librer|actualiza\w* (next|react|las librerias|el framework)|atualiz\w* (o next|as dependencias|as bibliotecas)|borra\w* (todos|todas|los|las) (pedidos|datos|usuarios|clientes)|apag\w* (todos|os) (pedidos|dados)|webhook|guard\w* (en|los|las) .*(base|supabase)|salv\w* .*(banco|base))/;
+const SIMPLE_CODE =
+  /(formulario|aviso|franja|seccion|secao|galeria|mapa|preguntas frecuentes|perguntas frequentes|footer|rodape|testimonios|depoimentos|tipograf|que la gente pueda reservar|reserva de tortas|pagina nueva|pagina de)/;
+
 export function fakeInterpret(input: InterpretInput): Interpretation {
   const raw = input.text;
   const t = normalize(raw);
   const inv = input.inventory;
+  const language = /\b(voce|voces|nao|obrigad|preco|cor do|fundo|sabado abrimos das|acabou|adicione|crie|mude|atualize|quero|integrar o|banco de dados|rodape)\b/.test(t) ? 'pt' : 'es';
+  const base = (p: Partial<Interpretation> & Pick<Interpretation, 'kind' | 'summary'>): Interpretation => baseOf({ language, ...p });
 
-  if (/^(si|sí|dale|ok|perfecto|listo|de una)[.!]*$/.test(t)) return base({ kind: 'aprobacion', summary: 'Aprueba' });
-  if (/^(volve atras|deshace|deshacelo|volver atras)/.test(t)) return base({ kind: 'revertir', summary: 'Vuelve atrás' });
-  if (/^(hola|buenas|gracias|buen dia|buenas tardes|chau)\b/.test(t) && t.length < 30) {
+  if (/^(si|sí|dale|ok|perfecto|listo|de una|sim|pode)[.!]*$/.test(t)) return base({ kind: 'aprobacion', summary: 'Aprueba' });
+  if (/^(volve atras|deshace|deshacelo|volver atras|desfaz|volta como estava)/.test(t)) return base({ kind: 'revertir', summary: 'Vuelve atrás' });
+  if (/^(hola|buenas|gracias|buen dia|buenas tardes|chau|ola|oi|obrigad\w*|valeu)\b/.test(t) && t.length < 30) {
     return base({ kind: 'charla', summary: 'Saluda' });
   }
 
   // Code or HTML in the request: the instruction part goes to unexpressed parts.
-  const codeMatch = raw.match(/(agreg\S*|pon\S*|met\S*)[^<]*<[^>]+>.*$/i) ?? raw.match(/<[^>]+>.*$/);
+  const codeMatch = raw.match(/(agreg\S*|pon\S*|met\S*|coloque\S*|adicione\S*)[^<]*<[^>]+>.*$/i) ?? raw.match(/<[^>]+>.*$/);
   if (codeMatch) {
     const ops: Op[] = [];
     const price = t.match(/precio a \$?(\d+(?:[.,]\d+)?)/);
     const product = findProduct(inv, raw);
     if (price && product) ops.push({ type: 'set_price', productId: product.id, value: Number(price[1]!.replace(',', '.')) });
     return base({
-      kind: 'cambio',
+      kind: 'simple',
       summary: 'Cambio un precio y agrego un script',
       confidence: product ? 0.7 : 0.4,
       ops,
@@ -146,18 +157,31 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     });
   }
 
-  if (/\?\s*$/.test(raw) || /^(a que hora|cuando|cuanto|que precio|tienen|hay|abren|donde)\b/.test(t)) {
+  if (SECRETS.test(t)) return base({ kind: 'bloqueado', summary: 'Pide datos internos', why: 'Pide secretos o instrucciones internas' });
+
+  if (/\?\s*$/.test(raw) || /^(a que hora|cuando|cuanto|que precio|tienen|hay|abren|donde|que horas|quanto|voces|tem)\b/.test(t)) {
     return base({ kind: 'consulta', summary: 'Pregunta sobre la web' });
   }
 
-  if (/(reserv|online|formulario|login|pagar|pagos|carrito|que la gente pueda|tienda|suscrip|chat en vivo|app)/.test(t)) {
-    return base({ kind: 'funcion_nueva', summary: 'Pide una función nueva para la web' });
+  if (DELICATE.test(t)) {
+    return base({
+      kind: 'delicado',
+      summary: 'Pide un cambio en una zona delicada',
+      why: 'Toca la base de datos, el login, la API, los secretos o las dependencias',
+      needsCode: true,
+      codeInstruction: `Cambio pedido: ${raw.slice(0, 200)}`,
+      unexpressedParts: [raw.slice(0, 200)],
+    });
+  }
+
+  if (NEW_THING.test(t)) {
+    return base({ kind: 'nuevo', summary: 'Pide algo nuevo', why: 'Es una integración, un medio de pago, un agente o un módulo grande' });
   }
 
   // Banner: "cartel de Black Friday con 25% de descuento en todo, hasta el domingo"
-  if (/(cartel|banner|aviso)/.test(t)) {
+  if (/(cartel|banner)/.test(t)) {
     if (/(saca|quita|borra)/.test(t)) {
-      return base({ kind: 'cambio', summary: 'Saco el cartel', ops: [{ type: 'set_banner', enabled: false }] });
+      return base({ kind: 'simple', summary: 'Saco el cartel', ops: [{ type: 'set_banner', enabled: false }] });
     }
     const pct = t.match(/(\d{1,2})\s*%/);
     const until = t.match(/hasta el (lunes|martes|miercoles|jueves|viernes|sabado|domingo)/);
@@ -173,7 +197,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
       endsAt: until ? nextWeekdayEnd(input.now, until[1]!) : null,
     };
     return base({
-      kind: 'cambio',
+      kind: 'simple',
       summary: `Pongo un cartel "${text}"${until ? ` hasta el ${until[1]}` : ''}`,
       ops: [op],
     });
@@ -187,7 +211,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     const cat = inv.categories.find((c) => t.includes(c) || t.includes(c.replace(/s$/, '')));
     const filter = /todo/.test(t) || !cat ? { all: true as const } : { category: cat };
     return base({
-      kind: 'cambio',
+      kind: 'simple',
       summary: `${sign > 0 ? 'Subo' : 'Bajo'} ${Math.abs(percent)}% ${'all' in filter ? 'todos los precios' : `los precios de ${cat}`}, redondeando a múltiplos de 5`,
       ops: [{ type: 'adjust_prices', filter, percent, rounding: 'nearest_5' }],
     });
@@ -198,7 +222,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     const p = findProduct(inv, raw);
     if (p) {
       return base({
-        kind: 'cambio',
+        kind: 'simple',
         summary: `Marco ${p.name.toLowerCase()} como no disponible`,
         ops: [{ type: 'set_availability', productId: p.id, available: false }],
       });
@@ -208,7 +232,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     const p = findProduct(inv, raw);
     if (p) {
       return base({
-        kind: 'cambio',
+        kind: 'simple',
         summary: `Marco ${p.name.toLowerCase()} como disponible`,
         ops: [{ type: 'set_availability', productId: p.id, available: true }],
       });
@@ -218,7 +242,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
   // Ambiguous (phase 2): "poné el fondo más oscuro" → two options.
   if (/fondo mas oscuro/.test(t) && inv.colors.some((c) => c.token === 'background')) {
     return base({
-      kind: 'cambio',
+      kind: 'simple',
       summary: 'Oscurezco el fondo',
       confidence: 0.7,
       options: [
@@ -251,7 +275,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
       const label = COLOR_LABELS[token] ?? 'el color principal';
       const ops: Op[] = [{ type: 'set_color', token, value }];
       if (token === 'button' && colorWord && LIGHT.has(colorWord) && has('buttonText')) ops.push({ type: 'set_color', token: 'buttonText', value: '#1C1917' });
-      return base({ kind: 'cambio', summary: `Pongo ${label} ${colorWord ?? value}`, ops });
+      return base({ kind: 'simple', summary: `Pongo ${label} ${colorWord ?? value}`, ops });
     }
   }
 
@@ -262,7 +286,7 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     const value = Number(priceMatch[1]!.replace(',', '.'));
     if (p) {
       return base({
-        kind: 'cambio',
+        kind: 'simple',
         summary: `${value >= p.price ? 'Subo' : 'Bajo'} ${p.name.toLowerCase()} de ${money(p.price)} a ${money(value)}`,
         ops: [{ type: 'set_price', productId: p.id, value }],
       });
@@ -277,13 +301,36 @@ export function fakeInterpret(input: InterpretInput): Interpretation {
     const open = hhmm(hours[2]!, hours[3]);
     const close = hhmm(hours[4]!, hours[5]);
     return base({
-      kind: 'cambio',
+      kind: 'simple',
       summary: `Cambio el horario del ${hours[1]} a ${open}–${close}`,
       ops: [{ type: 'set_hours', day, open, close }],
     });
   }
 
-  return base({ kind: 'cambio', summary: 'No terminé de entender el pedido', confidence: 0.3 });
+  // Show or hide a section of the inventory by its usual name.
+  const sectionMove = t.match(/(saca|oculta|esconde|quita|volve a mostrar|mostra|pone)\w*\b.*\bseccion\b/);
+  if (sectionMove && inv.sections) {
+    const names: Record<string, string[]> = { about: ['quienes somos', 'nosotros', 'about'], hours: ['horario'], contact: ['contacto'] };
+    const found = inv.sections.find((x) => (names[x.section] ?? [x.section]).some((n) => t.includes(n)));
+    if (found) {
+      const visible = /^(volve|mostra|pone)/.test(sectionMove[1]!);
+      return base({ kind: 'simple', summary: `${visible ? 'Muestro' : 'Oculto'} la sección ${found.section}`, ops: [{ type: 'toggle_section', section: found.section, visible }] });
+    }
+  }
+
+  // Interface changes the operations don't cover go to the agent: simple by intention.
+  if (SIMPLE_CODE.test(t)) {
+    return base({
+      kind: 'simple',
+      summary: 'Agrego lo que pide en la web',
+      why: 'Es un cambio de interfaz',
+      needsCode: true,
+      codeInstruction: `Cambio de interfaz: ${raw.slice(0, 200)}`,
+      unexpressedParts: [raw.slice(0, 200)],
+    });
+  }
+
+  return base({ kind: 'simple', summary: 'No terminé de entender el pedido', confidence: 0.3 });
 }
 
 export function fakeAnswer(inv: Inventory, text: string): string {

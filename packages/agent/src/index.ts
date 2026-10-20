@@ -27,6 +27,7 @@ export { GitHubHost, LocalHost, currentDeployState, isVercelAppUrl, vercelPrevie
 export { createClaudeAgentRunner, guardHook, agentPrompt, type AgentRunner, type AgentRunInput, type AgentRunOutput } from './runner.js';
 export { checkPath, evaluateToolUse, AGENT_TOOLS, ALWAYS_PROTECTED } from './guard.js';
 export { reviewDiff, addedLines } from './review.js';
+export { classifyDiff, protectedGlobsFor, SIMPLE_CHANGE_HINT, type ClassifyDiffInput, type DiffClassification } from './classify.js';
 export { buildAgentEnv, agentModelId } from './agent-env.js';
 
 /** Folder of the fake GitHub (GITHUB_MODE=fake): bare repos and PR lists. */

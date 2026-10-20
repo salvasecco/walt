@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Inventory, Turn } from '@walt/core';
+import { MAX_PROMPT_EXAMPLES, type Inventory, type LabeledExample, type Turn } from '@walt/core';
 
 const DIR = fileURLToPath(new URL('../prompts/', import.meta.url));
 const cache = new Map<string, string>();
@@ -57,4 +57,32 @@ export function formatHistory(history: Turn[]): string {
     .slice(-10)
     .map((t) => `${t.role}: ${t.text.slice(0, 500)}`)
     .join('\n');
+}
+
+/** Removes a block's own opening and closing tags from a value, so data never closes the block it sits in. */
+export function neutralize(tag: string, text: string): string {
+  return text.replace(new RegExp(`</?\\s*${tag}\\s*>`, 'gi'), '');
+}
+
+/** The agency's policy and its "always new" list, as one data block for the prompt. Empty when there is none. */
+export function formatPolicy(policyText: string | undefined, alwaysNew: readonly string[] = []): string {
+  const parts: string[] = [];
+  const text = (policyText ?? '').trim();
+  if (text) parts.push(text.slice(0, 4_000));
+  const list = alwaysNew.map((x) => x.trim()).filter(Boolean).slice(0, 30);
+  if (list.length) parts.push(['Siempre son algo nuevo:', ...list.map((x) => `- ${x.slice(0, 200)}`)].join('\n'));
+  if (!parts.length) return '';
+  return `<politica_agencia>\n${neutralize('politica_agencia', parts.join('\n\n'))}\n</politica_agencia>`;
+}
+
+/** Relabeled requests of the same agency, as one data block. Empty when there are none. */
+export function formatExamples(examples: readonly LabeledExample[] = []): string {
+  const list = examples.slice(0, MAX_PROMPT_EXAMPLES).map((e) => {
+    const text = e.text.replace(/\s+/g, ' ').trim().slice(0, 300);
+    const before = e.previous && e.previous !== e.category ? ` (antes se había clasificado como ${e.previous})` : '';
+    const reason = e.reason?.trim() ? `. Motivo: ${e.reason.replace(/\s+/g, ' ').trim().slice(0, 200)}` : '';
+    return `- «${text}» → ${e.category}${before}${reason}`;
+  });
+  if (!list.length) return '';
+  return `<ejemplos_agencia>\n${neutralize('ejemplos_agencia', list.join('\n'))}\n</ejemplos_agencia>`;
 }

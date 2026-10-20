@@ -3,9 +3,10 @@ import { CATEGORIES, LANES } from '@walt/core';
 import { z } from 'zod';
 
 /**
- * Eval cases (SPEC §15): one JSON object per line. `expected.ops` may use `"*"` as a
- * wildcard for free text (banner text, color picked for "violeta"). `expected.category`
- * may be a list when more than one category is acceptable (ambiguous requests).
+ * Eval cases (SPEC §15, R1 taxonomy): one JSON object per line. `expected.ops` may use `"*"` as a
+ * wildcard for free text (banner text, color picked for "violeta"). `expected.category` may be a list
+ * when more than one category is acceptable. A case whose accepted categories include `delicado` but
+ * not `simple` counts toward the expensive error if it comes out simple.
  */
 const Category = z.enum(CATEGORIES);
 
@@ -19,6 +20,8 @@ export const EvalCaseSchema = z.object({
   }),
   tags: z.array(z.string()).default([]),
   source: z.enum(['sintetico', 'real']),
+  /** Language of the message. Default `es`. */
+  lang: z.enum(['es', 'pt']).optional(),
   /** Decide context overrides, e.g. a project that does not allow code. */
   context: z
     .object({
