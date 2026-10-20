@@ -19,6 +19,15 @@ export const SECRET_KEYS = [
   'PANEL_PASSWORD',
 ] as const;
 
+/**
+ * Model routing (R1): a cheap model classifies (interpret, consultas, quote drafts) and a strong one
+ * writes code. Haiku 5.5 got 90/90 on the R1 eval with prompt v8 at 1/18 of Sonnet's cost; the agent
+ * stays on Sonnet 5.5 with a retry on Opus 5.5. When the cheap model fails, the provider retries once
+ * on `INTERPRET_FALLBACK_MODEL`.
+ */
+export const DEFAULT_MODELS = { interpret: 'claude-haiku-5-5', agent: 'claude-sonnet-5-5' } as const;
+export const INTERPRET_FALLBACK_MODEL = 'claude-sonnet-5-5';
+
 const opt = z
   .string()
   .optional()
@@ -41,8 +50,8 @@ export const EnvSchema = z.object({
   AWS_REGION: opt,
   AWS_ACCESS_KEY_ID: opt,
   AWS_SECRET_ACCESS_KEY: opt,
-  MODEL_INTERPRET: z.string().default('claude-sonnet-5-5'),
-  MODEL_AGENT: z.string().default('claude-sonnet-5-5'),
+  MODEL_INTERPRET: z.string().default(DEFAULT_MODELS.interpret),
+  MODEL_AGENT: z.string().default(DEFAULT_MODELS.agent),
   OPENAI_API_KEY: opt,
   SCREENSHOTS: z.enum(['on', 'off']).default('off'),
   PANEL_PASSWORD: opt,
