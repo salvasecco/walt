@@ -7,6 +7,7 @@ import {
   delicatePaths,
   depositAmount,
   emptyExampleSource,
+  exampleFromLabelRow,
   exampleSourceOf,
   globToRegExp,
   matchGlob,
@@ -186,20 +187,15 @@ describe('ejemplos reetiquetados', () => {
     expect(exampleSourceOf(store)).toBe(store);
   });
 
-  it('una store con las filas de similar_labeled_requests (0004) también sirve, con las categorías normalizadas', async () => {
-    const calls: unknown[][] = [];
-    const store = {
-      similarLabeledRequests: async (...args: unknown[]) => {
-        calls.push(args);
-        return [
-          { raw_text: 'agregá un login', from_category: 'permitido', to_category: 'delicado', reason: 'toca auth' },
-          { raw_text: '', from_category: null, to_category: 'simple', reason: null },
-          { raw_text: 'algo raro', from_category: null, to_category: 'otra_cosa', reason: null },
-        ];
-      },
-    };
-    const examples = await exampleSourceOf(store).similarExamples({ factoryId: 'f1', text: 'quiero login', limit: 3 });
-    expect(calls).toEqual([['f1', 'quiero login', 3]]);
-    expect(examples).toEqual([{ text: 'agregá un login', category: 'delicado', previous: 'simple', reason: 'toca auth' }]);
+  it('las filas de la RPC similar_labeled_requests se vuelven ejemplos', () => {
+    expect(exampleFromLabelRow({ raw_text: 'agregá un login', from_category: 'permitido', to_category: 'delicado', reason: ' toca el login ' })).toEqual({
+      text: 'agregá un login',
+      category: 'delicado',
+      previous: 'simple',
+      reason: 'toca el login',
+    });
+    expect(exampleFromLabelRow({ raw_text: 'x', to_category: 'cualquiera' })).toBeNull();
+    expect(exampleFromLabelRow({ raw_text: '  ', to_category: 'simple' })).toBeNull();
+    expect(exampleFromLabelRow({ raw_text: 'subí el pan', from_category: null, to_category: 'simple', reason: null })).toEqual({ text: 'subí el pan', category: 'simple' });
   });
 });

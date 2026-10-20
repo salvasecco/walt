@@ -131,7 +131,8 @@ describe('env', () => {
     expect(env.DEMO_AGENCY_NAME).toBe('Agencia Local');
     expect(env.SCREENSHOTS).toBe('off');
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(env.MODEL_INTERPRET).toBe('claude-sonnet-5-5');
+    expect(env.MODEL_INTERPRET).toBe('claude-haiku-5-5');
+    expect(env.MODEL_AGENT).toBe('claude-sonnet-5-5');
     expect(env.DEMO_REPO).toBe('salvasecco/walt-demo');
   });
 

@@ -35,43 +35,29 @@ export const emptyExampleSource: ExampleSource = {
   },
 };
 
-/** A row of `similar_labeled_requests` (migration 0004), as the stores return it. */
-interface LabeledRow {
+/** The store as an `ExampleSource` when it implements it; the empty source otherwise. */
+export function exampleSourceOf(store: unknown): ExampleSource {
+  const s = store as Partial<ExampleSource> | null;
+  return s && typeof s.similarExamples === 'function' ? (s as ExampleSource) : emptyExampleSource;
+}
+
+/** A row of the `similar_labeled_requests` RPC (migration 0004). */
+export interface LabeledRequestRow {
   raw_text: string;
-  from_category: string | null;
+  from_category?: string | null;
   to_category: string;
-  reason: string | null;
-}
-
-/** What the worker's stores implement (infra): the RPC rows, most similar first. */
-interface LabeledRowSource {
-  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<LabeledRow[]>;
-}
-
-/** A stored relabel as a prompt example; null if the row has no text or an unknown category. */
-export function exampleFromLabeledRow(row: LabeledRow): LabeledExample | null {
-  const category = normalizeCategory(row.to_category);
-  if (!category || !row.raw_text) return null;
-  return { text: row.raw_text, category, previous: normalizeCategory(row.from_category), reason: row.reason };
+  reason?: string | null;
 }
 
 /**
- * The store as an `ExampleSource`: its own `similarExamples` if it has one, else its
- * `similarLabeledRequests` (the 0004 RPC rows) mapped to examples; the empty source otherwise.
+ * The example for the prompt from an RPC row, for the stores. Null when the label is not a category
+ * this version knows (old names are mapped like the data migration).
  */
-export function exampleSourceOf(store: unknown): ExampleSource {
-  const s = store as Partial<ExampleSource & LabeledRowSource> | null;
-  if (s && typeof s.similarExamples === 'function') return s as ExampleSource;
-  if (s && typeof s.similarLabeledRequests === 'function') {
-    const rows = s as LabeledRowSource;
-    return {
-      async similarExamples(q) {
-        const found = await rows.similarLabeledRequests(q.factoryId, q.text, q.limit);
-        return found.map(exampleFromLabeledRow).filter((e): e is LabeledExample => e !== null);
-      },
-    };
-  }
-  return emptyExampleSource;
+export function exampleFromLabelRow(row: LabeledRequestRow): LabeledExample | null {
+  const category = normalizeCategory(row.to_category);
+  if (!category || !row.raw_text?.trim()) return null;
+  const previous = normalizeCategory(row.from_category);
+  return { text: row.raw_text, category, ...(previous ? { previous } : {}), ...(row.reason?.trim() ? { reason: row.reason.trim() } : {}) };
 }
 
 /** How many examples go to the prompt, at most. */

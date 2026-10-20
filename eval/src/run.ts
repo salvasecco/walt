@@ -1,15 +1,10 @@
-import type { AiProvider } from '@walt/ai';
+import { simulateRequest, type AiProvider } from '@walt/ai';
 import {
-  buildInventory,
   checkText,
   containsCode,
   costUsd,
-  decide,
   inventoryPointers,
-  isChangeKind,
   redact,
-  rulesConfig,
-  runGate,
   type WaltConfig,
   type Decision,
   type GateResult,
@@ -63,6 +58,8 @@ export interface CaseResult {
   wentToAgency: boolean;
   /** Walt asks the client for the missing detail. */
   clarify: boolean;
+  /** Two concrete readings offered to the client as two previews (the worker's options flow). */
+  options?: string[];
   ms: number;
   usage: Usage[];
   costUsd: number;
@@ -102,36 +99,35 @@ export function prohibitedApplied(c: EvalCase, decision: Decision, gate: GateRes
   return out;
 }
 
-/** interpret → gate → decide for one case, like the worker does (SPEC §9 steps 4–5). */
+/** interpret → gate → options → decide for one case, like the worker does (`simulateRequest`). */
 export async function runCase(c: EvalCase, suite: string, ctx: EvalContext): Promise<CaseResult> {
   const t0 = performance.now();
-  const inventory = buildInventory(ctx.config, ctx.content);
   let interpretation: Interpretation | undefined;
   let gate: GateResult | null = null;
   let decision: Decision;
+  let offered: { label: string; ops: Interpretation['ops'] }[] | undefined;
   const usage: Usage[] = [];
   let error: string | undefined;
   try {
-    const r = await withTimeout(
-      ctx.ai.interpret({
-        inventory,
-        history: [],
+    const sim = await withTimeout(
+      simulateRequest({
+        ai: ctx.ai,
         text: c.text,
+        rules: ctx.rules,
+        content: c.context?.projectMode === 'codigo' ? undefined : { config: ctx.config, content: ctx.content, schema: ctx.schema },
         agencyName: ctx.agencyName,
         clientName: ctx.clientName,
         now: ctx.now,
-        // Same as the worker: the agency's policy and its "always new" list go to the prompt.
-        policyText: ctx.rules.policy_text,
-        alwaysNew: rulesConfig(ctx.rules).alwaysNew,
+        secrets: ctx.secrets,
+        allowCode: c.context?.allowCode,
       }),
       ctx.timeoutMs ?? 60_000,
     );
-    interpretation = r.interpretation;
-    usage.push(r.usage);
-    if (isChangeKind(interpretation.kind) && interpretation.ops.length > 0) {
-      gate = runGate({ config: ctx.config, content: ctx.content, schema: ctx.schema, ops: interpretation.ops, rules: ctx.rules, secrets: ctx.secrets });
-    }
-    decision = decide(interpretation, gate, ctx.rules, { rawText: c.text, projectMode: 'contenido', ...c.context });
+    interpretation = sim.interpretation;
+    usage.push(sim.usage);
+    gate = sim.gate as GateResult | null;
+    decision = sim.decision;
+    offered = sim.options;
   } catch (err) {
     // Same as the worker: any failure or timeout ends as `derivado` (SPEC §9.9).
     error = redact(err instanceof Error ? err.message : String(err), ctx.secrets);
@@ -145,10 +141,12 @@ export async function runCase(c: EvalCase, suite: string, ctx: EvalContext): Pro
   const categoryOk = accepted.includes(decision.category);
   const isChange = decision.category === 'simple' || decision.category === 'delicado';
   const laneOk = c.expected.lane === undefined || !isChange || decision.clarify === true || decision.lane === c.expected.lane;
+  const sameAs = (ops: Interpretation['ops']) => opsMatch(c.expected.ops!, ops, { content: ctx.content, config: ctx.config });
+  // With options, the expected reading has to be one of the two the client can pick.
   const opsOk =
     c.expected.ops === undefined
       ? undefined
-      : interpretation !== undefined && opsMatch(c.expected.ops, interpretation.ops, { content: ctx.content, config: ctx.config });
+      : interpretation !== undefined && (offered ? offered.some((o) => sameAs(o.ops)) : sameAs(interpretation.ops));
 
   return {
     id: c.id,
@@ -170,6 +168,7 @@ export async function runCase(c: EvalCase, suite: string, ctx: EvalContext): Pro
     prohibitedApplied: prohibitedApplied(c, decision, gate, ctx),
     wentToAgency: decision.category === 'delicado',
     clarify: decision.clarify === true,
+    ...(offered ? { options: offered.map((o) => o.label) } : {}),
     ms,
     usage,
     costUsd: costUsd(usage),
