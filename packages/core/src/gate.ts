@@ -1,9 +1,9 @@
 import { createRequire } from 'node:module';
 import type { WaltConfig } from './config.ts';
-import { inventoryPointers } from './config.ts';
+import { getProducts, inventoryPointers } from './config.ts';
 import { applyOps, OpSchema, OP_LABELS, OpValidationError, type Change, type Op } from './ops.ts';
 import { getPointer } from './pointer.ts';
-import { policyFor, type Policy, type Rules } from './rules.ts';
+import { policyFor, priceWarnPct, type Policy, type Rules } from './rules.ts';
 
 const require = createRequire(import.meta.url);
 // ajv ships CommonJS; createRequire avoids ESM default-export interop issues.
@@ -15,6 +15,11 @@ export type GateOutcome = Policy; // 'auto' | 'agencia' | 'bloqueado'
 export interface GateResult {
   outcome: GateOutcome;
   reasons: string[];
+  /**
+   * Shown to the client with the preview, never an escalation (R1): prices that move more than the
+   * threshold ("Pan de masa madre baja de $220 a $95"), big discounts, low contrast, many changes at once.
+   */
+  warnings: string[];
   content: unknown;
   changes: Change[];
 }
@@ -118,6 +123,28 @@ export function contrastPairs(config: WaltConfig): ContrastPair[] {
   return pairs;
 }
 
+/** At most this many price warnings; the rest are summed up in one line. */
+const MAX_PRICE_WARNINGS = 5;
+
+function decimal(n: number, digits: number): string {
+  return n.toFixed(digits).replace('.', ',');
+}
+
+/** "$95", "$12,50". */
+function money(n: number): string {
+  return `$${Number.isInteger(n) ? String(n) : decimal(n, 2)}`;
+}
+
+/** Name of the product a price pointer belongs to, from the content before the change. */
+function productNameAt(config: WaltConfig, content: unknown, pointer: string): string | undefined {
+  const p = config.products;
+  if (!p) return undefined;
+  const index = Number(pointer.slice(p.path.length + 1).split('/')[0]);
+  const item = Number.isInteger(index) ? getProducts(config, content)[index] : undefined;
+  const name = item?.[p.name];
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
+}
+
 function hasAtMostTwoDecimals(n: number): boolean {
   return Math.abs(Math.round(n * 100) - n * 100) < 1e-6;
 }
@@ -130,7 +157,7 @@ function hasAtMostTwoDecimals(n: number): boolean {
 export function runGate(input: GateInput): GateResult {
   const { config, content, schema, ops, rules } = input;
   const secrets = input.secrets ?? [];
-  const blocked = (reasons: string[]): GateResult => ({ outcome: 'bloqueado', reasons, content, changes: [] });
+  const blocked = (reasons: string[]): GateResult => ({ outcome: 'bloqueado', reasons, warnings: [], content, changes: [] });
 
   // 1. Shape of every operation.
   const shapeErrors: string[] = [];
@@ -158,10 +185,14 @@ export function runGate(input: GateInput): GateResult {
   }
 
   const reasons: string[] = [];
+  const warnings: string[] = [];
   let outcome: GateOutcome = 'auto';
   const raise = (to: GateOutcome, reason: string) => {
     outcome = stricter(outcome, to);
     if (!reasons.includes(reason)) reasons.push(reason);
+  };
+  const warn = (w: string) => {
+    if (!warnings.includes(w)) warnings.push(w);
   };
 
   // 3 + 4. Security and secrets on every new value.
@@ -185,14 +216,16 @@ export function runGate(input: GateInput): GateResult {
     }
   }
 
-  // 4b. Readability: a color change can't leave text unreadable without the agency.
+  // 4b. Readability: a color that leaves text hard to read is a warning in the preview (R1: colors are simple).
   for (const pair of contrastPairs(config)) {
     if (!changes.some((c) => c.pointer === pair.fg || c.pointer === pair.bg)) continue;
     const fg = getPointer(next, pair.fg);
     const bg = getPointer(next, pair.bg);
     if (typeof bg === 'string' && typeof fg === 'string' && COLOR.test(bg) && COLOR.test(fg)) {
       const ratio = contrastRatio(bg, fg);
-      if (ratio < pair.min) raise('agencia', `${pair.what} queda con poco contraste sobre ${pair.on} (${ratio.toFixed(1)}:1, mínimo ${pair.min}:1)`);
+      if (ratio < pair.min) {
+        warn(`${pair.what} queda con poco contraste sobre ${pair.on} (${decimal(ratio, 1)}:1, se recomienda ${pair.min}:1): puede costar leerlo`);
+      }
     }
   }
 
@@ -209,19 +242,30 @@ export function runGate(input: GateInput): GateResult {
     if (policy === 'agencia') raise('agencia', `Las reglas piden que la agencia apruebe ${OP_LABELS[op.type]}`);
   }
 
-  // 6. Limits.
-  if (ops.length > rules.limits.maxOpsPerRequest) {
-    raise('agencia', `Son ${ops.length} operaciones y el máximo automático es ${rules.limits.maxOpsPerRequest}`);
-  }
+  // 6. Limits. Only the monthly quota of automatic changes still goes to the agency (it is the plan's limit);
+  // the rest are warnings the client sees with the preview (R1: "subí los panes a 95" is a simple change).
+  if (ops.length > rules.limits.maxOpsPerRequest) warn(`Son ${ops.length} cambios juntos: revisalos bien`);
+  const threshold = priceWarnPct(rules);
+  const priceWarnings: string[] = [];
   for (const c of changes) {
     if (!isPricePointer(config, c.pointer)) continue;
     const before = Number(c.before);
     const after = Number(c.after);
-    if (before > 0) {
-      const pct = (Math.abs(after - before) / before) * 100;
-      if (pct > rules.limits.maxPriceChangePct + 1e-9) {
-        raise('agencia', `Un precio cambia ${Math.round(pct)}%, más que el límite de ${rules.limits.maxPriceChangePct}%`);
-      }
+    if (!(before > 0)) continue;
+    const pct = ((after - before) / before) * 100;
+    if (Math.abs(pct) > threshold + 1e-9) {
+      const name = productNameAt(config, content, c.pointer) ?? 'Un producto';
+      priceWarnings.push(`${name} ${after < before ? 'baja' : 'sube'} de ${money(before)} a ${money(after)} (${pct > 0 ? '+' : '-'}${Math.round(Math.abs(pct))}%)`);
+    }
+  }
+  if (priceWarnings.length > MAX_PRICE_WARNINGS) {
+    const rest = priceWarnings.length - (MAX_PRICE_WARNINGS - 1);
+    priceWarnings.splice(MAX_PRICE_WARNINGS - 1, Infinity, `Y ${rest} precios más cambian más de ${threshold}%`);
+  }
+  for (const w of priceWarnings) warn(w);
+  for (const op of ops) {
+    if (op.type === 'set_banner' && op.enabled && typeof op.discountPercent === 'number' && op.discountPercent > threshold) {
+      warn(`El cartel aplica ${op.discountPercent}% de descuento a todos los precios`);
     }
   }
   if (outcome === 'auto' && changes.length > 0) {
@@ -231,5 +275,5 @@ export function runGate(input: GateInput): GateResult {
     }
   }
 
-  return { outcome, reasons, content: next, changes };
+  return { outcome, reasons, warnings, content: next, changes };
 }
