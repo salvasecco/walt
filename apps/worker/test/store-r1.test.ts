@@ -1,8 +1,8 @@
-import { DEFAULT_RULES } from '@walt/core';
+import { DEFAULT_RULES, type Rules } from '@walt/core';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryStore } from '../src/store/memory.js';
 import { PgStore } from '../src/store/pg.js';
-import { VersionConflictError, type Store } from '../src/store/types.js';
+import { MissingMigrationError, redactPersonal, VersionConflictError, type Store } from '../src/store/types.js';
 import { freshPglite, pgliteDb } from './pglite.js';
 
 const F1 = '22222222-2222-4222-8222-222222222222';
@@ -30,7 +30,7 @@ async function memoryFixture(): Promise<Fixture> {
       config_path: 'walt.config.json', site_url: null, created_at: at,
     });
   }
-  store.rules.push({ project_id: P1, version: 1, rules: structuredClone(DEFAULT_RULES), policyText: 'Si toca la API es delicado', config: { template: 'generic' } });
+  store.rules.push({ project_id: P1, version: 1, rules: { ...structuredClone(DEFAULT_RULES), policy_text: 'Si toca la API es delicado', config: { template: 'generic' } } as Rules });
   return {
     store,
     async expireLease(id) {
@@ -86,8 +86,8 @@ describe.each([
 
   it('detecta 0004 y devuelve la política y la config de las reglas', async () => {
     expect((await store.schema()).r1).toBe(true);
-    const r = await store.latestRules(P1);
-    expect(r?.policyText).toBe('Si toca la API es delicado');
+    const r = (await store.latestRules(P1))?.rules as Record<string, unknown> | undefined;
+    expect(r?.policy_text).toBe('Si toca la API es delicado');
     expect(r?.config).toEqual({ template: 'generic' });
   });
 
@@ -179,6 +179,16 @@ describe.each([
     expect((await store.similarLabeledRequests(F1, 'pan flauta', 1))[0]).toMatchObject({ to_category: 'delicado', reason: 'me equivoqué' });
   });
 
+  it('da los ejemplos del prompt de decisión: parecidos, de la agencia y sin datos personales', async () => {
+    const a = await store.createRequest({ short_id: 'EXA001', project_id: P1, contact_id: null, raw_text: 'subí el pan flauta a 95 y avisale a ana@mail.com' });
+    const b = await store.createRequest({ short_id: 'EXA002', project_id: P1, contact_id: null, raw_text: 'quiero cobrar con mercado pago' });
+    await store.labelRequest(a.id, 'simple', 'un precio no es delicado');
+    await store.labelRequest(b.id, 'nuevo');
+    const ex = await store.similarExamples({ factoryId: F1, projectId: P1, text: 'subí la flauta a 120', limit: 8 });
+    expect(ex).toEqual([{ text: 'subí el pan flauta a 95 y avisale a [email]', category: 'simple', previous: null, reason: 'un precio no es delicado' }]);
+    expect(await store.similarExamples({ factoryId: F2, text: 'subí la flauta a 120', limit: 8 })).toEqual([]);
+  });
+
   it('publica con locking optimista e idempotencia', async () => {
     const live = await store.createVersion({ project_id: P1, content: { v: 0 }, status: 'borrador' });
     expect((await store.publishVersion(P1, live.id)).already).toBe(false);
@@ -236,5 +246,37 @@ describe('github_installations', () => {
     store.installations.push({ id: 'i', factory_id: F1, installation_id: 42, account_login: 'EstudioFaro', account_type: 'Organization', suspended_at: null, created_at: '' });
     expect((await store.githubInstallation(F1, 'estudiofaro'))?.installation_id).toBe(42);
     expect(await store.githubInstallation(F2, 'estudiofaro')).toBeNull();
+  });
+});
+
+describe('base sin 0004 (el worker nuevo con la base de hoy)', () => {
+  it('lo detecta, traduce las categorías nuevas al escribir y no rompe', async () => {
+    const pg = await freshPglite({ upTo: '0003' });
+    await pg.query(`insert into factories (id, name, assistant_name) values ($1, 'Faro', 'a')`, [F1]);
+    await pg.query(`insert into projects (id, factory_id, name, client_name, repo_owner, repo_name) values ($1, $2, 'p', 'C', 'o', 'r')`, [P1, F1]);
+    await pg.query(`insert into rules (project_id, version, policies, limits) values ($1, 1, '{}', '{}')`, [P1]);
+    const store = new PgStore(pgliteDb(pg));
+    const schema = await store.schema();
+    expect(schema.r1).toBe(false);
+    expect(schema.missing).toContain('jobs');
+    const req = await store.createRequest({ short_id: 'OLD001', project_id: P1, contact_id: null, raw_text: 'subí el pan' });
+    expect((await store.updateRequest(req.id, { category: 'simple' as never })).category).toBe('permitido');
+    expect((await store.updateRequest(req.id, { category: 'delicado' as never })).category).toBe('riesgoso');
+    expect((await store.updateRequest(req.id, { category: 'consulta' })).category).toBe('consulta');
+    expect(await store.latestRules(P1)).toEqual({ version: 1, rules: { policies: {}, limits: {} } });
+    expect(await store.similarExamples({ factoryId: F1, text: 'pan', limit: 5 })).toEqual([]);
+    expect(await store.getAiSettings(F1, P1)).toBeNull();
+    expect(await store.recordUsage({ factoryId: F1, kind: 'ai', mode: 'platform', costUsd: 0.01, priceUsd: 0 })).toEqual({ balanceUsd: null });
+    await expect(store.enqueueJob({ kind: 'k' })).rejects.toBeInstanceOf(MissingMigrationError);
+    const live = await store.createVersion({ project_id: P1, content: {}, status: 'borrador' });
+    expect(await store.publishVersion(P1, live.id)).toEqual({ already: false, version: null });
+    expect((await store.getLiveVersion(P1))?.id).toBe(live.id);
+    await store.close();
+  });
+
+  it('saca e-mails y teléfonos de un ejemplo', () => {
+    expect(redactPersonal('llamame al +598 99 123 456 o escribí a juan.perez@gmail.com')).toBe('llamame al [teléfono] o escribí a [email]');
+    expect(redactPersonal('subí el pan a 95')).toBe('subí el pan a 95');
+    expect(redactPersonal('la torta grande a 1.250.000')).toBe('la torta grande a 1.250.000');
   });
 });

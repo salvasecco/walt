@@ -8,19 +8,22 @@ import type {
   GithubInstallationRow,
   JobRow,
   LabelCategory,
-  LabeledExample,
   ProjectRow,
   QuoteRow,
-  RequestLabelRow,
   RequestRow,
   Rules,
+  SimilarLabelRow,
   WalletRow,
 } from '@walt/core';
 import {
+  legacyCategoryPatch,
   MissingMigrationError,
+  toPromptExamples,
   VersionConflictError,
+  type ExamplesQuery,
   type FailJobOptions,
   type JobsSummaryRow,
+  type LabelRow,
   type NewEvent,
   type NewJob,
   type NewMessage,
@@ -61,9 +64,10 @@ export async function probeR1(db: SupabaseClient): Promise<string[]> {
     ['content_versions', 'version, publish_key'],
     ['processed_updates', 'key, source'],
   ];
+  // GET with limit(0), never HEAD: supabase-js turns the 404 of a HEAD to a missing table into a 204 without error.
   const checks = await Promise.all([
-    ...tables.map(async (t) => ((await db.from(t).select('*', { count: 'exact', head: true })).error ? t : null)),
-    ...cols.map(async ([t, c]) => ((await db.from(t).select(c, { count: 'exact', head: true })).error ? `${t}.(${c})` : null)),
+    ...tables.map(async (t) => ((await db.from(t).select('*').limit(0)).error ? t : null)),
+    ...cols.map(async ([t, c]) => ((await db.from(t).select(c).limit(0)).error ? `${t}.(${c})` : null)),
     (async () => {
       // v2 answers with its own "no existe"; PostgREST says PGRST202 if the function is missing.
       const { error } = await db.rpc('publish_version_v2', { p_project: NIL, p_version: NIL });
@@ -213,15 +217,15 @@ export class SupabaseStore implements Store {
         .limit(1),
       'rules',
     );
-    return r
-      ? { version: r.version, rules: { policies: r.policies, limits: r.limits }, policyText: r.policy_text ?? '', config: r.config ?? {} }
-      : null;
+    if (!r) return null;
+    const rules = { policies: r.policies, limits: r.limits, ...(r1 ? { policy_text: r.policy_text ?? '', config: r.config ?? {} } : {}) } as Rules;
+    return { version: r.version, rules };
   }
-  createRequest(r: NewRequest) {
-    return this.insert<RequestRow>('requests', r);
+  async createRequest(r: NewRequest) {
+    return this.insert<RequestRow>('requests', (await this.schema()).r1 ? r : legacyCategoryPatch(r as NewRequest & { category?: unknown }));
   }
-  updateRequest(id: string, patch: Partial<RequestRow>) {
-    return this.update<RequestRow>('requests', id, patch);
+  async updateRequest(id: string, patch: Partial<RequestRow>) {
+    return this.update<RequestRow>('requests', id, (await this.schema()).r1 ? patch : legacyCategoryPatch(patch));
   }
   getRequest(id: string) {
     return this.one<RequestRow>(this.db.from('requests').select().eq('id', id).maybeSingle(), 'requests');
@@ -415,12 +419,15 @@ export class SupabaseStore implements Store {
       p_reason: reason ?? null,
       p_actor: actorUserId ?? null,
     });
-    return norm<RequestLabelRow>(row);
+    return norm<LabelRow>(row);
   }
   async similarLabeledRequests(factoryId: string, text: string, k = 5) {
     if (!(await this.schema()).r1) return [];
     const rows = await this.rpc<Record<string, unknown>[]>('similar_labeled_requests', { p_factory: factoryId, p_text: text, p_k: k });
-    return (rows ?? []).map((r) => norm<LabeledExample>(r));
+    return (rows ?? []).map((r) => norm<SimilarLabelRow>(r));
+  }
+  async similarExamples(q: ExamplesQuery) {
+    return toPromptExamples(await this.similarLabeledRequests(q.factoryId, q.text, q.limit * 2), q.limit);
   }
   countFactoryRequestsSince(factoryId: string, sinceIso: string) {
     return this.count(

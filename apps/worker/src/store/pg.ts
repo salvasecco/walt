@@ -7,19 +7,22 @@ import type {
   GithubInstallationRow,
   JobRow,
   LabelCategory,
-  LabeledExample,
   ProjectRow,
   QuoteRow,
-  RequestLabelRow,
   RequestRow,
   Rules,
+  SimilarLabelRow,
   WalletRow,
 } from '@walt/core';
 import {
+  legacyCategoryPatch,
   MissingMigrationError,
+  toPromptExamples,
   VersionConflictError,
+  type ExamplesQuery,
   type FailJobOptions,
   type JobsSummaryRow,
+  type LabelRow,
   type NewEvent,
   type NewJob,
   type NewMessage,
@@ -163,15 +166,15 @@ export class PgStore implements Store {
       `select version, policies, limits${r1 ? ', policy_text, config' : ''} from rules where project_id = $1 order by version desc limit 1`,
       [projectId],
     );
-    return r
-      ? { version: r.version, rules: { policies: r.policies, limits: r.limits }, policyText: r.policy_text ?? '', config: r.config ?? {} }
-      : null;
+    if (!r) return null;
+    const rules = { policies: r.policies, limits: r.limits, ...(r1 ? { policy_text: r.policy_text ?? '', config: r.config ?? {} } : {}) } as Rules;
+    return { version: r.version, rules };
   }
-  createRequest(r: NewRequest) {
-    return this.insert<RequestRow>('requests', r);
+  async createRequest(r: NewRequest) {
+    return this.insert<RequestRow>('requests', (await this.schema()).r1 ? r : legacyCategoryPatch(r as NewRequest & { category?: unknown }));
   }
-  updateRequest(id: string, patch: Partial<RequestRow>) {
-    return this.update<RequestRow>('requests', id, patch);
+  async updateRequest(id: string, patch: Partial<RequestRow>) {
+    return this.update<RequestRow>('requests', id, (await this.schema()).r1 ? patch : legacyCategoryPatch(patch));
   }
   getRequest(id: string) {
     return this.one<RequestRow>('select * from requests where id = $1', [id]);
@@ -343,11 +346,14 @@ export class PgStore implements Store {
 
   async labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null) {
     await this.needR1('request_labels');
-    return (await this.one<RequestLabelRow>('select * from label_request($1::uuid, $2, $3, $4::uuid)', [requestId, to, reason ?? null, actorUserId ?? null]))!;
+    return (await this.one<LabelRow>('select * from label_request($1::uuid, $2, $3, $4::uuid)', [requestId, to, reason ?? null, actorUserId ?? null]))!;
   }
   async similarLabeledRequests(factoryId: string, text: string, k = 5) {
     if (!(await this.schema()).r1) return [];
-    return this.many<LabeledExample>('select * from similar_labeled_requests($1::uuid, $2, $3)', [factoryId, text, k]);
+    return this.many<SimilarLabelRow>('select * from similar_labeled_requests($1::uuid, $2, $3)', [factoryId, text, k]);
+  }
+  async similarExamples(q: ExamplesQuery) {
+    return toPromptExamples(await this.similarLabeledRequests(q.factoryId, q.text, q.limit * 2), q.limit);
   }
   async countFactoryRequestsSince(factoryId: string, sinceIso: string) {
     const r = await this.one<{ n: number }>(

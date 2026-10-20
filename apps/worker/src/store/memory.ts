@@ -11,20 +11,22 @@ import {
   type GithubInstallationRow,
   type JobRow,
   type LabelCategory,
-  type LabeledExample,
   type MessageRow,
   type ProjectRow,
   type QuoteRow,
-  type RequestLabelRow,
   type RequestRow,
   type Rules,
+  type SimilarLabelRow,
   type UsageLedgerRow,
   type WalletRow,
 } from '@walt/core';
 import {
+  toPromptExamples,
   VersionConflictError,
+  type ExamplesQuery,
   type FailJobOptions,
   type JobsSummaryRow,
+  type LabelRow,
   type NewEvent,
   type NewJob,
   type NewMessage,
@@ -75,7 +77,7 @@ export class MemoryStore implements Store {
   projects: ProjectRow[] = [];
   contacts: ContactRow[] = [];
   invites: { token: string; project_id: string; role: 'cliente' | 'agencia'; max_uses: number; uses: number; expires_at: string }[] = [];
-  rules: { project_id: string; version: number; rules: Rules; policyText?: string; config?: unknown }[] = [];
+  rules: { project_id: string; version: number; rules: Rules }[] = [];
   requests: RequestRow[] = [];
   events: EventRow[] = [];
   messages: MessageRow[] = [];
@@ -86,7 +88,7 @@ export class MemoryStore implements Store {
   processed = new Set<number>();
   processedKeys = new Set<string>();
   jobs: JobRow[] = [];
-  labels: RequestLabelRow[] = [];
+  labels: LabelRow[] = [];
   aiSettings: AiSettingsRow[] = [];
   /** Stand-in for Supabase Vault: secret id → key. */
   vault = new Map<string, string>();
@@ -137,7 +139,7 @@ export class MemoryStore implements Store {
   async latestRules(projectId: string) {
     const list = this.rules.filter((r) => r.project_id === projectId).sort((a, b) => b.version - a.version);
     const r = list[0];
-    return r ? clone({ version: r.version, rules: r.rules, policyText: r.policyText ?? '', config: r.config ?? {} }) : null;
+    return r ? clone({ version: r.version, rules: r.rules }) : null;
   }
   async createRequest(r: NewRequest) {
     if (this.requests.some((x) => x.short_id === r.short_id)) throw new Error('short_id repetido');
@@ -432,7 +434,7 @@ export class MemoryStore implements Store {
     const req = this.requests.find((r) => r.id === requestId);
     if (!req) throw new Error(`No existe el pedido ${requestId}`);
     const project = this.projects.find((p) => p.id === req.project_id)!;
-    const row: RequestLabelRow = {
+    const row: LabelRow = {
       id: uuid(),
       request_id: requestId,
       factory_id: project.factory_id,
@@ -446,9 +448,9 @@ export class MemoryStore implements Store {
     return clone(row);
   }
   async similarLabeledRequests(factoryId: string, text: string, k = 5) {
-    const latest = new Map<string, RequestLabelRow>();
+    const latest = new Map<string, LabelRow>();
     for (const l of this.labels) if (l.factory_id === factoryId) latest.set(l.request_id, l);
-    const out: LabeledExample[] = [];
+    const out: SimilarLabelRow[] = [];
     for (const l of latest.values()) {
       const req = this.requests.find((r) => r.id === l.request_id);
       if (!req?.raw_text) continue;
@@ -463,6 +465,9 @@ export class MemoryStore implements Store {
       });
     }
     return out.sort((a, b) => b.similarity - a.similarity || b.labeled_at.localeCompare(a.labeled_at)).slice(0, Math.max(0, Math.min(k, 50)));
+  }
+  async similarExamples(q: ExamplesQuery) {
+    return toPromptExamples(await this.similarLabeledRequests(q.factoryId, q.text, q.limit * 2), q.limit);
   }
   async countFactoryRequestsSince(factoryId: string, sinceIso: string) {
     const projects = new Set(this.projects.filter((p) => p.factory_id === factoryId).map((p) => p.id));

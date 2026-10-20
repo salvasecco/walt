@@ -10,19 +10,11 @@ type Timestamp = string;
 export const LABEL_CATEGORIES = ['consulta', 'simple', 'delicado', 'nuevo', 'bloqueado'] as const;
 export type LabelCategory = (typeof LABEL_CATEGORIES)[number];
 
-export interface RequestLabelRow {
-  id: Uuid;
-  request_id: Uuid;
-  factory_id: Uuid;
-  from_category: string | null;
-  to_category: LabelCategory;
-  reason: string | null;
-  actor_user_id: Uuid | null;
-  created_at: Timestamp;
-}
-
-/** A relabeled request returned by `similar_labeled_requests`, most similar first. */
-export interface LabeledExample {
+/**
+ * A row of `similar_labeled_requests` (most similar first). The prompt's shape is `LabeledExample` of the
+ * taxonomy session; the store maps one to the other (`similarExamples`).
+ */
+export interface SimilarLabelRow {
   request_id: Uuid;
   raw_text: string;
   from_category: string | null;
