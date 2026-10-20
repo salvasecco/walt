@@ -24,6 +24,20 @@ export async function generateMetadata({ params }: PageProps<"/historial/[shortI
 
 const REVERTIBLE = new Set(["publicado"]);
 
+/** Lo que dijo la IA por intención (R1); `cambio` y `funcion_nueva` son de antes. */
+const KIND_LABEL: Record<string, string> = {
+  simple: "cambio simple",
+  delicado: "cambio delicado",
+  nuevo: "algo nuevo",
+  consulta: "consulta",
+  bloqueado: "bloqueado",
+  charla: "charla",
+  aprobacion: "respuesta a una vista previa",
+  revertir: "volver atrás",
+  cambio: "cambio",
+  funcion_nueva: "algo nuevo",
+};
+
 export default async function PedidoPage({ params }: PageProps<"/historial/[shortId]">) {
   const { shortId } = await params;
   let d;
@@ -97,10 +111,11 @@ export default async function PedidoPage({ params }: PageProps<"/historial/[shor
                 {r.interpretation ? (
                   <>
                     <div>
-                      <span className="text-muted-foreground">Tipo: </span>
-                      {r.interpretation.kind}
+                      <span className="text-muted-foreground">Según la IA: </span>
+                      {KIND_LABEL[r.interpretation.kind] ?? r.interpretation.kind}
                       {r.interpretation.needsCode && <Chip tone="code" className="ml-2">necesita código</Chip>}
                     </div>
+                    {r.interpretation.why && <p className="text-muted-foreground">“{r.interpretation.why}”</p>}
                     <OpsList request={r} content={liveVersion?.content} />
                     {r.interpretation.codeInstruction && (
                       <p className="rounded-lg border border-line bg-surface-2 p-3">{r.interpretation.codeInstruction}</p>

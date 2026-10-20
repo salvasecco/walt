@@ -24,10 +24,11 @@ export async function GET(request: NextRequest) {
   else if (tokenHash && type && OTP_TYPES.includes(type)) ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
   if (!ok) redirect("/entrar?error=link");
 
+  // El mismo cliente que acaba de iniciar la sesión: la tiene aunque las cookies todavía no estén en este pedido.
   const { data } = await supabase.auth.getUser();
   const user = data.user;
   const agency = user?.user_metadata?.agency_name;
-  if (user && typeof agency === "string" && agency.trim() && !(await membershipsOf(user.id)).length) {
+  if (user && typeof agency === "string" && agency.trim() && !(await membershipsOf(user.id, supabase)).length) {
     try {
       await createAgency(user.id, agency);
     } catch {

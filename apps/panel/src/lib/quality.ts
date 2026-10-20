@@ -85,7 +85,9 @@ export function computeQuality(input: {
   const byRequest = new Map<string, QApproval[]>();
   for (const a of approvals) {
     if (!ids.has(a.request_id) || a.actor !== "cliente") continue;
-    byRequest.set(a.request_id, [...(byRequest.get(a.request_id) ?? []), a]);
+    const list = byRequest.get(a.request_id);
+    if (list) list.push(a);
+    else byRequest.set(a.request_id, [a]);
   }
   let firstTryDen = 0;
   let firstTryNum = 0;

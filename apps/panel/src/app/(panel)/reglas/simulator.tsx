@@ -100,6 +100,7 @@ export function Simulator({ projectId, rules }: { projectId: string; rules: Edit
           </summary>
           <p className="mt-2 text-xs text-muted-foreground">Uno por línea. Es la mitad determinística de la doble clasificación: si el diff toca una zona delicada, el pedido sube a delicado.</p>
           <Textarea
+            aria-label="Archivos que tocaría el cambio, uno por línea"
             rows={3}
             value={paths}
             onChange={(e) => setPaths(e.target.value)}

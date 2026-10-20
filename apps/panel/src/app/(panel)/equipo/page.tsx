@@ -26,8 +26,11 @@ export default async function EquipoPage() {
   const { viewer, db } = await getScope();
   const sample = dataMode() === "ejemplo";
   const multi = viewer.tenancy === "multi";
-  const team = multi && viewer.factory ? await getTeam(db, viewer.factory.id) : sample ? SAMPLE_TEAM : [];
-  const orphans = multi && viewer.emergency ? await factoriesWithoutMembers() : [];
+  // Independientes: van en paralelo.
+  const [team, orphans] = await Promise.all([
+    multi && viewer.factory ? getTeam(db, viewer.factory.id) : Promise.resolve(sample ? SAMPLE_TEAM : []),
+    multi && viewer.emergency ? factoriesWithoutMembers() : Promise.resolve([]),
+  ]);
   const owners = team.filter((m) => m.role === "owner").length;
   const manage = multi && viewer.kind === "user" && can(viewer.role, "equipo");
   return (

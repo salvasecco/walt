@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Loader2, Tags } from "lucide-react";
+import { ArrowRight, Check, Loader2, Tags } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -85,7 +85,7 @@ export function Relabel({
                 >
                   <span className={cn("size-1.5 shrink-0 rounded-full", toneDot[CATEGORY_TONE[c]])} />
                   <span className="min-w-0 truncate">{CATEGORY_LABEL[c]}</span>
-                  {isCurrent && <span className="ml-auto text-[10px] tracking-wide text-faint uppercase">actual</span>}
+                  {isCurrent && <Check className="ml-auto size-3.5 shrink-0 text-muted-foreground" aria-label="Es la categoría actual" />}
                 </button>
               );
             })}

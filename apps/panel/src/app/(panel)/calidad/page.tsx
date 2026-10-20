@@ -72,7 +72,7 @@ export default async function CalidadPage({ searchParams }: PageProps<"/calidad"
         </EmptyState>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <StatTile
               label="Precisión"
               help="1 − reetiquetados / decididos. Decididos: simple, delicado, algo nuevo, consulta o bloqueado. Un reetiquetado es un pedido que la agencia cambió de tipo."
