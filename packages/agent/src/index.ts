@@ -23,7 +23,23 @@ import type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.j
 export type { RepoRef, RunCodeChangeInput, RunCodeChangeResult } from './types.js';
 export { DEFAULT_MAX_TURNS, DEFAULT_PROTECTED_GLOBS, DiffRejectedError, runCodeChangeWith, mergeChangeWith, revertChangeWith, findPreviewUrlWith } from './code-change.js';
 export type { AgentDeps } from './code-change.js';
-export { GitHubHost, LocalHost, currentDeployState, isVercelAppUrl, vercelPreviewFromComment, type CodeHost } from './hosts.js';
+export {
+  GitHubHost,
+  LocalHost,
+  currentDeployState,
+  isVercelAppUrl,
+  vercelPreviewFromComment,
+  GitHubAppTokens,
+  githubAppJwt,
+  githubTokenSource,
+  parsePrivateKey,
+  type CodeHost,
+  type GitHubAppCredentials,
+  type GitHubTokenSource,
+  type InstallationToken,
+  type RepoToken,
+  type TokenSourceOptions,
+} from './hosts.js';
 export { createClaudeAgentRunner, guardHook, agentPrompt, type AgentRunner, type AgentRunInput, type AgentRunOutput } from './runner.js';
 export { checkPath, evaluateToolUse, AGENT_TOOLS, ALWAYS_PROTECTED } from './guard.js';
 export { reviewDiff, addedLines } from './review.js';
