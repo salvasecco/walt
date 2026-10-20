@@ -1,7 +1,8 @@
 /**
  * The network only allows HTTPS, so migrations are applied by hand in the Supabase SQL Editor.
  * This script checks, over the REST API with the service role, what is applied and says what to paste.
- * Usage: pnpm db:migrate [--copy <file>]   (--copy puts a migration in the clipboard with pbcopy)
+ * Usage: pnpm db:migrate [--copy <prefix>]   (--copy 0004 puts that migration in the clipboard with pbcopy)
+ * 0005 (closing anon) goes after the panel uses Supabase Auth for realtime: it is listed, not forced.
  */
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -16,7 +17,13 @@ runMain('db:migrate', async () => {
   const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
   const i = process.argv.indexOf('--copy');
   if (i > 0) {
-    const name = files.find((f) => f.startsWith(process.argv[i + 1] ?? '')) ?? files[0]!;
+    const prefix = process.argv[i + 1] ?? '';
+    const name = files.find((f) => f.startsWith(prefix));
+    if (!name) {
+      console.log(`No hay ninguna migración que empiece con "${prefix}". Hay: ${files.join(', ')}`);
+      process.exitCode = 1;
+      return;
+    }
     execFileSync('pbcopy', { input: readFileSync(join(dir, name)) });
     console.log(`📋 ${name} copiada: pegala en Supabase → SQL Editor → Run.`);
     return;
@@ -30,8 +37,20 @@ runMain('db:migrate', async () => {
   console.log(`${revoke ? '✅' : '⏳'} 0002_revoke_publish_version.sql${s.anonBlocked === null ? '  (sin clave anon para comprobarla)' : ''}`);
 
   console.log(`${s.clients ? '✅' : '⏳'} 0003_clients.sql`);
+  console.log(`${s.r1.ok ? '✅' : '⏳'} 0004_r1.sql${s.r1.ok ? '' : `  faltan: ${s.r1.missing.join(', ')}`}`);
+  const closed = s.anonClosed === true;
+  console.log(
+    `${closed ? '✅' : '⏳'} 0005_r1_cierre_anon.sql${s.anonClosed === null ? '  (sin clave anon para comprobarla)' : ''}` +
+      (closed ? '' : '  (aplicala cuando el panel use Supabase Auth para el realtime)'),
+  );
 
-  const pending = [...(init ? [] : ['0001']), ...(revoke ? [] : ['0002']), ...(s.clients ? [] : ['0003'])];
+  const pending = [
+    ...(init ? [] : ['0001']),
+    ...(revoke ? [] : ['0002']),
+    ...(s.clients ? [] : ['0003']),
+    ...(s.r1.ok ? [] : ['0004']),
+    ...(closed || s.anonClosed === null ? [] : ['0005']),
+  ];
   if (pending.length === 0) {
     console.log('La base está al día.');
     return;

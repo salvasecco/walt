@@ -32,6 +32,37 @@ export interface SchemaStatus {
   anonBlocked: boolean | null;
   /** 0003 applied: `clients` exists and projects/requests have the new columns. */
   clients: boolean;
+  /** 0004 applied (R1): jobs, request_labels, memberships, ai_settings, rules.policy_text and publish_version_v2. Lists what is missing. */
+  r1: { ok: boolean; missing: string[] };
+  /** 0005 applied: anon can no longer read requests. Null when there is no anon key to try. */
+  anonClosed: boolean | null;
+}
+
+/** Tables, columns and functions that 0004 adds; each one is probed over REST. */
+const R1_TABLES = ['jobs', 'request_labels', 'memberships', 'ai_settings', 'wallets', 'usage_ledger', 'github_installations'] as const;
+
+/** What 0004 adds that is missing, probed over REST without side effects. */
+export async function missingR1(db: SupabaseClient): Promise<string[]> {
+  const missing: string[] = [];
+  for (const t of R1_TABLES) {
+    const { error } = await db.from(t).select('*', { count: 'exact', head: true });
+    if (error) missing.push(t);
+  }
+  const cols: [string, string][] = [
+    ['rules', 'policy_text, config'],
+    ['content_versions', 'version, publish_key'],
+    ['processed_updates', 'key, source'],
+  ];
+  for (const [t, c] of cols) {
+    const { error } = await db.from(t).select(c, { count: 'exact', head: true });
+    if (error) missing.push(`${t}.(${c})`);
+  }
+  // A nil version: v2 answers with its own "no existe", PostgREST with PGRST202 if the function is missing.
+  const v2 = await db.rpc('publish_version_v2', { p_project: NIL, p_version: NIL });
+  if (v2.error && (v2.error.code === 'PGRST202' || !/no existe/.test(v2.error.message))) missing.push('publish_version_v2');
+  const sim = await db.rpc('similar_labeled_requests', { p_factory: NIL, p_text: '', p_k: 1 });
+  if (sim.error) missing.push('similar_labeled_requests');
+  return missing;
 }
 
 const NIL = '00000000-0000-4000-8000-000000000000';
@@ -57,7 +88,14 @@ export async function schemaStatus(db: SupabaseClient, env: WaltEnv): Promise<Sc
   const c2 = await db.from('projects').select('client_id, is_sample', { head: true, count: 'exact' });
   const c3 = await db.from('requests').select('is_sample', { head: true, count: 'exact' });
   const clients = !c1.error && !c2.error && !c3.error;
-  return { missingTables, publishVersion, anonBlocked, clients };
+  const r1Missing = await missingR1(db);
+  let anonClosed: boolean | null = null;
+  if (env.SUPABASE_URL && env.SUPABASE_ANON_KEY) {
+    const anon = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+    const res = await anon.from('requests').select('id', { head: true, count: 'exact' });
+    anonClosed = !!res.error && /permission denied/i.test(res.error.message);
+  }
+  return { missingTables, publishVersion, anonBlocked, clients, r1: { ok: r1Missing.length === 0, missing: r1Missing }, anonClosed };
 }
 
 /** Runs a script's main and prints errors without secrets. */
