@@ -1,5 +1,38 @@
-import type { CommandRow, ContactRow, ContentVersionRow, FactoryRow, ProjectRow, QuoteRow, RequestRow, Rules } from '@walt/core';
-import type { NewEvent, NewMessage, NewQuote, NewRequest, NewVersion, RedeemResult, Store } from './types.js';
+import type {
+  AiSettingsRow,
+  CommandRow,
+  ContactRow,
+  ContentVersionRow,
+  FactoryRow,
+  GithubInstallationRow,
+  JobRow,
+  LabelCategory,
+  LabeledExample,
+  ProjectRow,
+  QuoteRow,
+  RequestLabelRow,
+  RequestRow,
+  Rules,
+  WalletRow,
+} from '@walt/core';
+import {
+  MissingMigrationError,
+  VersionConflictError,
+  type FailJobOptions,
+  type JobsSummaryRow,
+  type NewEvent,
+  type NewJob,
+  type NewMessage,
+  type NewQuote,
+  type NewRequest,
+  type NewVersion,
+  type PublishOptions,
+  type PublishResult,
+  type RedeemResult,
+  type SchemaInfo,
+  type Store,
+  type UsageEntry,
+} from './types.js';
 
 /** Minimal SQL client: postgres.js (`sql.unsafe`) in production, PGlite in tests. */
 export interface Db {
@@ -8,8 +41,33 @@ export interface Db {
   close(): Promise<void>;
 }
 
-const JSON_COLS = new Set(['interpretation', 'ops', 'changes', 'gate', 'usage', 'content', 'detail', 'media', 'payload', 'policies', 'limits']);
-const NUM_COLS = new Set(['confidence', 'cost_usd', 'amount_usd', 'telegram_chat_id']);
+const JSON_COLS = new Set(['interpretation', 'ops', 'changes', 'gate', 'usage', 'content', 'detail', 'media', 'payload', 'policies', 'limits', 'config']);
+const NUM_COLS = new Set([
+  'confidence', 'cost_usd', 'amount_usd', 'telegram_chat_id',
+  // 0004
+  'price_usd', 'wallet_delta_usd', 'balance_after_usd', 'balance_usd', 'markup_pct', 'low_balance_usd', 'auto_recharge_usd',
+  'monthly_cap_usd', 'request_cap_usd', 'similarity', 'installation_id', 'total', 'calls',
+]);
+
+/** What 0004 adds, checked in the catalog. */
+const R1_PROBES: [string, string][] = [
+  ['jobs', "to_regclass('public.jobs') is not null"],
+  ['request_labels', "to_regclass('public.request_labels') is not null"],
+  ['memberships', "to_regclass('public.memberships') is not null"],
+  ['ai_settings', "to_regclass('public.ai_settings') is not null"],
+  ['wallets', "to_regclass('public.wallets') is not null"],
+  ['usage_ledger', "to_regclass('public.usage_ledger') is not null"],
+  ['github_installations', "to_regclass('public.github_installations') is not null"],
+  ['rules.policy_text', "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'rules' and column_name = 'policy_text')"],
+  ['content_versions.version', "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'content_versions' and column_name = 'version')"],
+  ['processed_updates.key', "exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'processed_updates' and column_name = 'key')"],
+  ['publish_version_v2', "exists (select 1 from pg_proc where proname = 'publish_version_v2')"],
+  ['claim_job', "exists (select 1 from pg_proc where proname = 'claim_job')"],
+];
+
+function pgCode(err: unknown): string | undefined {
+  return (err as { code?: string } | null)?.code;
+}
 
 /** Normalizes driver differences: numeric/bigint as numbers, timestamps as ISO strings. */
 function norm<T>(row: Record<string, unknown>): T {
@@ -100,11 +158,14 @@ export class PgStore implements Store {
     });
   }
   async latestRules(projectId: string) {
-    const r = await this.one<{ version: number; policies: Rules['policies']; limits: Rules['limits'] }>(
-      'select version, policies, limits from rules where project_id = $1 order by version desc limit 1',
+    const r1 = (await this.schema()).r1;
+    const r = await this.one<{ version: number; policies: Rules['policies']; limits: Rules['limits']; policy_text?: string; config?: unknown }>(
+      `select version, policies, limits${r1 ? ', policy_text, config' : ''} from rules where project_id = $1 order by version desc limit 1`,
       [projectId],
     );
-    return r ? { version: r.version, rules: { policies: r.policies, limits: r.limits } } : null;
+    return r
+      ? { version: r.version, rules: { policies: r.policies, limits: r.limits }, policyText: r.policy_text ?? '', config: r.config ?? {} }
+      : null;
   }
   createRequest(r: NewRequest) {
     return this.insert<RequestRow>('requests', r);
@@ -164,8 +225,21 @@ export class PgStore implements Store {
   async updateVersion(id: string, patch: Partial<ContentVersionRow>) {
     await this.update('content_versions', id, patch);
   }
-  async publishVersion(projectId: string, versionId: string) {
-    await this.db.query('select publish_version($1::uuid, $2::uuid)', [projectId, versionId]);
+  async publishVersion(projectId: string, versionId: string, opts: PublishOptions = {}): Promise<PublishResult> {
+    if (!(await this.schema()).r1) {
+      await this.db.query('select publish_version($1::uuid, $2::uuid)', [projectId, versionId]);
+      return { already: false, version: null };
+    }
+    try {
+      const [row] = await this.db.query<{ r: { already: boolean; version: number | null } }>(
+        'select publish_version_v2($1::uuid, $2::uuid, $3::uuid, $4::text) as r',
+        [projectId, versionId, opts.expectedLive ?? null, opts.key ?? null],
+      );
+      return { already: !!row?.r.already, version: row?.r.version ?? null };
+    } catch (err) {
+      if (pgCode(err) === '40001') throw new VersionConflictError(projectId);
+      throw err;
+    }
   }
   async addApproval(a: { request_id: string; actor: string; decision: string; via: string }) {
     await this.insert('approvals', a);
@@ -194,6 +268,150 @@ export class PgStore implements Store {
   }
   close() {
     return this.db.close();
+  }
+
+  // ───────────────────────── R1 (0004) ─────────────────────────
+
+  private schemaP: Promise<SchemaInfo> | null = null;
+  schema(): Promise<SchemaInfo> {
+    this.schemaP ??= (async () => {
+      const [row] = await this.db.query<Record<string, boolean>>(`select ${R1_PROBES.map(([, sql], i) => `${sql} as p${i}`).join(', ')}`);
+      const missing = R1_PROBES.filter((_, i) => !row?.[`p${i}`]).map(([name]) => name);
+      return { r1: missing.length === 0, missing };
+    })().catch((err) => {
+      this.schemaP = null;
+      throw err;
+    });
+    return this.schemaP;
+  }
+  private async needR1(what: string): Promise<void> {
+    if (!(await this.schema()).r1) throw new MissingMigrationError(what);
+  }
+
+  async markProcessed(key: string, source: string) {
+    await this.needR1('processed_updates.key');
+    const rows = await this.db.query('insert into processed_updates (key, source) values ($1, $2) on conflict (key) do nothing returning id', [key, source]);
+    return rows.length > 0;
+  }
+
+  async enqueueJob(j: NewJob) {
+    await this.needR1('jobs');
+    const [row] = await this.db.query<{ id: string; inserted: boolean }>(
+      'select id, inserted from enqueue_job($1, $2::jsonb, $3::uuid, $4::uuid, $5, $6, $7::timestamptz, $8)',
+      [j.kind, JSON.stringify(j.payload ?? {}), j.projectId ?? null, j.requestId ?? null, j.queue ?? 'default', j.dedupeKey ?? null, j.runAfter ?? null, j.maxAttempts ?? 5],
+    );
+    return { id: row!.id, inserted: row!.inserted };
+  }
+  async claimJob(worker: string, queues: string[], leaseSeconds: number) {
+    const rows = await this.many<JobRow>('select * from claim_job($1, $2::text[], $3)', [worker, queues, leaseSeconds]);
+    return rows[0] ?? null;
+  }
+  async heartbeatJob(id: string, worker: string, leaseSeconds: number) {
+    const [row] = await this.db.query<{ ok: boolean }>('select heartbeat_job($1::uuid, $2, $3) as ok', [id, worker, leaseSeconds]);
+    return !!row?.ok;
+  }
+  async completeJob(id: string, worker: string) {
+    const [row] = await this.db.query<{ ok: boolean }>('select complete_job($1::uuid, $2) as ok', [id, worker]);
+    return !!row?.ok;
+  }
+  async failJob(id: string, worker: string, error: string, opts: FailJobOptions = {}) {
+    const rows = await this.many<JobRow>('select * from fail_job($1::uuid, $2, $3, $4, $5, $6)', [
+      id, worker, error, opts.retry ?? true, opts.baseSeconds ?? 5, opts.maxBackoffSeconds ?? 600,
+    ]);
+    return rows[0] ?? null;
+  }
+  getJob(id: string) {
+    return this.one<JobRow>('select * from jobs where id = $1', [id]);
+  }
+  async requestsWithActiveJobs(requestIds: string[]) {
+    if (requestIds.length === 0 || !(await this.schema()).r1) return new Set<string>();
+    const rows = await this.db.query<{ request_id: string }>(
+      "select distinct request_id from jobs where request_id = any($1::uuid[]) and status in ('pending', 'running')",
+      [requestIds],
+    );
+    return new Set(rows.map((r) => r.request_id));
+  }
+  async jobsSummary() {
+    if (!(await this.schema()).r1) return [];
+    return this.many<JobsSummaryRow>('select * from jobs_summary()');
+  }
+  async purgeOldRows() {
+    if (!(await this.schema()).r1) return {};
+    const [row] = await this.db.query<{ r: Record<string, number> }>('select purge_old_rows() as r');
+    return row?.r ?? {};
+  }
+
+  async labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null) {
+    await this.needR1('request_labels');
+    return (await this.one<RequestLabelRow>('select * from label_request($1::uuid, $2, $3, $4::uuid)', [requestId, to, reason ?? null, actorUserId ?? null]))!;
+  }
+  async similarLabeledRequests(factoryId: string, text: string, k = 5) {
+    if (!(await this.schema()).r1) return [];
+    return this.many<LabeledExample>('select * from similar_labeled_requests($1::uuid, $2, $3)', [factoryId, text, k]);
+  }
+  async countFactoryRequestsSince(factoryId: string, sinceIso: string) {
+    const r = await this.one<{ n: number }>(
+      'select count(*)::int as n from requests r join projects p on p.id = r.project_id where p.factory_id = $1 and r.created_at >= $2',
+      [factoryId, sinceIso],
+    );
+    return Number(r?.n ?? 0);
+  }
+
+  async getAiSettings(factoryId: string, projectId: string | null) {
+    if (!(await this.schema()).r1) return null;
+    return this.one<AiSettingsRow>(
+      'select * from ai_settings where factory_id = $1 and (project_id = $2 or project_id is null) order by project_id nulls last limit 1',
+      [factoryId, projectId],
+    );
+  }
+  async getAiKey(factoryId: string, projectId: string | null) {
+    if (!(await this.schema()).r1) return null;
+    const [row] = await this.db.query<{ k: string | null }>('select get_ai_key($1::uuid, $2::uuid) as k', [factoryId, projectId]);
+    return row?.k ?? null;
+  }
+  async setAiKey(factoryId: string, projectId: string | null, key: string) {
+    await this.needR1('ai_settings');
+    await this.db.query('select set_ai_key($1::uuid, $2::uuid, $3)', [factoryId, projectId, key]);
+  }
+  async recordUsage(u: UsageEntry) {
+    if (!(await this.schema()).r1) return { balanceUsd: null };
+    const [row] = await this.db.query<{ r: { balance_usd: number | string | null } }>(
+      'select record_usage($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11::numeric, $12::numeric, $13::jsonb) as r',
+      [
+        u.factoryId, u.projectId ?? null, u.requestId ?? null, u.kind, u.mode, u.model ?? null,
+        u.inputTokens ?? 0, u.outputTokens ?? 0, u.cacheReadTokens ?? 0, u.cacheWriteTokens ?? 0,
+        u.costUsd, u.priceUsd, u.detail === undefined ? null : JSON.stringify(u.detail),
+      ],
+    );
+    const b = row?.r.balance_usd;
+    return { balanceUsd: b === null || b === undefined ? null : Number(b) };
+  }
+  async getWallet(factoryId: string) {
+    if (!(await this.schema()).r1) return null;
+    return this.one<WalletRow>('select * from wallets where factory_id = $1', [factoryId]);
+  }
+  async creditWallet(factoryId: string, amountUsd: number, reference: string) {
+    await this.needR1('wallets');
+    const [row] = await this.db.query<{ r: { already: boolean; balance_usd: number | string } }>(
+      'select credit_wallet($1::uuid, $2::numeric, $3) as r',
+      [factoryId, amountUsd, reference],
+    );
+    return { already: !!row?.r.already, balanceUsd: Number(row?.r.balance_usd ?? 0) };
+  }
+  async usageSince(factoryId: string, sinceIso: string, projectId?: string | null) {
+    if (!(await this.schema()).r1) return { costUsd: 0, priceUsd: 0, calls: 0 };
+    const r = await this.one<{ cost_usd: number; price_usd: number; calls: number }>('select * from usage_since($1::uuid, $2::timestamptz, $3::uuid)', [
+      factoryId, sinceIso, projectId ?? null,
+    ]);
+    return { costUsd: Number(r?.cost_usd ?? 0), priceUsd: Number(r?.price_usd ?? 0), calls: Number(r?.calls ?? 0) };
+  }
+
+  async githubInstallation(factoryId: string, owner: string) {
+    if (!(await this.schema()).r1) return null;
+    return this.one<GithubInstallationRow>(
+      'select * from github_installations where factory_id = $1 and lower(account_login) = lower($2) and suspended_at is null order by created_at limit 1',
+      [factoryId, owner],
+    );
   }
 }
 
