@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { authMode, SESSION_COOKIE, verifySessionValue } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { isPublicPath, isSupabaseAuthCookie } from "@/lib/redirect";
+import { isPublicPath, isSupabaseAuthCookie, landingRedirect } from "@/lib/redirect";
 
 /**
  * Chequeo optimista de la entrada: refresca la sesión de Supabase Auth (si hay) y deja pasar si hay usuario,
@@ -28,9 +28,19 @@ export async function proxy(request: NextRequest) {
     user = !!data?.claims?.sub;
   }
   const { pathname } = request.nextUrl;
-  if (isPublicPath(pathname)) return response;
   const mode = authMode();
-  if (user || mode === "abierto" || (mode === "password" && verifySessionValue(request.cookies.get(SESSION_COOKIE)?.value))) return response;
+  const authed = user || mode === "abierto" || (mode === "password" && verifySessionValue(request.cookies.get(SESSION_COOKIE)?.value));
+  const toPanel = landingRedirect(pathname, request.nextUrl.searchParams, authed);
+  if (toPanel) {
+    const url = request.nextUrl.clone();
+    url.pathname = toPanel;
+    url.search = "";
+    const redirect = NextResponse.redirect(url);
+    for (const c of response.cookies.getAll()) redirect.cookies.set(c);
+    return redirect;
+  }
+  if (isPublicPath(pathname)) return response;
+  if (authed) return response;
   const url = request.nextUrl.clone();
   url.pathname = "/entrar";
   url.search = pathname === "/" ? "" : `?desde=${encodeURIComponent(pathname + request.nextUrl.search)}`;

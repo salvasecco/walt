@@ -16,7 +16,27 @@ export function isSupabaseAuthCookie(name: string): boolean {
   return /^sb-[^-]+(-[^-]+)*-auth-token(\.\d+)?$/.test(name) && !name.includes("code-verifier");
 }
 
-/** Rutas que se ven sin sesión. */
+/** Rutas que se ven sin sesión: la entrada, el registro y lo público de la landing (que vive en `/`). */
 export function isPublicPath(pathname: string): boolean {
-  return pathname === "/entrar" || pathname === "/registro" || pathname.startsWith("/auth/");
+  return (
+    pathname === "/" ||
+    pathname === "/entrar" ||
+    pathname === "/registro" ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/legal/") ||
+    pathname === "/api/eventos" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    pathname.startsWith("/opengraph-image") ||
+    pathname.startsWith("/twitter-image")
+  );
+}
+
+/**
+ * En `/` vive la landing pública. Quien ya entró al panel va a Atención, salvo que pida ver la landing
+ * (`/?landing`), por ejemplo para revisarla desde una sesión.
+ */
+export function landingRedirect(pathname: string, search: URLSearchParams, authed: boolean): string | null {
+  if (pathname !== "/" || !authed || search.has("landing")) return null;
+  return "/atencion";
 }

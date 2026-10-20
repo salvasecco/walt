@@ -6,7 +6,7 @@ import { Activity, BarChart3, BrainCircuit, CheckCheck, FolderGit2, Gauge, Histo
 import { cn } from "@/lib/utils";
 
 type NavItem = {
-  href: "/atencion" | "/clientes" | "/" | "/aprobaciones" | "/historial" | "/proyectos" | "/reglas" | "/ia" | "/equipo" | "/calidad" | "/lo-que-piden" | "/presupuestos";
+  href: "/atencion" | "/clientes" | "/en-vivo" | "/aprobaciones" | "/historial" | "/proyectos" | "/reglas" | "/ia" | "/equipo" | "/calidad" | "/lo-que-piden" | "/presupuestos";
   label: string;
   icon: LucideIcon;
 };
@@ -16,7 +16,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Operación",
     items: [
       { href: "/atencion", label: "Atención", icon: LayoutGrid },
-      { href: "/", label: "En vivo", icon: Activity },
+      { href: "/en-vivo", label: "En vivo", icon: Activity },
       { href: "/aprobaciones", label: "Aprobaciones", icon: CheckCheck },
       { href: "/historial", label: "Historial", icon: History },
     ],

@@ -2,7 +2,7 @@ import { getLiveSnapshot, NotConfiguredError, type LiveSnapshot } from "@/lib/da
 import { dataMode, env, publicSupabase } from "@/lib/env";
 import { getScope } from "@/lib/session";
 import { NotConfigured } from "@/components/not-configured";
-import { LiveBoard } from "./live-board";
+import { LiveBoard } from "../live-board";
 
 export default async function EnVivoPage() {
   let snapshot: LiveSnapshot;
