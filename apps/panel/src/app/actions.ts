@@ -5,8 +5,7 @@ import { revalidatePath } from "next/cache";
 import QRCode from "qrcode";
 import { dataMode, env } from "@/lib/env";
 import { insertRulesVersion, toEditable } from "@/lib/rules";
-import { AccessError, requireProject, requireRequest, requireViewer } from "@/lib/session";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { AccessError, dbFor, requireProject, requireRequest, requireViewer } from "@/lib/session";
 import type { CommandType } from "@/lib/types";
 import { SEED_FACTORY_ID } from "@/lib/types";
 
@@ -27,11 +26,13 @@ export async function sendCommand(
 ): Promise<ActionResult> {
   try {
     // El pedido tiene que ser de la agencia de quien aprieta el botón.
-    const target = requestId ? (await requireRequest(requestId)).request : (await requireViewer(), null);
+    const viewer = await requireViewer();
+    const target = requestId ? (await requireRequest(requestId)).request : null;
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
     // Pedidos de ejemplo (migración 0003): nunca llegan al worker.
     if (target?.is_sample) return { ok: true, demo: true, message: SAMPLE_MSG };
-    const { error } = await supabaseAdmin()
+    // Con usuarios, con su sesión: la RLS de la 0004 también exige que el pedido sea de su agencia.
+    const { error } = await (await dbFor(viewer))
       .from("commands")
       .insert({ type, request_id: requestId, payload: { via: "panel", actor: "agencia", ...payload }, status: "pendiente" });
     if (error) throw new Error(error.message);
@@ -148,7 +149,8 @@ export async function connectProject(input: {
     if (!input.name.trim() || !REPO_RE.test(input.owner) || !REPO_RE.test(input.repo)) return { ok: false, error: "Completá nombre, owner y repo." };
     if (input.siteUrl && !/^https:\/\//.test(input.siteUrl)) return { ok: false, error: "La URL del sitio tiene que empezar con https://" };
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG, data: { id: "demo" } };
-    const db = supabaseAdmin();
+    // Con usuarios, con su sesión (la RLS exige admin o dueño de la agencia); sin usuarios, service role.
+    const db = await dbFor(viewer);
     // El proyecto va a la agencia activa; con el acceso de la instancia (sin agencias por usuario), a la primera.
     let factoryId = viewer.factory?.id ?? null;
     if (!factoryId) {
@@ -171,7 +173,7 @@ export async function connectProject(input: {
       .single();
     if (error) throw new Error(error.message);
     // Reglas v1: las de por defecto del R1 (plantilla genérica; la agencia elige la de su stack en Reglas).
-    await insertRulesVersion(data.id, toEditable(null), viewer.email ?? "panel");
+    await insertRulesVersion(db, data.id, toEditable(null), viewer.email ?? "panel");
     revalidatePath("/proyectos");
     return { ok: true, data: { id: data.id } };
   } catch (e) {
@@ -183,14 +185,14 @@ export type InviteQR = { role: "cliente" | "agencia"; link: string; svg: string;
 
 export async function createInvites(projectId: string): Promise<ActionResult<InviteQR[]>> {
   try {
-    await requireProject(projectId, "configurar");
+    const { db } = await requireProject(projectId, "configurar");
     const bot = env.botUsername || "tu_bot";
     const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
     const roles = ["cliente", "agencia"] as const;
     const invites = roles.map((role) => ({ role, token: randomBytes(12).toString("base64url"), max_uses: 5, expires_at: expiresAt }));
     const demo = dataMode() === "ejemplo";
     if (!demo) {
-      const { error } = await supabaseAdmin()
+      const { error } = await db
         .from("invites")
         .insert(invites.map((i) => ({ ...i, project_id: projectId })));
       if (error) throw new Error(error.message);
@@ -217,11 +219,12 @@ export async function saveQuote(
   send: boolean,
 ): Promise<ActionResult> {
   try {
-    await requireViewer();
+    const viewer = await requireViewer();
     if (!fields.title.trim()) return { ok: false, error: "El presupuesto necesita un título." };
     if (!(fields.amount_usd > 0) || !(fields.eta_days > 0)) return { ok: false, error: "Monto y días tienen que ser mayores a cero." };
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
-    const db = supabaseAdmin();
+    // Con usuarios, con su sesión: la RLS solo le deja ver y editar presupuestos de su agencia.
+    const db = await dbFor(viewer);
     const { data: owner } = await db.from("quotes").select("request_id").eq("id", quoteId).maybeSingle();
     if (!owner?.request_id) return { ok: false, error: "No encontré el presupuesto." };
     // El presupuesto tiene que ser de un pedido de la agencia de quien lo edita.

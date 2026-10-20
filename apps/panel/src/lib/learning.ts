@@ -6,7 +6,6 @@ import { toEditable } from "./rules";
 import { buildSample } from "./sample";
 import { getScope, inScope, realRows } from "./session";
 import { suggestRules, type RequestLite, type RuleSuggestion } from "./suggestions";
-import { supabaseAdmin } from "./supabase/server";
 import type { EditableRules, OpType, Project, RequestLabel, Rules, WaltEvent, WaltRequest } from "./types";
 
 const DAY = 86_400_000;
@@ -60,7 +59,7 @@ export async function getLearningData(projectIds?: string[]): Promise<LearningDa
     return { ready: true, projects, labels: s.labels.filter((l) => reqs.some((r) => r.id === l.request_id)), requests: reqs.map((r) => toLite(r, files)), rules };
   }
   if (dataMode() !== "supabase" || !ids.length) return { ready: dataMode() === "supabase", projects, labels: [], requests: [], rules: new Map() };
-  const db = supabaseAdmin();
+  const db = scope.db;
   const [labelsRes, requests, rulesRows] = await Promise.all([
     getFactoryLabels(scope.all ? null : scope.factoryId, since),
     // Los pedidos de ejemplo (0003) no enseñan nada: quedan afuera.

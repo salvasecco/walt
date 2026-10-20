@@ -23,10 +23,10 @@ const SAMPLE_TEAM: TeamMember[] = [
 ];
 
 export default async function EquipoPage() {
-  const { viewer } = await getScope();
+  const { viewer, db } = await getScope();
   const sample = dataMode() === "ejemplo";
   const multi = viewer.tenancy === "multi";
-  const team = multi && viewer.factory ? await getTeam(viewer.factory.id) : sample ? SAMPLE_TEAM : [];
+  const team = multi && viewer.factory ? await getTeam(db, viewer.factory.id) : sample ? SAMPLE_TEAM : [];
   const orphans = multi && viewer.emergency ? await factoriesWithoutMembers() : [];
   const owners = team.filter((m) => m.role === "owner").length;
   const manage = multi && viewer.kind === "user" && can(viewer.role, "equipo");

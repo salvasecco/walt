@@ -7,7 +7,6 @@ import { getLabelsFor } from "@/lib/relabel";
 import { cleanRules, insertRulesVersion, rulesStructured } from "@/lib/rules";
 import { AccessError, isMissingFunction, requireProject, requireRequest } from "@/lib/session";
 import { applyPatch } from "@/lib/suggestions";
-import { supabaseAdmin } from "@/lib/supabase/server";
 import { isLabelCategory, normalizeCategory, type LabelCategory } from "@/lib/taxonomy";
 import { CATEGORY_LABEL } from "@/lib/labels";
 
@@ -25,7 +24,7 @@ function errorText(e: unknown) {
  */
 export async function relabelRequest(requestId: string, to: LabelCategory, reason: string): Promise<ActionResult> {
   try {
-    const { viewer, request } = await requireRequest(requestId, "operar");
+    const { viewer, request, db } = await requireRequest(requestId, "operar");
     if (!isLabelCategory(to)) return { ok: false, error: "Elegí un tipo." };
     const why = String(reason ?? "").trim().slice(0, 300);
     const { labels } = await getLabelsFor([request.id]);
@@ -34,7 +33,8 @@ export async function relabelRequest(requestId: string, to: LabelCategory, reaso
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: "Datos de ejemplo: no se guardó nada." };
     // Un pedido de ejemplo nunca entra como ejemplo de la agencia.
     if (request.is_sample) return { ok: true, demo: true, message: "Es un pedido de ejemplo: no se guarda como aprendizaje." };
-    const { error } = await supabaseAdmin().rpc("label_request", {
+    // Con usuarios, con su sesión: la RPC toma al usuario como autor y verifica que el pedido sea de su agencia.
+    const { error } = await db.rpc("label_request", {
       p_request: request.id,
       p_to_category: to,
       p_reason: why || null,
@@ -55,7 +55,7 @@ export async function relabelRequest(requestId: string, to: LabelCategory, reaso
  */
 export async function applyRuleSuggestion(projectId: string, suggestionId: string): Promise<ActionResult & { version?: number }> {
   try {
-    const { viewer } = await requireProject(projectId, "configurar");
+    const { viewer, db } = await requireProject(projectId, "configurar");
     const data = await getLearningData([projectId]);
     const suggestion = suggestionsFrom(data).find((s) => s.id === suggestionId);
     if (!suggestion) return { ok: false, error: "Esa sugerencia ya no aplica: puede que las reglas hayan cambiado." };
@@ -63,7 +63,7 @@ export async function applyRuleSuggestion(projectId: string, suggestionId: strin
     const next = await cleanRules(applyPatch(current, suggestion.patch));
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: "Datos de ejemplo: no se guardó nada." };
     if (!suggestion.patch.policies && !(await rulesStructured())) return { ok: false, error: "Agregar zonas del código necesita la migración 0004." };
-    const r = await insertRulesVersion(projectId, next, `${viewer.email ?? "panel"} (sugerencia)`);
+    const r = await insertRulesVersion(db, projectId, next, `${viewer.email ?? "panel"} (sugerencia)`);
     revalidatePath("/reglas");
     revalidatePath("/calidad");
     return { ok: true, message: `Listo: versión ${r.version} de las reglas.`, version: r.version };

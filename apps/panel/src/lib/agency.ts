@@ -6,7 +6,6 @@ import { NotConfiguredError } from "./data";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
 import { getScope, inScope } from "./session";
-import { supabaseAdmin } from "./supabase/server";
 import type { Client, Contact, WaltRequest, Message, Project, Quote, RequestStatus } from "./types";
 
 const DAY = 86_400_000;
@@ -53,7 +52,7 @@ const getBase = cache(async (): Promise<Base> => {
     return { projects: s.projects, clients: s.clients, clientsReady: true };
   }
   // Clientes de la agencia de quien mira (o todos con el acceso de la instancia).
-  let q = supabaseAdmin().from("clients").select("*");
+  let q = scope.db.from("clients").select("*");
   if (!scope.all) q = q.eq("factory_id", scope.factoryId ?? "");
   const clientsRes = await q.order("name");
   if (clientsRes.error) return { projects: scope.projects, clients: [], clientsReady: false };
@@ -85,8 +84,8 @@ export const getAttention = cache(async (): Promise<AttentionData> => {
     quotes = s.quotes.map((q) => ({ ...q, project_id: shortOf.get(q.request_id ?? "")?.project_id ?? null, request_short_id: shortOf.get(q.request_id ?? "")?.short_id ?? null }));
     versions = s.versions.map((v) => ({ ...v, request_short_id: shortOf.get(v.request_id ?? "")?.short_id ?? null }));
   } else {
-    const db = supabaseAdmin();
     const scope = await getScope();
+    const db = scope.db;
     const since = new Date(now - 7 * DAY).toISOString();
     let quotesQ = db
       .from("quotes")
@@ -184,7 +183,7 @@ async function requestsSince(projectIds: string[] | null, since: string): Promis
       .map(toLight);
   }
   const scope = await getScope();
-  let q = inScope(supabaseAdmin().from("requests").select(LIGHT_REQUEST).gte("created_at", since), scope);
+  let q = inScope(scope.db.from("requests").select(LIGHT_REQUEST).gte("created_at", since), scope);
   if (projectIds) q = q.in("project_id", projectIds);
   return q.order("created_at", { ascending: false }).limit(5000).then(must<LightRequest[]>);
 }
@@ -214,7 +213,7 @@ export type ClientDetail = ClientSummary & {
 
 export async function getClientDetail(id: string): Promise<ClientDetail | null> {
   const now = Date.now();
-  const [base, attention] = await Promise.all([getBase(), getAttention()]);
+  const [base, attention, scope] = await Promise.all([getBase(), getAttention(), getScope()]);
   const client = base.clients.find((c) => c.id === id);
   if (!client) return null;
   const projectIds = base.projects.filter((p) => p.client_id === id).map((p) => p.id);
@@ -224,7 +223,7 @@ export async function getClientDetail(id: string): Promise<ClientDetail | null> 
   const [requests, realContacts] = await Promise.all([
     projectIds.length ? requestsSince(projectIds, since) : Promise.resolve([] as LightRequest[]),
     mode() === "supabase" && projectIds.length
-      ? supabaseAdmin().from("contacts").select("id, project_id, display_name, role, created_at").in("project_id", projectIds).then(must<Contact[]>)
+      ? scope.db.from("contacts").select("id, project_id, display_name, role, created_at").in("project_id", projectIds).then(must<Contact[]>)
       : Promise.resolve([] as Contact[]),
   ]);
   const [summary] = await summarize({ ...base, clients: [client] }, requests, attention);
@@ -240,7 +239,7 @@ export async function getClientDetail(id: string): Promise<ClientDetail | null> 
     messages = s.messages.filter((m) => (m.contact_id && contactIds.has(m.contact_id)) || (m.request_id && reqIds.has(m.request_id)));
     quotes = s.quotes.filter((q) => q.request_id && reqIds.has(q.request_id));
   } else if (projectIds.length) {
-    const db = supabaseAdmin();
+    const db = scope.db;
     const reqIds = requests.map((r) => r.id);
     [messages, quotes] = await Promise.all([
       contacts.length

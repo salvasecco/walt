@@ -1,10 +1,10 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseConfig, type WaltConfig } from "@walt/core";
 import bakeryContent from "@walt/core/fixtures/site.json";
 import bakerySchema from "@walt/core/fixtures/site.schema.json";
 import bakeryConfig from "@walt/core/fixtures/walt.config.json";
 import { dataMode, env } from "./env";
-import { supabaseAdmin } from "./supabase/server";
 import { SEED_PROJECT_ID, type Project } from "./types";
 
 /** El contrato de contenido del sitio (SPEC §6): qué se puede tocar y el JSON Schema del contenido. */
@@ -63,10 +63,10 @@ export async function loadContract(project: Project): Promise<{ contract: Contra
   }
 }
 
-/** Contenido de la versión viva del proyecto (con datos de ejemplo, el de la panadería). */
-export async function liveContent(project: Project): Promise<unknown | null> {
+/** Contenido de la versión viva del proyecto (con datos de ejemplo, el de la panadería). `db`: el cliente de quien mira. */
+export async function liveContent(db: SupabaseClient, project: Project): Promise<unknown | null> {
   if (dataMode() === "ejemplo") return structuredClone(bakeryContent);
-  const { data, error } = await supabaseAdmin()
+  const { data, error } = await db
     .from("content_versions")
     .select("content")
     .eq("project_id", project.id)

@@ -11,7 +11,6 @@ import { dataMode, publicSupabase } from "@/lib/env";
 import { ROLE_LABEL } from "@/lib/roles";
 import { buildSample } from "@/lib/sample";
 import { agencyNameOf, getScope, inScope, type Scope } from "@/lib/session";
-import { supabaseAdmin } from "@/lib/supabase/server";
 import { AGENCY_WAIT_STATUSES, categoryVariants, isPendingAgency } from "@/lib/taxonomy";
 
 // Datos en vivo: nunca se prerenderiza.
@@ -22,7 +21,7 @@ async function pendingCount(scope: Scope): Promise<number> {
   if (mode === "ejemplo") return buildSample().requests.filter(isPendingAgency).length;
   if (mode === "sin_configurar") return 0;
   try {
-    const q = supabaseAdmin()
+    const q = scope.db
       .from("requests")
       .select("id", { count: "exact", head: true })
       .in("status", [...AGENCY_WAIT_STATUSES])

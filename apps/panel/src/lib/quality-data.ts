@@ -4,7 +4,6 @@ import { computeQuality, type QApproval, type QRequest, type Quality } from "./q
 import { getLabelsFor } from "./relabel";
 import { buildSample } from "./sample";
 import { getScope, inScope, realRows } from "./session";
-import { supabaseAdmin } from "./supabase/server";
 import type { Approval, Project, WaltEvent } from "./types";
 
 const DAY = 86_400_000;
@@ -40,7 +39,7 @@ export async function getQualityView(days: number): Promise<QualityView> {
     approvals = s.approvals.filter((a) => ids.has(a.request_id));
     published = s.events.filter((e) => ids.has(e.request_id) && e.step === "publicado" && e.status === "ok");
   } else {
-    const db = supabaseAdmin();
+    const db = scope.db;
     // Sin los pedidos de ejemplo de la 0003: nada de números inventados.
     requests = await realRows<QRequest>("id, project_id, category, status, parent_request_id, cost_usd, created_at", (cols) =>
       inScope(db.from("requests").select(cols).gte("created_at", since), scope)
