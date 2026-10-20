@@ -116,7 +116,7 @@ Todos los secretos viven en `~/.walt/.env`, fuera de cualquier repo, así lo lee
 | LLM_PROVIDER | `anthropic`, `bedrock` o `fake` |
 | ANTHROPIC_API_KEY | Si el proveedor es anthropic |
 | AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY | Si el proveedor es bedrock |
-| MODEL_INTERPRET, MODEL_AGENT | Por defecto `claude-sonnet-5-5` y `claude-opus-5-5`. En Bedrock, los IDs que indique la skill claude-api |
+| MODEL_INTERPRET, MODEL_AGENT | Por defecto `claude-haiku-5-5` para clasificar (con respaldo en `claude-sonnet-5-5`) y `claude-sonnet-5-5` para el código (con reintento en `claude-opus-5-5`); R1, ver `docs/DECISIONES.md`. En Bedrock, los IDs que indique la skill claude-api |
 | OPENAI_API_KEY | Opcional: transcribir audios |
 | SCREENSHOTS | `on` u `off` |
 | PANEL_PASSWORD | Entrada al panel |
@@ -343,7 +343,7 @@ transcribe(audio: Buffer, mime: string): Promise<string>   // opcional
 - Fechas relativas con `now` y zona America/Montevideo: "el viernes" es el próximo viernes. Si no dice desde cuándo, `startsAt` es null y empieza ya.
 
 **Modelo y llamada:**
-- Por defecto `claude-sonnet-5-5`, con salida estructurada validada con el JSON Schema de Interpretation. Usá la skill claude-api para la forma correcta de pedir salida estructurada, o tool use forzado si el proveedor no la tiene.
+- Por defecto `claude-haiku-5-5` (R1: 90/90 en el eval a una fracción del costo de Sonnet; si falla, un reintento en `claude-sonnet-5-5`), con salida estructurada validada con el JSON Schema de Interpretation. Usá la skill claude-api para la forma correcta de pedir salida estructurada, o tool use forzado si el proveedor no la tiene.
 - Temperatura baja, un reintento si la salida no valida y timeout 45 s.
 - En Bedrock, el cliente `@anthropic-ai/bedrock-sdk` con el ID que indique la skill.
 - `LLM_PROVIDER=fake`: un intérprete por expresiones regulares que cubre los casos de la sección 1, solo para pruebas.

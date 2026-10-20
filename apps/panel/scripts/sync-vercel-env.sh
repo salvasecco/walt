@@ -4,7 +4,8 @@
 #   bash apps/panel/scripts/sync-vercel-env.sh
 set -euo pipefail
 ENV_FILE="${HOME}/.walt/.env"
-KEYS=(SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PANEL_PASSWORD GITHUB_TOKEN TELEGRAM_BOT_USERNAME DEMO_AGENCY_NAME DEMO_SITE_URL)
+# ANTHROPIC_API_KEY: simulador de Reglas y validación de BYOK (solo del lado del servidor). PANEL_URL: links de los mails de Auth.
+KEYS=(SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY PANEL_PASSWORD GITHUB_TOKEN TELEGRAM_BOT_USERNAME DEMO_AGENCY_NAME DEMO_SITE_URL ANTHROPIC_API_KEY PANEL_URL)
 [ -d .vercel ] || vercel link --yes --project walt-panel >/dev/null
 rm -f .env.local
 missing=()
