@@ -18,6 +18,7 @@
     "voice-test": "tsx scripts/voice-test.ts",
     "eval": "pnpm --filter @walt/eval eval",
     "e2e": "tsx scripts/e2e.ts",
+    "demo:r1": "tsx scripts/demo-r1.ts",
     "test": "pnpm -r test",
     "typecheck": "tsc -p tsconfig.json && pnpm -r typecheck",
     "start:worker": "pnpm --filter @walt/worker start",
