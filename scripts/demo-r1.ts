@@ -3,14 +3,14 @@
  * la base en memoria (no toca Supabase: anda con la 0004 aplicada o sin ella). El modelo, GitHub y las
  * capturas son los del entorno: la demo corre con el modelo real.
  *
- *   simple      «subí el pan flauta a 95»: vista previa con [Dale], el cliente aprueba y se publica sin la
- *               agencia; después [Volver a como estaba].
- *   delicado    «agregá un campo de teléfono a la tabla de clientes y que se guarde»: el agente arma el PR y
- *               espera a la agencia. Al final la agencia lo descarta (se cierra el PR), salvo con --dejar-pr.
+ *   simple      «subí los panes a 95»: vista previa con la advertencia de la masa madre (baja de $220 a $95)
+ *               y [Dale]; el cliente aprueba y se publica sin la agencia; después [Volver a como estaba].
+ *   delicado    «guardá las reservas en la base de datos»: el agente arma el PR y espera a la agencia. Al
+ *               final la agencia lo descarta (se cierra el PR), salvo con --dejar-pr.
  *   nuevo       «quiero cobrar las tortas online con Mercado Pago»: presupuesto; la agencia lo manda, el
  *               cliente lo acepta y recibe el link de la seña (de prueba: no se cobra).
- *   reetiqueta  un cartel de promo sale simple; la agencia lo reetiqueta como delicado («las promos las
- *               aprueba la dueña»); un pedido parecido ahora va a la agencia.
+ *   reetiqueta  un cartel con 50% de descuento sale simple; la agencia lo reetiqueta como delicado («los
+ *               descuentos grandes los aprueba la agencia»); uno parecido, con 40%, ahora va a la agencia.
  *
  * Uso: pnpm demo:r1 [simple] [delicado] [nuevo] [reetiqueta] [--dejar-pr]   (sin casos, corre los cuatro)
  * Con GITHUB_MODE=real, publicar y volver atrás commitean content/site.json en el repo del sitio (como el
@@ -25,13 +25,14 @@ const CASES = ['simple', 'delicado', 'nuevo', 'reetiqueta'] as const;
 type CaseName = (typeof CASES)[number];
 
 const TEXTS = {
-  simple: 'subí el pan flauta a 95',
-  delicado: 'agregá un campo de teléfono a la tabla de clientes y que se guarde',
+  simple: 'subí los panes a 95',
+  delicado: 'guardá las reservas en la base de datos',
   nuevo: 'quiero cobrar las tortas online con Mercado Pago',
-  reetiquetaPrimero: 'poné un cartel que diga que los domingos hay 2x1 en medialunas',
-  reetiquetaMotivo: 'Las promos con descuento las aprueba la dueña antes de publicarlas',
-  reetiquetaDespues: 'poné un cartel de 3x2 en facturas para este sábado',
+  reetiquetaPrimero: 'poné un cartel de 50% de descuento en todo',
+  reetiquetaMotivo: 'los descuentos grandes los aprueba la agencia',
+  reetiquetaDespues: 'poné un cartel con 40% de descuento en todo hasta el domingo',
 } as const;
+const PANES = ['pan-flauta', 'pan-masa-madre', 'baguette'];
 
 interface Outcome {
   caso: CaseName;
@@ -111,13 +112,16 @@ async function runSimple(env: WaltEnv, out: Outcome): Promise<void> {
     check(out, category(req) === 'simple', `«${TEXTS.simple}» es simple (salió ${category(req)})`);
     check(out, req.status === 'esperando_cliente', `vista previa al cliente con [Dale] (estado ${req.status})`);
     check(out, !buttonsTo(s, 'agencia', req.short_id).some((d) => d.startsWith('gok:')), 'la agencia no tiene nada que aprobar');
+    const warnings = ((req.gate as { warnings?: string[] } | null)?.warnings ?? []).join(' · ');
+    check(out, /masa madre/i.test(warnings), `advertencia en la vista previa: ${warnings || '(ninguna)'}`);
     if (req.status === 'esperando_cliente') {
       await press(s, 'cliente', `ok:${req.short_id}`);
       req = await reload(s, req);
       check(out, req.status === 'publicado', `publicado con el «Dale» del cliente (estado ${req.status})`);
       const live = await s.app.store.getLiveVersion(req.project_id);
-      const flauta = (live?.content as { products?: { id: string; price: number }[] } | undefined)?.products?.find((p) => p.id === 'pan-flauta')?.price;
-      check(out, flauta === 95, `versión viva con el pan flauta a 95 (está a ${flauta ?? '?'})`);
+      const products = (live?.content as { products?: { id: string; price: number }[] } | undefined)?.products ?? [];
+      const prices = PANES.map((id) => products.find((p) => p.id === id)?.price);
+      check(out, prices.every((p) => p === 95), `versión viva con los panes a 95 (${PANES.map((id, i) => `${id} ${prices[i] ?? '?'}`).join(', ')})`);
       if (req.status === 'publicado') {
         await press(s, 'cliente', `undo:${req.short_id}`);
         req = await reload(s, req);
