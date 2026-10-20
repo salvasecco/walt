@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Chip, Notice, Surface, PanelTitle } from "@/components/ui-walt";
 import { dateTime } from "@/lib/labels";
 
-export function ConnectRepo({ hasToken }: { hasToken: boolean }) {
+export function ConnectRepo({ hasToken, agencyUser }: { hasToken: boolean; agencyUser?: boolean }) {
   const [f, setF] = useState({ name: "", clientName: "", owner: "", repo: "", branch: "main", siteUrl: "" });
   const [check, setCheck] = useState<RepoCheck | null>(null);
   const [testing, startTest] = useTransition();
@@ -55,11 +55,16 @@ export function ConnectRepo({ hasToken }: { hasToken: boolean }) {
           <Input value={f.clientName} onChange={set("clientName")} placeholder="Mabel" />
         </Field>
       </div>
-      {!hasToken && (
-        <Notice tone="warn" icon={<AlertTriangle />} className="text-xs">
-          Falta <code className="font-mono">GITHUB_TOKEN</code>: la prueba solo ve repos públicos.
-        </Notice>
-      )}
+      {!hasToken &&
+        (agencyUser ? (
+          <Notice tone="info" icon={<AlertTriangle />} className="text-xs">
+            Por ahora la prueba ve solo repos públicos: los privados se conectan con la GitHub App de la agencia.
+          </Notice>
+        ) : (
+          <Notice tone="warn" icon={<AlertTriangle />} className="text-xs">
+            Falta <code className="font-mono">GITHUB_TOKEN</code>: la prueba solo ve repos públicos.
+          </Notice>
+        ))}
       <Button
         type="button"
         variant="outline"

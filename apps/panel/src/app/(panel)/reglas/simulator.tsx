@@ -100,6 +100,7 @@ export function Simulator({ projectId, rules }: { projectId: string; rules: Edit
           </summary>
           <p className="mt-2 text-xs text-muted-foreground">Uno por línea. Es la mitad determinística de la doble clasificación: si el diff toca una zona delicada, el pedido sube a delicado.</p>
           <Textarea
+            aria-label="Archivos que tocaría el cambio, uno por línea"
             rows={3}
             value={paths}
             onChange={(e) => setPaths(e.target.value)}
@@ -157,6 +158,29 @@ function SimulationCard({ r }: { r: SimulationResult }) {
             <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-info" />
             <span>{r.question ? `Le preguntaría al cliente: “${r.question}”` : "Le pediría al cliente que lo explique mejor, con opciones."}</span>
           </p>
+        </Block>
+      )}
+
+      {r.options.length > 0 && (
+        <Block title="Le ofrecería dos opciones">
+          <ol className="flex flex-col gap-2">
+            {r.options.map((o, i) => (
+              <li key={i} className="rounded-md border border-line bg-surface px-3 py-2 text-sm">
+                <span className="font-medium">{o.label}</span>
+                <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
+                  {o.ops.map((x, k) => (
+                    <li key={k}>· {x}</li>
+                  ))}
+                </ul>
+                {o.warnings.map((w) => (
+                  <p key={w} className="mt-1 flex items-start gap-1.5 text-xs text-warn">
+                    <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                    {w}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ol>
         </Block>
       )}
 

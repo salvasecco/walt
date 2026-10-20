@@ -35,7 +35,7 @@ export default async function IaPage() {
 
       <AgencyMode agency={view.agency} wallet={view.wallet} movements={view.movements} canEdit={canEdit && view.ready} />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatTile label="Gasto del mes" help="Suma del costo de IA (cost_usd) de los pedidos de este mes, hora de Montevideo." value={usd(view.month.cost, 2)} context={`Desde el ${dateTime(view.month.since)}`} />
         <StatTile
           label="Costo por pedido"
@@ -48,7 +48,7 @@ export default async function IaPage() {
           help="Sin modo elegido, la IA la pone Walt. Cada proyecto puede usar otro."
           value={<span className="text-xl sm:text-2xl">{view.agency ? { byok: "Tu clave", credits: "Créditos", claude_code: "Claude Code" }[view.agency.mode] : "Clave de Walt"}</span>}
           context={`${view.projects.filter((p) => p.setting).length} ${view.projects.filter((p) => p.setting).length === 1 ? "proyecto con excepción" : "proyectos con excepción"}`}
-          className="col-span-2 lg:col-span-1"
+          className="sm:col-span-2 lg:col-span-1"
         />
       </div>
 

@@ -1,9 +1,9 @@
 import "server-only";
 import { dataMode } from "./env";
 import { computeQuality, type QApproval, type QRequest, type Quality } from "./quality";
-import { getLabelsFor } from "./relabel";
+import { getLabelsFor, type LabelsResult } from "./relabel";
 import { buildSample } from "./sample";
-import { getScope, inScope, realRows } from "./session";
+import { getScope, inScope, realRows, type Scope } from "./session";
 import type { Approval, Project, WaltEvent } from "./types";
 
 const DAY = 86_400_000;
@@ -25,34 +25,45 @@ async function chunked<T>(ids: string[], fetch: (part: string[]) => PromiseLike<
   return out;
 }
 
+type Raw = { requests: QRequest[]; approvals: QApproval[]; published: Pick<WaltEvent, "request_id" | "at">[]; labels: LabelsResult };
+
+/** Datos de ejemplo (desarrollo, sin Supabase). */
+async function sampleRaw(since: string): Promise<Raw> {
+  const s = buildSample();
+  const requests = s.requests.filter((r) => r.created_at >= since);
+  const ids = new Set(requests.map((r) => r.id));
+  return {
+    requests,
+    approvals: s.approvals.filter((a) => ids.has(a.request_id)),
+    published: s.events.filter((e) => ids.has(e.request_id) && e.step === "publicado" && e.status === "ok"),
+    labels: await getLabelsFor([...ids]),
+  };
+}
+
+/** Con Supabase: pedidos reales del período y, en paralelo, sus respuestas, publicaciones y reetiquetados. */
+async function supabaseRaw(scope: Scope, since: string): Promise<Raw> {
+  const db = scope.db;
+  // Sin los pedidos de ejemplo de la 0003: nada de números inventados.
+  const requests = await realRows<QRequest>("id, project_id, category, status, parent_request_id, cost_usd, created_at", (cols) =>
+    inScope(db.from("requests").select(cols).gte("created_at", since), scope)
+      .order("created_at", { ascending: false })
+      .limit(5000),
+  );
+  const ids = requests.map((r) => r.id);
+  const [approvals, published, labels] = await Promise.all([
+    chunked<Approval>(ids, (part) => db.from("approvals").select("request_id, actor, decision, at").in("request_id", part)),
+    chunked<WaltEvent>(ids, (part) => db.from("events").select("request_id, at").in("request_id", part).eq("step", "publicado").eq("status", "ok")),
+    getLabelsFor(ids),
+  ]);
+  return { requests, approvals, published, labels };
+}
+
 /** Calidad de la agencia en los últimos `days` días, con los datos reales (o los de ejemplo en desarrollo). */
 export async function getQualityView(days: number): Promise<QualityView> {
   const scope = await getScope();
   const since = new Date(Date.now() - days * DAY).toISOString();
-  let requests: QRequest[];
-  let approvals: QApproval[];
-  let published: Pick<WaltEvent, "request_id" | "at">[];
-  if (dataMode() === "ejemplo") {
-    const s = buildSample();
-    requests = s.requests.filter((r) => r.created_at >= since);
-    const ids = new Set(requests.map((r) => r.id));
-    approvals = s.approvals.filter((a) => ids.has(a.request_id));
-    published = s.events.filter((e) => ids.has(e.request_id) && e.step === "publicado" && e.status === "ok");
-  } else {
-    const db = scope.db;
-    // Sin los pedidos de ejemplo de la 0003: nada de números inventados.
-    requests = await realRows<QRequest>("id, project_id, category, status, parent_request_id, cost_usd, created_at", (cols) =>
-      inScope(db.from("requests").select(cols).gte("created_at", since), scope)
-        .order("created_at", { ascending: false })
-        .limit(5000),
-    );
-    const ids = requests.map((r) => r.id);
-    [approvals, published] = await Promise.all([
-      chunked<Approval>(ids, (part) => db.from("approvals").select("request_id, actor, decision, at").in("request_id", part)),
-      chunked<WaltEvent>(ids, (part) => db.from("events").select("request_id, at").in("request_id", part).eq("step", "publicado").eq("status", "ok")),
-    ]);
-  }
-  const { ready, labels } = await getLabelsFor(requests.map((r) => r.id));
+  const { requests, approvals, published, labels: labelsRes } = dataMode() === "ejemplo" ? await sampleRaw(since) : await supabaseRaw(scope, since);
+  const { ready, labels } = labelsRes;
   const publishedAt = new Map<string, string>();
   for (const e of published) if (!publishedAt.has(e.request_id) || e.at < publishedAt.get(e.request_id)!) publishedAt.set(e.request_id, e.at);
   const overall = computeQuality({ requests, labels, approvals, publishedAt });

@@ -81,9 +81,9 @@ export async function saveAiKey(projectId: string | null, key: string): Promise<
     const t = await target(projectId);
     const clean = String(key ?? "").trim();
     if (!looksLikeAnthropicKey(clean)) return { ok: false, error: "Eso no parece una API key de Anthropic (empieza con sk-ant-)." };
-    if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG };
     const check = await validateAnthropicKey(clean);
     if (!check.ok) return check;
+    if (dataMode() === "ejemplo") return { ok: true, demo: true, message: `La clave es válida. ${DEMO_MSG}` };
     const { error } = await supabaseAdmin().rpc("set_ai_key", { p_factory: t.factoryId, p_project: t.projectId, p_key: clean });
     // Nunca el mensaje crudo: podría citar el valor.
     if (error) return { ok: false, error: isMissingFunction(error) ? NEEDS_0004 : "No se pudo guardar la clave en el Vault." };

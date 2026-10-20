@@ -5,6 +5,7 @@ import { Chip, EmptyState, Surface, Mono, PageHeader, SampleBadge } from "@/comp
 import { getProjects, NotConfiguredError } from "@/lib/data";
 import { dataMode, env } from "@/lib/env";
 import { dateTime } from "@/lib/labels";
+import { getScope, githubTokenFor } from "@/lib/session";
 import { SEED_PROJECT_ID, type Project } from "@/lib/types";
 import { ConnectRepo, InviteButton } from "./project-client";
 
@@ -20,6 +21,7 @@ export default async function ProyectosPage() {
     if (e instanceof NotConfiguredError) return <NotConfigured />;
     throw e;
   }
+  const { viewer } = await getScope();
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Proyectos" subtitle="Cada web de un cliente es un proyecto conectado a su repo." right={dataMode() === "ejemplo" && <SampleBadge />} />
@@ -60,7 +62,7 @@ export default async function ProyectosPage() {
             </Surface>
           ))}
         </div>
-        <ConnectRepo hasToken={!!env.githubToken} />
+        <ConnectRepo hasToken={!!githubTokenFor(viewer)} agencyUser={viewer.kind === "user"} />
       </div>
     </div>
   );
