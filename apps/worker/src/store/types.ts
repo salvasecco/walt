@@ -11,7 +11,7 @@ import type {
   GithubInstallationRow,
   JobRow,
   LabelCategory,
-  LabeledExample,
+  SimilarLabeledRow,
   LedgerMode,
   MessageDirection,
   ProjectRow,
@@ -224,7 +224,7 @@ export interface Store {
   /** Relabels: the agency says what the request really was. */
   labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null): Promise<RequestLabelRow>;
   /** Relabeled requests of the agency, most similar to `text` first (pg_trgm). */
-  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<LabeledExample[]>;
+  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<SimilarLabeledRow[]>;
   /** Requests of the agency's projects created since a date (rate limit per agency). */
   countFactoryRequestsSince(factoryId: string, sinceIso: string): Promise<number>;
 

@@ -11,7 +11,7 @@ import {
   type GithubInstallationRow,
   type JobRow,
   type LabelCategory,
-  type LabeledExample,
+  type SimilarLabeledRow,
   type MessageRow,
   type ProjectRow,
   type QuoteRow,
@@ -448,7 +448,7 @@ export class MemoryStore implements Store {
   async similarLabeledRequests(factoryId: string, text: string, k = 5) {
     const latest = new Map<string, RequestLabelRow>();
     for (const l of this.labels) if (l.factory_id === factoryId) latest.set(l.request_id, l);
-    const out: LabeledExample[] = [];
+    const out: SimilarLabeledRow[] = [];
     for (const l of latest.values()) {
       const req = this.requests.find((r) => r.id === l.request_id);
       if (!req?.raw_text) continue;

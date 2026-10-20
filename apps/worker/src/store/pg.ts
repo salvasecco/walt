@@ -7,7 +7,7 @@ import type {
   GithubInstallationRow,
   JobRow,
   LabelCategory,
-  LabeledExample,
+  SimilarLabeledRow,
   ProjectRow,
   QuoteRow,
   RequestLabelRow,
@@ -347,7 +347,7 @@ export class PgStore implements Store {
   }
   async similarLabeledRequests(factoryId: string, text: string, k = 5) {
     if (!(await this.schema()).r1) return [];
-    return this.many<LabeledExample>('select * from similar_labeled_requests($1::uuid, $2, $3)', [factoryId, text, k]);
+    return this.many<SimilarLabeledRow>('select * from similar_labeled_requests($1::uuid, $2, $3)', [factoryId, text, k]);
   }
   async countFactoryRequestsSince(factoryId: string, sinceIso: string) {
     const r = await this.one<{ n: number }>(

@@ -1,4 +1,4 @@
-import type { Category } from './types.ts';
+import { normalizeCategory, type Category } from './types.ts';
 
 /**
  * Relabeled requests of the same agency as examples for the decision prompt (brief §2). The store
@@ -35,10 +35,43 @@ export const emptyExampleSource: ExampleSource = {
   },
 };
 
-/** The store as an `ExampleSource` when it implements it; the empty source otherwise. */
+/** A row of `similar_labeled_requests` (migration 0004), as the stores return it. */
+interface LabeledRow {
+  raw_text: string;
+  from_category: string | null;
+  to_category: string;
+  reason: string | null;
+}
+
+/** What the worker's stores implement (infra): the RPC rows, most similar first. */
+interface LabeledRowSource {
+  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<LabeledRow[]>;
+}
+
+/** A stored relabel as a prompt example; null if the row has no text or an unknown category. */
+export function exampleFromLabeledRow(row: LabeledRow): LabeledExample | null {
+  const category = normalizeCategory(row.to_category);
+  if (!category || !row.raw_text) return null;
+  return { text: row.raw_text, category, previous: normalizeCategory(row.from_category), reason: row.reason };
+}
+
+/**
+ * The store as an `ExampleSource`: its own `similarExamples` if it has one, else its
+ * `similarLabeledRequests` (the 0004 RPC rows) mapped to examples; the empty source otherwise.
+ */
 export function exampleSourceOf(store: unknown): ExampleSource {
-  const s = store as Partial<ExampleSource> | null;
-  return s && typeof s.similarExamples === 'function' ? (s as ExampleSource) : emptyExampleSource;
+  const s = store as Partial<ExampleSource & LabeledRowSource> | null;
+  if (s && typeof s.similarExamples === 'function') return s as ExampleSource;
+  if (s && typeof s.similarLabeledRequests === 'function') {
+    const rows = s as LabeledRowSource;
+    return {
+      async similarExamples(q) {
+        const found = await rows.similarLabeledRequests(q.factoryId, q.text, q.limit);
+        return found.map(exampleFromLabeledRow).filter((e): e is LabeledExample => e !== null);
+      },
+    };
+  }
+  return emptyExampleSource;
 }
 
 /** How many examples go to the prompt, at most. */
