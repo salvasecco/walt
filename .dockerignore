@@ -1,0 +1,20 @@
+# Solo entra lo que el worker necesita; nunca secretos.
+**/node_modules
+**/.next
+**/.turbo
+**/*.log
+**/.env
+**/.env.*
+!.env.example
+.git
+logs
+docs
+eval/baseline
+eval/report.*
+apps/panel/*
+!apps/panel/package.json
+**/coverage
+**/tsconfig.tsbuildinfo
+Dockerfile
+.dockerignore
+fly*.toml
