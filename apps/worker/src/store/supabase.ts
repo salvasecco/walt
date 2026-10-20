@@ -8,7 +8,7 @@ import type {
   GithubInstallationRow,
   JobRow,
   LabelCategory,
-  LabeledExample,
+  SimilarLabeledRow,
   ProjectRow,
   QuoteRow,
   RequestLabelRow,
@@ -16,6 +16,7 @@ import type {
   Rules,
   WalletRow,
 } from '@walt/core';
+import { normalizeCategory } from '@walt/core';
 import {
   MissingMigrationError,
   VersionConflictError,
@@ -51,7 +52,8 @@ const NIL = '00000000-0000-4000-8000-000000000000';
 
 /**
  * What 0004 adds that is missing, probed over REST without side effects (tables and columns with
- * `head` selects, functions with nil ids). Shared with `pnpm db:migrate`.
+ * `limit(0)` selects, functions with nil ids). Never `head: true`: supabase-js turns the 404 of a HEAD
+ * to a missing table into a 204 without error.
  */
 export async function probeR1(db: SupabaseClient): Promise<string[]> {
   const missing: string[] = [];
@@ -62,8 +64,8 @@ export async function probeR1(db: SupabaseClient): Promise<string[]> {
     ['processed_updates', 'key, source'],
   ];
   const checks = await Promise.all([
-    ...tables.map(async (t) => ((await db.from(t).select('*', { count: 'exact', head: true })).error ? t : null)),
-    ...cols.map(async ([t, c]) => ((await db.from(t).select(c, { count: 'exact', head: true })).error ? `${t}.(${c})` : null)),
+    ...tables.map(async (t) => ((await db.from(t).select('*').limit(0)).error ? t : null)),
+    ...cols.map(async ([t, c]) => ((await db.from(t).select(c).limit(0)).error ? `${t}.(${c})` : null)),
     (async () => {
       // v2 answers with its own "no existe"; PostgREST says PGRST202 if the function is missing.
       const { error } = await db.rpc('publish_version_v2', { p_project: NIL, p_version: NIL });
@@ -93,6 +95,14 @@ function defined(values: Record<string, unknown>): Record<string, unknown> {
 }
 
 type Res<D> = { data: D | null; error: { message: string } | null };
+
+/** Before 0004 the `requests.category` check only accepts the pre-R1 names (the reverse of the data migration). */
+const PRE_R1_CATEGORY: Record<string, string> = { simple: 'permitido', delicado: 'riesgoso', nuevo: 'fuera_de_alcance' };
+
+/** Requests are always read with the R1 names, whatever the base stores. */
+function readRequest(row: RequestRow): RequestRow {
+  return row.category == null ? row : { ...row, category: normalizeCategory(row.category) };
+}
 
 function must<D>(res: Res<D>, what: string): D {
   if (res.error) throw new Error(`${what}: ${res.error.message}`);
@@ -217,26 +227,38 @@ export class SupabaseStore implements Store {
       ? { version: r.version, rules: { policies: r.policies, limits: r.limits }, policyText: r.policy_text ?? '', config: r.config ?? {} }
       : null;
   }
-  createRequest(r: NewRequest) {
-    return this.insert<RequestRow>('requests', r);
+  /**
+   * Without 0004 the base only takes the pre-R1 category names: the R1 ones are written as the old ones
+   * (simple→permitido, delicado→riesgoso, nuevo→fuera_de_alcance) and read back as the R1 ones.
+   */
+  private async requestWrite<T extends object>(values: T): Promise<T> {
+    const c = (values as { category?: unknown }).category;
+    if (typeof c !== 'string' || !(c in PRE_R1_CATEGORY) || (await this.schema()).r1) return values;
+    return { ...values, category: PRE_R1_CATEGORY[c] };
   }
-  updateRequest(id: string, patch: Partial<RequestRow>) {
-    return this.update<RequestRow>('requests', id, patch);
+  async createRequest(r: NewRequest) {
+    return readRequest(await this.insert<RequestRow>('requests', await this.requestWrite(r)));
   }
-  getRequest(id: string) {
-    return this.one<RequestRow>(this.db.from('requests').select().eq('id', id).maybeSingle(), 'requests');
+  async updateRequest(id: string, patch: Partial<RequestRow>) {
+    return readRequest(await this.update<RequestRow>('requests', id, await this.requestWrite(patch)));
   }
-  getRequestByShortId(shortId: string) {
-    return this.one<RequestRow>(this.db.from('requests').select().eq('short_id', shortId).maybeSingle(), 'requests');
+  async getRequest(id: string) {
+    const r = await this.one<RequestRow>(this.db.from('requests').select().eq('id', id).maybeSingle(), 'requests');
+    return r && readRequest(r);
   }
-  latestRequestOfContact(contactId: string, statuses: string[]) {
-    return this.one<RequestRow>(
+  async getRequestByShortId(shortId: string) {
+    const r = await this.one<RequestRow>(this.db.from('requests').select().eq('short_id', shortId).maybeSingle(), 'requests');
+    return r && readRequest(r);
+  }
+  async latestRequestOfContact(contactId: string, statuses: string[]) {
+    const r = await this.one<RequestRow>(
       this.db.from('requests').select().eq('contact_id', contactId).in('status', statuses).order('created_at', { ascending: false }).limit(1),
       'requests',
     );
+    return r && readRequest(r);
   }
-  requestsWithStatus(statuses: string[]) {
-    return this.many<RequestRow>(this.db.from('requests').select().in('status', statuses).order('created_at'), 'requests');
+  async requestsWithStatus(statuses: string[]) {
+    return (await this.many<RequestRow>(this.db.from('requests').select().in('status', statuses).order('created_at'), 'requests')).map(readRequest);
   }
   countRequestsSince(contactId: string, sinceIso: string) {
     return this.count(
@@ -420,7 +442,7 @@ export class SupabaseStore implements Store {
   async similarLabeledRequests(factoryId: string, text: string, k = 5) {
     if (!(await this.schema()).r1) return [];
     const rows = await this.rpc<Record<string, unknown>[]>('similar_labeled_requests', { p_factory: factoryId, p_text: text, p_k: k });
-    return (rows ?? []).map((r) => norm<LabeledExample>(r));
+    return (rows ?? []).map((r) => norm<SimilarLabeledRow>(r));
   }
   countFactoryRequestsSince(factoryId: string, sinceIso: string) {
     return this.count(
