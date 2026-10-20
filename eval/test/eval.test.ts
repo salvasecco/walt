@@ -181,6 +181,30 @@ describe('corredor', () => {
     expect(r2.decision.category).toBe('bloqueado');
   });
 
+  it('dos lecturas concretas van al cliente como opciones, como en el worker', async () => {
+    const ai = stub({
+      options: [
+        { label: 'Bajar precios 15%', ops: [{ type: 'adjust_prices', filter: { all: true }, percent: -15, rounding: 'nearest_5' }] },
+        { label: 'Cartel con 15%', ops: [{ type: 'set_banner', enabled: true, text: 'Día de la madre: 15%', discountPercent: 15 }] },
+      ],
+    });
+    const r = await runCase(
+      {
+        id: 'o',
+        text: 'bajá todo un 15% por el día de la madre',
+        expected: { category: 'simple', lane: 'contenido', ops: [{ type: 'adjust_prices', filter: { all: true }, percent: -15, rounding: 'nearest_5' }] },
+        tags: [],
+        source: 'sintetico',
+      },
+      't',
+      ctxWith(ai),
+    );
+    expect(r.decision).toMatchObject({ category: 'simple', lane: 'contenido' });
+    expect(r.options).toEqual(['Bajar precios 15%', 'Cartel con 15%']);
+    expect(r).toMatchObject({ categoryOk: true, laneOk: true, opsOk: true, clarify: false });
+    expect(summarize([r])!.optionsOffered).toBe(1);
+  });
+
   it('una falla o timeout del modelo termina en derivado', async () => {
     const slow: AiProvider = { ...createFakeProvider(), interpret: () => new Promise(() => {}) };
     const r = await runCase(

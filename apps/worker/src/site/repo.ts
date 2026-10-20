@@ -55,19 +55,38 @@ export class FakeSiteRepo implements SiteRepo {
   }
 }
 
+/** The GitHub token for a project's repo: the agency's App installation, or GITHUB_TOKEN (R1). */
+export type RepoTokenFor = (project: ProjectRow) => Promise<string>;
+
 /** GITHUB_MODE=real: octokit over the contents API. */
 export class GitHubSiteRepo implements SiteRepo {
   readonly mode = 'real' as const;
-  private readonly octokit: Octokit;
+  private readonly fixed: Octokit | null;
+  private readonly clients = new Map<string, Octokit>();
   private readonly cache = new Map<string, { at: number; contract: Contract }>();
   private readonly refreshing = new Set<string>();
 
-  constructor(token: string, octokit?: Octokit) {
-    this.octokit = octokit ?? new Octokit({ auth: token, request: { timeout: 15_000 } });
+  /** A fixed token (or octokit, in tests), or a function that picks the token per project. */
+  constructor(private readonly token: string | RepoTokenFor, octokit?: Octokit) {
+    this.fixed = octokit ?? (typeof token === 'string' ? new Octokit({ auth: token, request: { timeout: 15_000 } }) : null);
+  }
+
+  private async clientFor(project: ProjectRow): Promise<Octokit> {
+    if (this.fixed) return this.fixed;
+    const token = await (this.token as RepoTokenFor)(project);
+    let client = this.clients.get(token);
+    if (!client) {
+      // Installation tokens last an hour: keep a few clients, drop the old ones.
+      if (this.clients.size >= 20) this.clients.clear();
+      client = new Octokit({ auth: token, request: { timeout: 15_000 } });
+      this.clients.set(token, client);
+    }
+    return client;
   }
 
   private async readJson(project: ProjectRow, path: string): Promise<unknown> {
-    const res = await this.octokit.repos.getContent({
+    const octokit = await this.clientFor(project);
+    const res = await octokit.repos.getContent({
       owner: project.repo_owner,
       repo: project.repo_name,
       path,
@@ -106,18 +125,19 @@ export class GitHubSiteRepo implements SiteRepo {
   }
 
   async commitContent(project: ProjectRow, config: WaltConfig, content: unknown, message: string): Promise<string> {
+    const octokit = await this.clientFor(project);
     const base = { owner: project.repo_owner, repo: project.repo_name, path: config.content, branch: project.default_branch };
     const body = Buffer.from(serializeContent(content)).toString('base64');
     for (let attempt = 0; ; attempt++) {
       let sha: string | undefined;
       try {
-        const cur = await this.octokit.repos.getContent({ owner: base.owner, repo: base.repo, path: base.path, ref: base.branch });
+        const cur = await octokit.repos.getContent({ owner: base.owner, repo: base.repo, path: base.path, ref: base.branch });
         sha = (cur.data as { sha?: string }).sha;
       } catch (err) {
         if ((err as { status?: number }).status !== 404) throw err;
       }
       try {
-        const res = await this.octokit.repos.createOrUpdateFileContents({ ...base, message, content: body, sha });
+        const res = await octokit.repos.createOrUpdateFileContents({ ...base, message, content: body, sha });
         return res.data.commit.sha ?? '';
       } catch (err) {
         // Someone else committed in between: read the sha again, once.

@@ -1,3 +1,5 @@
+import type { LabelCategory } from './tables.ts';
+
 /**
  * Shared domain types: statuses, categories, commands and table rows (SPEC §5).
  */
@@ -219,7 +221,8 @@ export interface RequestLabelRow {
   factory_id: Uuid;
   /** What Walt had decided (may be an old name until the data migration). */
   from_category: StoredCategory | null;
-  to_category: Category;
+  /** `request_labels.to_category`: charla and derivado are not labels. */
+  to_category: LabelCategory;
   reason: string | null;
   actor_user_id: Uuid | null;
   created_at: Timestamp;

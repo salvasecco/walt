@@ -18,3 +18,4 @@ export * from './payments.ts';
 export * from './copy.ts';
 export * from './pricing.ts';
 export * from './ids.ts';
+export * from './tables.ts';

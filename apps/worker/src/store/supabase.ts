@@ -1,9 +1,84 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { CommandRow, ContactRow, ContentVersionRow, FactoryRow, ProjectRow, QuoteRow, RequestRow, Rules } from '@walt/core';
-import type { NewEvent, NewMessage, NewQuote, NewRequest, NewVersion, RedeemResult, Store } from './types.js';
+import type {
+  AiSettingsRow,
+  CommandRow,
+  ContactRow,
+  ContentVersionRow,
+  FactoryRow,
+  GithubInstallationRow,
+  JobRow,
+  LabelCategory,
+  ProjectRow,
+  QuoteRow,
+  RequestRow,
+  Rules,
+  SimilarLabelRow,
+  WalletRow,
+} from '@walt/core';
+import {
+  legacyCategoryPatch,
+  MissingMigrationError,
+  toPromptExamples,
+  VersionConflictError,
+  type ExamplesQuery,
+  type FailJobOptions,
+  type JobsSummaryRow,
+  type LabelRow,
+  type NewEvent,
+  type NewJob,
+  type NewMessage,
+  type NewQuote,
+  type NewRequest,
+  type NewVersion,
+  type PublishOptions,
+  type PublishResult,
+  type RedeemResult,
+  type SchemaInfo,
+  type Store,
+  type UsageEntry,
+} from './types.js';
 
-const NUM_COLS = new Set(['confidence', 'cost_usd', 'amount_usd', 'telegram_chat_id']);
-const TIME_COLS = new Set(['created_at', 'updated_at', 'at', 'expires_at', 'published_at', 'done_at']);
+const NUM_COLS = new Set([
+  'confidence', 'cost_usd', 'amount_usd', 'telegram_chat_id',
+  // 0004
+  'price_usd', 'wallet_delta_usd', 'balance_after_usd', 'balance_usd', 'markup_pct', 'low_balance_usd', 'auto_recharge_usd',
+  'monthly_cap_usd', 'request_cap_usd', 'similarity', 'installation_id', 'total', 'calls',
+]);
+const TIME_COLS = new Set([
+  'created_at', 'updated_at', 'at', 'expires_at', 'published_at', 'done_at',
+  // 0004
+  'run_after', 'locked_at', 'lease_until', 'finished_at', 'labeled_at', 'key_validated_at', 'suspended_at', 'oldest',
+]);
+
+const NIL = '00000000-0000-4000-8000-000000000000';
+
+/**
+ * What 0004 adds that is missing, probed over REST without side effects (tables and columns with
+ * `head` selects, functions with nil ids). Shared with `pnpm db:migrate`.
+ */
+export async function probeR1(db: SupabaseClient): Promise<string[]> {
+  const missing: string[] = [];
+  const tables = ['jobs', 'request_labels', 'memberships', 'ai_settings', 'wallets', 'usage_ledger', 'github_installations'];
+  const cols: [string, string][] = [
+    ['rules', 'policy_text, config'],
+    ['content_versions', 'version, publish_key'],
+    ['processed_updates', 'key, source'],
+  ];
+  // GET with limit(0), never HEAD: supabase-js turns the 404 of a HEAD to a missing table into a 204 without error.
+  const checks = await Promise.all([
+    ...tables.map(async (t) => ((await db.from(t).select('*').limit(0)).error ? t : null)),
+    ...cols.map(async ([t, c]) => ((await db.from(t).select(c).limit(0)).error ? `${t}.(${c})` : null)),
+    (async () => {
+      // v2 answers with its own "no existe"; PostgREST says PGRST202 if the function is missing.
+      const { error } = await db.rpc('publish_version_v2', { p_project: NIL, p_version: NIL });
+      return error && (error.code === 'PGRST202' || !/no existe/.test(error.message)) ? 'publish_version_v2' : null;
+    })(),
+    (async () => ((await db.rpc('similar_labeled_requests', { p_factory: NIL, p_text: '', p_k: 1 })).error ? 'similar_labeled_requests' : null))(),
+    (async () => ((await db.rpc('jobs_summary')).error ? 'jobs_summary' : null))(),
+  ]);
+  for (const c of checks) if (c) missing.push(c);
+  return missing;
+}
 
 /** Same shape as PgStore rows: numbers as numbers, timestamps as ISO strings with Z. */
 function norm<T>(row: Record<string, unknown>): T {
@@ -62,6 +137,28 @@ export class SupabaseStore implements Store {
     return res.count ?? 0;
   }
 
+  private schemaP: Promise<SchemaInfo> | null = null;
+  schema(): Promise<SchemaInfo> {
+    this.schemaP ??= probeR1(this.db)
+      .then((missing) => ({ r1: missing.length === 0, missing }))
+      .catch((err) => {
+        this.schemaP = null;
+        throw err;
+      });
+    return this.schemaP;
+  }
+  private async needR1(what: string): Promise<void> {
+    if (!(await this.schema()).r1) throw new MissingMigrationError(what);
+  }
+  private async rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
+    const res = await this.db.rpc(fn, args);
+    if (res.error) {
+      if (res.error.code === '40001') throw Object.assign(new Error(res.error.message), { code: '40001' });
+      throw new Error(`${fn}: ${res.error.message}`);
+    }
+    return res.data as T;
+  }
+
   async markUpdateProcessed(updateId: number) {
     const rows = await this.many(
       this.db.from('processed_updates').upsert({ update_id: updateId }, { onConflict: 'update_id', ignoreDuplicates: true }).select('update_id'),
@@ -110,17 +207,25 @@ export class SupabaseStore implements Store {
     return { ok: false, reason: 'sin_usos' };
   }
   async latestRules(projectId: string) {
-    const r = await this.one<{ version: number; policies: Rules['policies']; limits: Rules['limits'] }>(
-      this.db.from('rules').select('version, policies, limits').eq('project_id', projectId).order('version', { ascending: false }).limit(1),
+    const r1 = (await this.schema()).r1;
+    const r = await this.one<{ version: number; policies: Rules['policies']; limits: Rules['limits']; policy_text?: string; config?: unknown }>(
+      this.db
+        .from('rules')
+        .select(r1 ? 'version, policies, limits, policy_text, config' : 'version, policies, limits')
+        .eq('project_id', projectId)
+        .order('version', { ascending: false })
+        .limit(1),
       'rules',
     );
-    return r ? { version: r.version, rules: { policies: r.policies, limits: r.limits } } : null;
+    if (!r) return null;
+    const rules = { policies: r.policies, limits: r.limits, ...(r1 ? { policy_text: r.policy_text ?? '', config: r.config ?? {} } : {}) } as Rules;
+    return { version: r.version, rules };
   }
-  createRequest(r: NewRequest) {
-    return this.insert<RequestRow>('requests', r);
+  async createRequest(r: NewRequest) {
+    return this.insert<RequestRow>('requests', (await this.schema()).r1 ? r : legacyCategoryPatch(r as NewRequest & { category?: unknown }));
   }
-  updateRequest(id: string, patch: Partial<RequestRow>) {
-    return this.update<RequestRow>('requests', id, patch);
+  async updateRequest(id: string, patch: Partial<RequestRow>) {
+    return this.update<RequestRow>('requests', id, (await this.schema()).r1 ? patch : legacyCategoryPatch(patch));
   }
   getRequest(id: string) {
     return this.one<RequestRow>(this.db.from('requests').select().eq('id', id).maybeSingle(), 'requests');
@@ -184,8 +289,23 @@ export class SupabaseStore implements Store {
   async updateVersion(id: string, patch: Partial<ContentVersionRow>) {
     await this.update('content_versions', id, patch);
   }
-  async publishVersion(projectId: string, versionId: string) {
-    must(await this.db.rpc('publish_version', { p_project: projectId, p_version: versionId }), 'publish_version');
+  async publishVersion(projectId: string, versionId: string, opts: PublishOptions = {}): Promise<PublishResult> {
+    if (!(await this.schema()).r1) {
+      must(await this.db.rpc('publish_version', { p_project: projectId, p_version: versionId }), 'publish_version');
+      return { already: false, version: null };
+    }
+    try {
+      const r = await this.rpc<{ already: boolean; version: number | null }>('publish_version_v2', {
+        p_project: projectId,
+        p_version: versionId,
+        p_expected_live: opts.expectedLive ?? null,
+        p_key: opts.key ?? null,
+      });
+      return { already: !!r.already, version: r.version ?? null };
+    } catch (err) {
+      if ((err as { code?: string }).code === '40001') throw new VersionConflictError(projectId);
+      throw err;
+    }
   }
   async addApproval(a: { request_id: string; actor: string; decision: string; via: string }) {
     await this.insert('approvals', a);
@@ -223,6 +343,166 @@ export class SupabaseStore implements Store {
   }
   async close() {
     await this.db.removeAllChannels();
+  }
+
+  // ───────────────────────── R1 (0004) ─────────────────────────
+
+  async markProcessed(key: string, source: string) {
+    await this.needR1('processed_updates.key');
+    const rows = await this.many(
+      this.db.from('processed_updates').upsert({ key, source }, { onConflict: 'key', ignoreDuplicates: true }).select('id'),
+      'processed_updates',
+    );
+    return rows.length > 0;
+  }
+
+  async enqueueJob(j: NewJob) {
+    await this.needR1('jobs');
+    const rows = await this.rpc<{ id: string; inserted: boolean }[]>('enqueue_job', {
+      p_kind: j.kind,
+      p_payload: j.payload ?? {},
+      p_project: j.projectId ?? null,
+      p_request: j.requestId ?? null,
+      p_queue: j.queue ?? 'default',
+      p_dedupe_key: j.dedupeKey ?? null,
+      p_run_after: j.runAfter ?? null,
+      p_max_attempts: j.maxAttempts ?? 5,
+    });
+    return { id: rows[0]!.id, inserted: rows[0]!.inserted };
+  }
+  async claimJob(worker: string, queues: string[], leaseSeconds: number) {
+    const rows = await this.rpc<Record<string, unknown>[]>('claim_job', { p_worker: worker, p_queues: queues, p_lease_seconds: leaseSeconds });
+    return rows[0] ? norm<JobRow>(rows[0]) : null;
+  }
+  async heartbeatJob(id: string, worker: string, leaseSeconds: number) {
+    return !!(await this.rpc<boolean>('heartbeat_job', { p_id: id, p_worker: worker, p_lease_seconds: leaseSeconds }));
+  }
+  async completeJob(id: string, worker: string) {
+    return !!(await this.rpc<boolean>('complete_job', { p_id: id, p_worker: worker }));
+  }
+  async failJob(id: string, worker: string, error: string, opts: FailJobOptions = {}) {
+    const rows = await this.rpc<Record<string, unknown>[]>('fail_job', {
+      p_id: id,
+      p_worker: worker,
+      p_error: error,
+      p_retry: opts.retry ?? true,
+      p_base_seconds: opts.baseSeconds ?? 5,
+      p_max_backoff_seconds: opts.maxBackoffSeconds ?? 600,
+    });
+    return rows[0] ? norm<JobRow>(rows[0]) : null;
+  }
+  getJob(id: string) {
+    return this.one<JobRow>(this.db.from('jobs').select().eq('id', id).maybeSingle(), 'jobs');
+  }
+  async requestsWithActiveJobs(requestIds: string[]) {
+    if (requestIds.length === 0 || !(await this.schema()).r1) return new Set<string>();
+    const rows = await this.many<{ request_id: string }>(
+      this.db.from('jobs').select('request_id').in('request_id', requestIds).in('status', ['pending', 'running']),
+      'jobs',
+    );
+    return new Set(rows.map((r) => r.request_id));
+  }
+  async jobsSummary() {
+    if (!(await this.schema()).r1) return [];
+    return ((await this.rpc<Record<string, unknown>[]>('jobs_summary')) ?? []).map((r) => norm<JobsSummaryRow>(r));
+  }
+  async purgeOldRows() {
+    if (!(await this.schema()).r1) return {};
+    return (await this.rpc<Record<string, number>>('purge_old_rows')) ?? {};
+  }
+
+  async labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null) {
+    await this.needR1('request_labels');
+    const row = await this.rpc<Record<string, unknown>>('label_request', {
+      p_request: requestId,
+      p_to_category: to,
+      p_reason: reason ?? null,
+      p_actor: actorUserId ?? null,
+    });
+    return norm<LabelRow>(row);
+  }
+  async similarLabeledRequests(factoryId: string, text: string, k = 5) {
+    if (!(await this.schema()).r1) return [];
+    const rows = await this.rpc<Record<string, unknown>[]>('similar_labeled_requests', { p_factory: factoryId, p_text: text, p_k: k });
+    return (rows ?? []).map((r) => norm<SimilarLabelRow>(r));
+  }
+  async similarExamples(q: ExamplesQuery) {
+    return toPromptExamples(await this.similarLabeledRequests(q.factoryId, q.text, q.limit * 2), q.limit);
+  }
+  countFactoryRequestsSince(factoryId: string, sinceIso: string) {
+    return this.count(
+      this.db
+        .from('requests')
+        .select('id, projects!inner(factory_id)', { count: 'exact', head: true })
+        .eq('projects.factory_id', factoryId)
+        .gte('created_at', sinceIso),
+      'requests',
+    );
+  }
+
+  async getAiSettings(factoryId: string, projectId: string | null) {
+    if (!(await this.schema()).r1) return null;
+    const rows = await this.many<AiSettingsRow>(this.db.from('ai_settings').select().eq('factory_id', factoryId), 'ai_settings');
+    return rows.find((r) => projectId && r.project_id === projectId) ?? rows.find((r) => r.project_id === null) ?? null;
+  }
+  async getAiKey(factoryId: string, projectId: string | null) {
+    if (!(await this.schema()).r1) return null;
+    return (await this.rpc<string | null>('get_ai_key', { p_factory: factoryId, p_project: projectId })) ?? null;
+  }
+  async setAiKey(factoryId: string, projectId: string | null, key: string) {
+    await this.needR1('ai_settings');
+    await this.rpc('set_ai_key', { p_factory: factoryId, p_project: projectId, p_key: key });
+  }
+  async recordUsage(u: UsageEntry) {
+    if (!(await this.schema()).r1) return { balanceUsd: null };
+    const r = await this.rpc<{ balance_usd: number | string | null }>('record_usage', {
+      p_factory: u.factoryId,
+      p_project: u.projectId ?? null,
+      p_request: u.requestId ?? null,
+      p_kind: u.kind,
+      p_mode: u.mode,
+      p_model: u.model ?? null,
+      p_input_tokens: u.inputTokens ?? 0,
+      p_output_tokens: u.outputTokens ?? 0,
+      p_cache_read_tokens: u.cacheReadTokens ?? 0,
+      p_cache_write_tokens: u.cacheWriteTokens ?? 0,
+      p_cost_usd: u.costUsd,
+      p_price_usd: u.priceUsd,
+      p_detail: u.detail ?? null,
+    });
+    return { balanceUsd: r?.balance_usd === null || r?.balance_usd === undefined ? null : Number(r.balance_usd) };
+  }
+  async getWallet(factoryId: string) {
+    if (!(await this.schema()).r1) return null;
+    return this.one<WalletRow>(this.db.from('wallets').select().eq('factory_id', factoryId).maybeSingle(), 'wallets');
+  }
+  async creditWallet(factoryId: string, amountUsd: number, reference: string) {
+    await this.needR1('wallets');
+    const r = await this.rpc<{ already: boolean; balance_usd: number | string }>('credit_wallet', {
+      p_factory: factoryId,
+      p_amount_usd: amountUsd,
+      p_reference: reference,
+    });
+    return { already: !!r.already, balanceUsd: Number(r.balance_usd ?? 0) };
+  }
+  async usageSince(factoryId: string, sinceIso: string, projectId?: string | null) {
+    if (!(await this.schema()).r1) return { costUsd: 0, priceUsd: 0, calls: 0 };
+    const rows = await this.rpc<{ cost_usd: number | string; price_usd: number | string; calls: number | string }[]>('usage_since', {
+      p_factory: factoryId,
+      p_since: sinceIso,
+      p_project: projectId ?? null,
+    });
+    const r = rows?.[0];
+    return { costUsd: Number(r?.cost_usd ?? 0), priceUsd: Number(r?.price_usd ?? 0), calls: Number(r?.calls ?? 0) };
+  }
+
+  async githubInstallation(factoryId: string, owner: string) {
+    if (!(await this.schema()).r1) return null;
+    const rows = await this.many<GithubInstallationRow>(
+      this.db.from('github_installations').select().eq('factory_id', factoryId).ilike('account_login', owner.replace(/[%_\\]/g, '\\$&')).is('suspended_at', null),
+      'github_installations',
+    );
+    return rows[0] ?? null;
   }
 }
 

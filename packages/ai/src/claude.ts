@@ -165,10 +165,12 @@ async function structured<T>(
 ): Promise<{ value: T; usage: Usage[] }> {
   const usage: Usage[] = [];
   let lastError: Error | undefined;
+  // The usage of failed attempts travels with the error, so a fallback still counts it.
+  const fail = (e: Error) => Object.assign(e, { usage });
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await transport(req);
     usage.push(res.usage);
-    if (res.stopReason === 'refusal') throw new AiOutputError('El modelo rechazó el pedido');
+    if (res.stopReason === 'refusal') throw fail(new AiOutputError('El modelo rechazó el pedido'));
     if (res.stopReason === 'max_tokens') {
       lastError = new AiOutputError('La respuesta del modelo quedó cortada');
       continue;
@@ -181,7 +183,7 @@ async function structured<T>(
       lastError = err as Error;
     }
   }
-  throw lastError ?? new AiOutputError('Salida inválida');
+  throw fail(lastError instanceof AiOutputError ? lastError : new AiOutputError(lastError?.message ?? 'Salida inválida'));
 }
 
 export function sumUsage(list: Usage[]): Usage {
@@ -225,17 +227,32 @@ export function buildInterpretUser(input: InterpretInput): string {
 export interface ClaudeProviderOptions {
   name: 'anthropic' | 'bedrock';
   transport: ModelTransport;
+  /**
+   * Another model for the structured calls when the first one fails (refusal, or two invalid outputs).
+   * Used with a cheap classifier: Haiku 5.5 has no server-side fallback.
+   */
+  fallback?: ModelTransport;
   /** For `transcribe`. */
   openAiKey?: string;
 }
 
 export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
   const { transport } = opts;
+  /** `structured` on the main model and, if it fails with an output error, once on the fallback model. */
+  async function withFallback<T>(req: ModelRequest, schema: z.ZodType<T>, normalize?: (raw: unknown) => unknown): Promise<{ value: T; usage: Usage[] }> {
+    try {
+      return await structured(transport, req, schema, normalize);
+    } catch (err) {
+      if (!opts.fallback || !(err instanceof AiOutputError)) throw err;
+      const first = (err as AiOutputError & { usage?: Usage[] }).usage ?? [];
+      const r = await structured(opts.fallback, req, schema, normalize);
+      return { value: r.value, usage: [...first, ...r.usage] };
+    }
+  }
   return {
     name: opts.name,
     async interpret(input) {
-      const { value, usage } = await structured<Interpretation>(
-        transport,
+      const { value, usage } = await withFallback<Interpretation>(
         {
           system: loadPrompt('interpret'),
           user: buildInterpretUser(input),
@@ -267,8 +284,7 @@ export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
         ? pastQuotes.map((q) => `- ${q.title}: USD ${q.amountUsd}, ${q.etaDays} días${q.status ? ` (${q.status})` : ''}. ${q.description}`).join('\n')
         : '(sin presupuestos anteriores)';
       const understood = [summary ? `Lo que se entendió: ${summary}` : '', why ? `Por qué es algo nuevo: ${why}` : ''].filter(Boolean);
-      const { value, usage } = await structured<QuoteDraft>(
-        transport,
+      const { value, usage } = await withFallback<QuoteDraft>(
         {
           system: loadPrompt('presupuesto'),
           user: [`Presupuestos anteriores del proyecto:\n${past}`, '', ...understood, untrusted('pedido_cliente', text)].join('\n'),

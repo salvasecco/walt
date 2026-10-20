@@ -36,6 +36,8 @@ export interface SchemaStatus {
   r1: { ok: boolean; missing: string[] };
   /** 0005 applied: anon can no longer read requests. Null when there is no anon key to try. */
   anonClosed: boolean | null;
+  /** 0006 applied: get_preview_version exists and new projects default to walt.config.json. */
+  previews: boolean;
 }
 
 /** Tables, columns and functions that 0004 adds; each one is probed over REST. */
@@ -99,7 +101,10 @@ export async function schemaStatus(db: SupabaseClient, env: WaltEnv): Promise<Sc
     const res = await anon.from('requests').select('id').limit(0);
     anonClosed = !!res.error && /permission denied/i.test(res.error.message);
   }
-  return { missingTables, publishVersion, anonBlocked, clients, r1: { ok: r1Missing.length === 0, missing: r1Missing }, anonClosed };
+  // 0006: the preview RPC answers (an empty list for a nil id) instead of PGRST202.
+  const preview = await db.rpc('get_preview_version', { p_id: NIL });
+  const previews = !preview.error;
+  return { missingTables, publishVersion, anonBlocked, clients, r1: { ok: r1Missing.length === 0, missing: r1Missing }, anonClosed, previews };
 }
 
 /** Runs a script's main and prints errors without secrets. */

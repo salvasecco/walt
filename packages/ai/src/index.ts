@@ -1,4 +1,4 @@
-import type { WaltEnvValues } from '@walt/core';
+import { DEFAULT_MODELS, INTERPRET_FALLBACK_MODEL, type WaltEnvValues } from '@walt/core';
 import { anthropicTransport, bedrockTransport, createClaudeProvider } from './claude.js';
 import { createFakeProvider } from './fake.js';
 import type { AiProvider } from './types.js';
@@ -26,12 +26,15 @@ export {
   type ModelTransport,
 } from './claude.js';
 export { formatExamples, formatHistory, formatInventory, formatPolicy, loadPrompt, neutralize } from './prompts.js';
+export { simulateRequest, type SimulateInput, type SimulateResult } from './simulate.js';
 
 type AiEnv = Pick<WaltEnvValues, 'LLM_PROVIDER'> & Partial<WaltEnvValues>;
 
 /** Returns the provider selected by `LLM_PROVIDER` (SPEC §10). Never logs credentials. */
 export function createAi(env: AiEnv): AiProvider {
-  const model = env.MODEL_INTERPRET ?? 'claude-sonnet-5-5';
+  const model = env.MODEL_INTERPRET ?? DEFAULT_MODELS.interpret;
+  // A different, stronger model for when the classifier fails (Haiku has no server-side fallback).
+  const fallbackModel = model === INTERPRET_FALLBACK_MODEL ? undefined : INTERPRET_FALLBACK_MODEL;
   switch (env.LLM_PROVIDER) {
     case 'fake':
       return createFakeProvider();
@@ -40,6 +43,7 @@ export function createAi(env: AiEnv): AiProvider {
       return createClaudeProvider({
         name: 'anthropic',
         transport: anthropicTransport({ apiKey: env.ANTHROPIC_API_KEY, model }),
+        ...(fallbackModel ? { fallback: anthropicTransport({ apiKey: env.ANTHROPIC_API_KEY, model: fallbackModel }) } : {}),
         openAiKey: env.OPENAI_API_KEY,
       });
     }
@@ -47,14 +51,11 @@ export function createAi(env: AiEnv): AiProvider {
       if (!env.AWS_REGION || !env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
         throw new Error('Faltan AWS_REGION, AWS_ACCESS_KEY_ID o AWS_SECRET_ACCESS_KEY para LLM_PROVIDER=bedrock');
       }
+      const aws = { region: env.AWS_REGION, accessKeyId: env.AWS_ACCESS_KEY_ID, secretAccessKey: env.AWS_SECRET_ACCESS_KEY };
       return createClaudeProvider({
         name: 'bedrock',
-        transport: bedrockTransport({
-          region: env.AWS_REGION,
-          accessKeyId: env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-          model,
-        }),
+        transport: bedrockTransport({ ...aws, model }),
+        ...(fallbackModel ? { fallback: bedrockTransport({ ...aws, model: fallbackModel }) } : {}),
         openAiKey: env.OPENAI_API_KEY,
       });
     }

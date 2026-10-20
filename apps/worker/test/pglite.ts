@@ -32,12 +32,27 @@ export function migrationFiles(upTo?: string): string[] {
     .filter((n) => !upTo || n.slice(0, 4) <= upTo);
 }
 
-/** PGlite with pg_trgm, the Vault stand-in and the real migrations applied (all, or up to `upTo`, e.g. '0003'). */
-export async function freshPglite(opts: { upTo?: string } = {}): Promise<PGlite> {
+async function migrated(upTo?: string): Promise<PGlite> {
   const pg = new PGlite({ extensions: { pg_trgm } });
   await pg.exec(VAULT_SHIM);
-  for (const f of migrationFiles(opts.upTo)) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+  for (const f of migrationFiles(upTo)) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
   return pg;
+}
+
+const templates = new Map<string, Promise<PGlite>>();
+
+/**
+ * PGlite with pg_trgm, the Vault stand-in and the real migrations applied (all, or up to `upTo`, e.g.
+ * '0003'). The migrated database is built once per `upTo` and cloned for each caller.
+ */
+export async function freshPglite(opts: { upTo?: string } = {}): Promise<PGlite> {
+  const key = opts.upTo ?? 'all';
+  let t = templates.get(key);
+  if (!t) {
+    t = migrated(opts.upTo);
+    templates.set(key, t);
+  }
+  return (await (await t).clone()) as PGlite;
 }
 
 /** The store's Db over PGlite. */

@@ -1,4 +1,5 @@
 import type {
+  AiSettingsRow,
   ApprovalDecision,
   CommandRow,
   CommandStatus,
@@ -7,6 +8,10 @@ import type {
   EventStatus,
   EventStep,
   FactoryRow,
+  GithubInstallationRow,
+  JobRow,
+  LabelCategory,
+  LedgerMode,
   MessageDirection,
   ProjectRow,
   QuoteRow,
@@ -14,7 +19,9 @@ import type {
   RequestStatus,
   Role,
   Rules,
+  SimilarLabelRow,
   Via,
+  WalletRow,
 } from '@walt/core';
 
 export type NewRequest = Pick<RequestRow, 'short_id' | 'project_id' | 'contact_id' | 'raw_text'> &
@@ -42,6 +49,152 @@ export interface NewMessage {
   media?: unknown;
 }
 
+/** A row of `request_labels` (core gets its own `RequestLabelRow` with the taxonomy session). */
+export interface LabelRow {
+  id: string;
+  request_id: string;
+  factory_id: string;
+  from_category: string | null;
+  to_category: LabelCategory;
+  reason: string | null;
+  actor_user_id: string | null;
+  created_at: string;
+}
+
+/** What the decision prompt gets: same shape as `LabeledExample` of `@walt/core` (taxonomy session). */
+export interface PromptExample {
+  text: string;
+  category: LabelCategory;
+  previous: string | null;
+  reason: string | null;
+}
+
+/** Query of `similarExamples` (same shape as `ExampleQuery` of the taxonomy session). */
+export interface ExamplesQuery {
+  factoryId: string;
+  projectId?: string;
+  text: string;
+  limit: number;
+}
+
+/** Below this pg_trgm similarity a relabeled request says nothing about the new one. */
+export const MIN_EXAMPLE_SIMILARITY = 0.1;
+
+const NEW_TO_LEGACY: Record<string, string> = { simple: 'permitido', delicado: 'riesgoso', nuevo: 'fuera_de_alcance' };
+const LEGACY_TO_NEW: Record<string, string> = { permitido: 'simple', riesgoso: 'delicado', fuera_de_alcance: 'nuevo' };
+
+/**
+ * Without 0004 the `requests.category` check of 0001 only takes the old names: a new name is written as
+ * its old one (simple→permitido, delicado→riesgoso, nuevo→fuera_de_alcance). The pipeline reads them back
+ * with `normalizeCategory`. With 0004 it is not needed (and a trigger maps the old ones).
+ */
+export function legacyCategoryPatch<T extends { category?: unknown }>(patch: T): T {
+  const c = patch.category;
+  return typeof c === 'string' && c in NEW_TO_LEGACY ? { ...patch, category: NEW_TO_LEGACY[c] } : patch;
+}
+
+/** An old category name as the new one (for examples read from rows labeled before 0004). */
+export function newCategoryName(c: string | null): string | null {
+  return c && c in LEGACY_TO_NEW ? LEGACY_TO_NEW[c]! : c;
+}
+
+/** Personal data out of an example before it goes to a prompt: e-mails and phone numbers. */
+export function redactPersonal(text: string): string {
+  return text
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]')
+    // 8 digits or more, with spaces, dots or dashes in between: a phone, not a price like 1.250.000.
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, (m) => (m.replace(/\D/g, '').length >= 8 ? '[teléfono]' : m));
+}
+
+/** Relabeled rows → the prompt's examples: similar enough, latest label, old names mapped, personal data out. */
+export function toPromptExamples(rows: SimilarLabelRow[], limit: number): PromptExample[] {
+  return rows
+    .filter((r) => r.similarity >= MIN_EXAMPLE_SIMILARITY)
+    .slice(0, limit)
+    .map((r) => ({ text: redactPersonal(r.raw_text), category: r.to_category, previous: newCategoryName(r.from_category), reason: r.reason }));
+}
+
+export interface NewJob {
+  kind: string;
+  payload?: unknown;
+  projectId?: string | null;
+  requestId?: string | null;
+  /** `default` or `agent`. Default `default`. */
+  queue?: string;
+  /** Same key → the same job (Telegram update, command, request). */
+  dedupeKey?: string | null;
+  runAfter?: string | null;
+  maxAttempts?: number;
+}
+
+export interface FailJobOptions {
+  /** False sends it straight to the dead letter. Default true. */
+  retry?: boolean;
+  baseSeconds?: number;
+  maxBackoffSeconds?: number;
+}
+
+export interface JobsSummaryRow {
+  queue: string;
+  status: string;
+  total: number;
+  oldest: string | null;
+}
+
+/** One model call (or agent run) for the usage ledger. */
+export interface UsageEntry {
+  factoryId: string;
+  projectId?: string | null;
+  requestId?: string | null;
+  kind: 'ai' | 'agent';
+  mode: LedgerMode;
+  model?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  costUsd: number;
+  priceUsd: number;
+  detail?: unknown;
+}
+
+export interface PublishOptions {
+  /** Live version the draft was built on. Default: the draft's `parent_id`. */
+  expectedLive?: string | null;
+  /** Idempotency key, e.g. `publish:<request id>`: the same key never publishes twice. */
+  key?: string | null;
+}
+
+export interface PublishResult {
+  /** The version was already live, or the key was already used: nothing changed. */
+  already: boolean;
+  /** Version number (0004); null before it. */
+  version: number | null;
+}
+
+/** Raised when the live version changed under a publish (Postgres 40001 from publish_version_v2). */
+export class VersionConflictError extends Error {
+  constructor(projectId: string) {
+    super(`La versión viva del proyecto ${projectId} cambió mientras se publicaba`);
+    this.name = 'VersionConflictError';
+  }
+}
+
+/** Raised by the R1 methods when migration 0004 is not applied. */
+export class MissingMigrationError extends Error {
+  constructor(what: string) {
+    super(`Falta la migración 0004 (${what}): pnpm db:migrate --copy 0004`);
+    this.name = 'MissingMigrationError';
+  }
+}
+
+/** What the database supports: `r1` once 0004 is applied. */
+export interface SchemaInfo {
+  r1: boolean;
+  /** What 0004 adds that is missing (empty when `r1`). */
+  missing: string[];
+}
+
 export type RedeemResult =
   | { ok: true; contact: ContactRow }
   | { ok: false; reason: 'no_existe' | 'vencida' | 'sin_usos' };
@@ -67,6 +220,7 @@ export interface Store {
   /** Validates expiry and uses, links the chat with the invite's project and role, and counts the use. */
   redeemInvite(token: string, chatId: number, displayName: string): Promise<RedeemResult>;
 
+  /** Latest rules version. With 0004, `rules.policy_text` and `rules.config` come inside `rules` (R1). */
   latestRules(projectId: string): Promise<{ version: number; rules: Rules } | null>;
 
   createRequest(r: NewRequest): Promise<RequestRow>;
@@ -90,8 +244,12 @@ export interface Store {
   getVersion(id: string): Promise<ContentVersionRow | null>;
   createVersion(v: NewVersion): Promise<ContentVersionRow>;
   updateVersion(id: string, patch: VersionPatch): Promise<void>;
-  /** `publish_version(p_project, p_version)`: the previous live one becomes `reemplazada`. */
-  publishVersion(projectId: string, versionId: string): Promise<void>;
+  /**
+   * Publishes a draft; the previous live one becomes `reemplazada`. With 0004 it goes through
+   * `publish_version_v2`: optimistic locking (throws VersionConflictError if the live version is not the
+   * one the draft was built on) and idempotent (same version or same key → `already`). Before 0004, `publish_version`.
+   */
+  publishVersion(projectId: string, versionId: string, opts?: PublishOptions): Promise<PublishResult>;
 
   addApproval(a: { request_id: string; actor: Role; decision: ApprovalDecision; via: Via }): Promise<void>;
 
@@ -104,6 +262,53 @@ export interface Store {
   /** Pending panel commands, oldest first. */
   pendingCommands(limit?: number): Promise<CommandRow[]>;
   finishCommand(id: string, status: Exclude<CommandStatus, 'pendiente'>, error?: string | null): Promise<void>;
+
+  // ───────────── R1 (migration 0004). Before it: reads come back empty, writes throw MissingMigrationError. ─────────────
+
+  /** Whether 0004 is applied (probed once and cached). */
+  schema(): Promise<SchemaInfo>;
+
+  /** Webhook idempotency with a text key (WhatsApp and others): true if new. */
+  markProcessed(key: string, source: string): Promise<boolean>;
+
+  /** Durable queue. */
+  enqueueJob(job: NewJob): Promise<{ id: string; inserted: boolean }>;
+  claimJob(worker: string, queues: string[], leaseSeconds: number): Promise<JobRow | null>;
+  heartbeatJob(id: string, worker: string, leaseSeconds: number): Promise<boolean>;
+  completeJob(id: string, worker: string): Promise<boolean>;
+  /** Retry with exponential backoff, or dead letter when attempts are used up (or `retry: false`). */
+  failJob(id: string, worker: string, error: string, opts?: FailJobOptions): Promise<JobRow | null>;
+  getJob(id: string): Promise<JobRow | null>;
+  /** Of these requests, the ones with a pending or running job. */
+  requestsWithActiveJobs(requestIds: string[]): Promise<Set<string>>;
+  jobsSummary(): Promise<JobsSummaryRow[]>;
+  /** Deletes finished jobs and old processed updates. */
+  purgeOldRows(): Promise<Record<string, number>>;
+
+  /** Relabels: the agency says what the request really was. */
+  labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null): Promise<LabelRow>;
+  /** Relabeled requests of the agency, most similar to `text` first (pg_trgm). */
+  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<SimilarLabelRow[]>;
+  /** The same as examples for the decision prompt: `ExampleSource` of the taxonomy session. Empty before 0004. */
+  similarExamples(q: ExamplesQuery): Promise<PromptExample[]>;
+  /** Requests of the agency's projects created since a date (rate limit per agency). */
+  countFactoryRequestsSince(factoryId: string, sinceIso: string): Promise<number>;
+
+  /** AI mode: the project's row, else the agency's, else null (Walt's key). */
+  getAiSettings(factoryId: string, projectId: string | null): Promise<AiSettingsRow | null>;
+  /** BYOK key from Supabase Vault (project first, then agency). Never log it. */
+  getAiKey(factoryId: string, projectId: string | null): Promise<string | null>;
+  /** Stores a (validated) key in Vault and sets the mode to byok. */
+  setAiKey(factoryId: string, projectId: string | null, key: string): Promise<void>;
+  /** Saves a model call; in credits mode it also debits the wallet. */
+  recordUsage(u: UsageEntry): Promise<{ balanceUsd: number | null }>;
+  getWallet(factoryId: string): Promise<WalletRow | null>;
+  /** Recharge or adjustment, idempotent by reference. */
+  creditWallet(factoryId: string, amountUsd: number, reference: string): Promise<{ already: boolean; balanceUsd: number }>;
+  usageSince(factoryId: string, sinceIso: string, projectId?: string | null): Promise<{ costUsd: number; priceUsd: number; calls: number }>;
+
+  /** GitHub App installation of the agency for a repo owner (case-insensitive), if any. */
+  githubInstallation(factoryId: string, owner: string): Promise<GithubInstallationRow | null>;
 
   close(): Promise<void>;
 }
