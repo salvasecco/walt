@@ -1,8 +1,82 @@
 # Demo
 
+Guion de la demo del R1 (octubre de 2026): la taxonomía nueva en cuatro casos. Un cambio simple se publica solo con el «Dale» del cliente, uno delicado pasa por la agencia, uno de algo nuevo termina en presupuesto con link de pago, y una reetiqueta de la agencia cambia la decisión siguiente. La demo corre **siempre con el modelo real** (Haiku 5.5 clasifica, Sonnet 5.5 escribe el código): si algo no anda, se dice. La de la hackatón quedó abajo, en «Demo de la hackatón».
+
+## Antes de empezar (10 minutos antes)
+
+1. `pnpm check`: todo en ✅ salvo audios (opcional) y las migraciones que falten (`pnpm db:migrate` dice cuáles).
+2. `pnpm demo:reset`: el sitio vuelve al contenido inicial (versión viva en Supabase y `content/site.json` del repo).
+3. Worker vivo: `scripts/run-worker.sh` (log en `logs/worker.log`). Al arrancar dice el modelo, la base, la cola y `polling como @wal101_bot`; `curl localhost:8080/readyz` tiene que dar `ready`.
+4. Pantalla: el panel (https://walt-panel.vercel.app) en **Aprobaciones** a la izquierda y el celular espejado a la derecha, con el chat de @wal101_bot vinculado como cliente. El sitio, https://walt-demo.vercel.app, en otra pestaña.
+5. **Reetiqueta en vivo solo con la 0004 aplicada** (tabla `request_labels` y la RPC de parecidos). Sin la 0004, ese caso se muestra con `pnpm demo:r1 reetiqueta` en una terminal visible.
+
+## Los cuatro casos
+
+| # | Pedido (por Telegram) | Qué pasa | Qué mostrar |
+|---|---|---|---|
+| 1 | subí los panes a 95 | **Simple** por contenido. Vista previa con los tres panes a $95 y la advertencia «Ojo: Pan de masa madre baja de $220 a $95 (-57%)», con [Dale] y [No era eso]. Sin la agencia | El «Ojo» en la captura; [Dale] y el sitio cambia en segundos. Antes la masa madre iba a la agencia por el límite de precio: ahora es una advertencia para el cliente |
+| 1b | agregá un aviso de envío gratis arriba del footer | **Simple por código**: el agente arma el PR, la doble clasificación revisa el diff (`revision_diff`: simple) y el cliente recibe la vista previa de Vercel. [Dale] mergea y avisa cuando está en la web | Que tocar código no lo vuelve delicado. Tarda: vista previa en unos 40 s y en la web en otros 15 s; arrancalo temprano |
+| 2 | guardá las reservas en la base de datos | **Delicado**: lo dice la IA por intención y lo confirma el código mirando el diff (migración, endpoint `app/api/**`, SQL). El agente arma el PR y la agencia recibe [Aprobar] / [Rechazar] con el PR y la vista previa | En el panel, Aprobaciones con el diff. Recién si la agencia aprueba, el cliente ve la vista previa y publica. En la demo, **rechazalo** (o cerralo): mergear una tabla nueva en el sitio de la panadería no compila |
+| 3 | quiero cobrar las tortas online con Mercado Pago | **Algo nuevo**: borrador de presupuesto (en la prueba, «Cobros online con Mercado Pago», USD 450, 6 días). La agencia lo revisa y lo manda desde **Presupuestos**; el cliente toca [Aceptar] y recibe el link de la seña (50%) | El link es de prueba (`pagos.walt.example`): todavía no cobra; Mercado Pago real es R2. La agencia recibe «aceptó el presupuesto» |
+| 4 | poné un cartel de 50% de descuento en todo → reetiqueta → poné un cartel con 40% de descuento en todo hasta el domingo | El primero sale **simple** (advertencia del descuento). En el panel, en el detalle del pedido, «¿Estuvo bien clasificado?» → **delicado**, motivo «los descuentos grandes los aprueba la agencia». El segundo, parecido, sale **delicado**: espera a la agencia con la vista previa | El ejemplo reetiquetado entra al prompt de decisión (parecidos por `pg_trgm`, solo de la misma agencia). Sin la 0004: `pnpm demo:r1 reetiqueta` |
+
+Otros simples que salen igual: «subí el pan flauta a 95», «el domingo abrimos de 9 a 13», «cambiá el título a naranja», y el cartel de Black Friday (antes pasaba por la agencia; ahora es simple, y si el descuento pasa el umbral de la agencia lleva la advertencia).
+
+## Última corrida (2026-10-20, 90-integracion)
+
+Con el modelo real: `claude-haiku-5-5` clasifica (prompt v9) y `claude-sonnet-5-5` escribe el código. Base **en memoria** (`--memoria` o `pnpm demo:r1`), porque la 0004 no está aplicada; los casos de contenido con `GITHUB_MODE=fake` (para no commitear en el repo del sitio) y los de código con GitHub y Vercel reales. Además, `pnpm e2e --strict` en verde contra la base real sin la 0004 (Supabase, modelo, GitHub y el HTML del sitio).
+
+| Caso | Comando | Resultado | Tiempo | Costo de IA |
+|---|---|---|---|---|
+| 1 | `pnpm dry-run "subí los panes a 95" --memoria --undo` | simple/contenido, advertencia de la masa madre → publicado → revertido | vista previa a los 4,1 s | USD 0,0014 |
+| 1 | `pnpm dry-run "subí el pan flauta a 95" --memoria --undo` | simple/contenido → publicado → revertido | vista previa a los 2,9 s | USD 0,0003 |
+| 1 | `pnpm dry-run "el domingo abrimos de 9 a 13" --memoria --undo` | simple/contenido (domingo 09:00–13:00) → publicado → revertido | 2,9 s | USD 0,0003 |
+| 1 | `pnpm dry-run "cambiá el título a naranja" --memoria --undo` | simple/contenido (`title`) → publicado → revertido | 3,6 s | USD 0,0003 |
+| 1b | `pnpm dry-run "agregá un aviso de envío gratis arriba del footer" --memoria --undo` | simple/código: PR #13 en walt-demo, `revision_diff` simple, vista previa → [Dale] → mergeado y en la web → revertido y en la web | vista previa a los 40 s; en la web a los 58 s | USD 0,0005 + agente USD 0,0432 |
+| 2 | `pnpm dry-run "guardá las reservas en la base de datos" --memoria --approve` | delicado/código: PR #14 (migración, endpoint, formulario), `revision_diff` delicado → espera a la agencia con [Aprobar]. PR cerrado después | 63 s | USD 0,0003 + agente USD 0,1136 |
+| 2 | `pnpm demo:r1 delicado` | lo mismo con PR #15; el build de Vercel de ese PR falló, así que esperó la vista previa 4 min (ya arreglado: con el build fallado sigue sin esperar). La agencia lo descartó | 272 s | USD 0,0003 + agente USD 0,0649 |
+| 3 | `pnpm dry-run "quiero cobrar las tortas online con Mercado Pago" --memoria` y `pnpm demo:r1 nuevo` | nuevo → presupuesto USD 450, 6 días → la agencia lo manda → el cliente acepta → link de la seña USD 225 (de prueba) | presupuesto a los 5,3 s | USD 0,0005 |
+| 4 | `pnpm demo:r1 reetiqueta` | 50%: simple → reetiqueta a delicado → 40%: delicado/contenido, espera a la agencia | 9,8 s | USD 0,0010 |
+
+## Orden de la demo (4 minutos)
+
+| Tiempo | Qué pasa | Qué se dice |
+|---|---|---|
+| 0:00–0:20 | Panel + sitio de la panadería. Mandar ya el 1b (envío gratis): tarda | "Mabel tiene una panadería; su web la hizo Estudio Faro. Walt atiende sus pedidos por Telegram." |
+| 0:20–1:00 | Caso 1: «subí los panes a 95» → captura con el «Ojo» → [Dale] → el sitio cambia | "Lo simple no pasa por la agencia, aunque cambie mucho un precio: el cliente ve la advertencia y decide." |
+| 1:00–1:30 | Caso 1b: llega la vista previa del aviso → [Dale] → en la web | "Que toque código no lo vuelve delicado. El código igual revisa el diff: si toca la base, sube a delicado solo." |
+| 1:30–2:15 | Caso 2: «guardá las reservas en la base de datos» → Aprobaciones con el diff (migración, endpoint) | "Esto sí lo aprueba la agencia, con el diff a la vista. La IA lo clasificó y el código lo confirmó mirando el diff real." |
+| 2:15–3:00 | Caso 3: Mercado Pago → Presupuestos → mandar → [Aceptar] → link de la seña | "Lo nuevo es una venta para la agencia: alcance, plazo, precio y seña." |
+| 3:00–3:45 | Caso 4: cartel 50% → reetiquetar como delicado → cartel 40% va a la agencia | "La agencia corrige y Walt aprende de su agencia, y solo de la suya." |
+| 3:45–4:00 | Reglas: política en texto, plantillas por stack y el simulador | "Cada agencia define qué es simple, delicado o nuevo en cada proyecto." |
+
+## Plan B
+
+| Si falla… | Hacé esto |
+|---|---|
+| Telegram (no llega el mensaje) | `pnpm demo:r1` en una terminal visible: los cuatro casos con el pipeline real y la base en memoria. Decirlo |
+| El agente tarda o falla | `pnpm dry-run "agregá un aviso de envío gratis arriba del footer" --memoria --undo`; si no hay vista previa, la agencia recibe el PR igual |
+| La reetiqueta no cambia la decisión | Sin la 0004 no hay `request_labels`: `pnpm demo:r1 reetiqueta` |
+| El worker se cayó | `scripts/run-worker.sh` lo reinicia solo; mirar `logs/worker.log` y `curl localhost:8080/readyz` |
+| El modelo no responde | El pedido queda **derivado** ("No pude hacerlo solo…"): mostrarlo como lo que es, no simularlo |
+| El sitio no cambia | Recargar; revisar `data-content-source` en el HTML (tiene que decir `live`) |
+
+## Resetear
+
+```bash
+pnpm demo:reset              # Supabase + repo del sitio (si GITHUB_MODE=real)
+pnpm demo:reset --keep-repo  # solo Supabase
+```
+
+Si quedó un PR abierto de la demo en walt-demo, cerralo (o [Rechazar] desde el panel).
+
+## Demo de la hackatón
+
+Lo que sigue es el guion de la hackatón (17 de octubre), con la taxonomía de entonces (permitido, riesgoso, fuera de alcance). Con el R1, el cartel de Black Friday (caso 4) ya no pasa por la agencia: es simple.
+
 Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan B y cómo resetear. La demo corre **siempre con el modelo real**: si algo no anda, se dice.
 
-## Antes de empezar (5 minutos antes)
+### Antes de empezar (5 minutos antes)
 
 1. `pnpm check`: todo en ✅ salvo audios (opcional).
 2. `pnpm demo:reset`: el sitio vuelve al contenido inicial (versión viva en Supabase y, con `GITHUB_MODE=real`, `content/site.json` del repo).
@@ -10,7 +84,7 @@ Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan
 4. Pantalla: panel en **En vivo** a la izquierda, el celular espejado a la derecha. El sitio ya está en el iframe del panel.
 5. En el celular, el chat del bot abierto y vinculado como cliente (link de invitación del cliente). La agencia vinculada en otro Telegram (o aprobar desde el panel).
 
-## Los 8 casos
+### Los 8 casos
 
 | # | Pedido | Resultado esperado | Qué mostrar |
 |---|---|---|---|
@@ -38,7 +112,7 @@ Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan
 | 7 | fuera de alcance → presupuesto borrador (USD 300, 5 días) | sin correr |
 | 8 | permitido → publicado (`set_color` background #7C3AED) | sin correr |
 
-## Orden de la demo (3 minutos)
+### Orden de la demo (3 minutos)
 
 | Tiempo | Qué pasa | Qué se dice |
 |---|---|---|
@@ -53,7 +127,7 @@ Guion de la demo de 3 minutos, los 8 casos que tienen que salir siempre, el plan
 
 Probar el audio sin Telegram: `pnpm voice-test "subí el pan flauta a 95" --approve` (genera la voz con `say` y la pasa por el mismo handler del worker).
 
-## Plan B
+### Plan B
 
 | Si falla… | Hacé esto |
 |---|---|
@@ -65,7 +139,7 @@ Probar el audio sin Telegram: `pnpm voice-test "subí el pan flauta a 95" --appr
 | El sitio no cambia | Recargar; revisar `data-content-source` en el HTML (tiene que decir `live`) |
 | Supabase cae | El sitio cae al archivo local. La demo se corta: decirlo y mostrar el historial y la evaluación |
 
-## Resetear
+### Resetear
 
 ```bash
 pnpm demo:reset              # Supabase + repo del sitio (si GITHUB_MODE=real)
