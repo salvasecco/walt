@@ -1,6 +1,7 @@
 import "server-only";
 import { dataMode, env } from "./env";
 import { buildSample } from "./sample";
+import { actorEmails, getLabelsFor } from "./relabel";
 import { agencyNameOf, getScope, inScope } from "./session";
 import { supabaseAdmin } from "./supabase/server";
 import { AGENCY_WAIT_STATUSES, categoryVariants, isPendingAgency, normalizeCategory } from "./taxonomy";
@@ -13,6 +14,7 @@ import type {
   Message,
   Project,
   Quote,
+  RequestLabel,
   RequestStatus,
   Rules,
 } from "./types";
@@ -118,7 +120,16 @@ export type RequestDetail = {
   versions: ContentVersion[];
   liveVersion: ContentVersion | null;
   quote: Quote | null;
+  /** Reetiquetados de la agencia (0004). `labelsReady` false: falta la tabla. */
+  labels: (RequestLabel & { actor_email: string | null })[];
+  labelsReady: boolean;
 };
+
+async function withLabels(requestId: string) {
+  const { ready, labels } = await getLabelsFor([requestId]);
+  const emails = await actorEmails(labels.map((l) => l.actor_user_id));
+  return { labelsReady: ready, labels: labels.map((l) => ({ ...l, actor_email: l.actor_user_id ? (emails[l.actor_user_id] ?? null) : null })) };
+}
 
 export async function getRequestDetail(shortId: string): Promise<RequestDetail | null> {
   const m = mode();
@@ -136,6 +147,7 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
       versions: s.versions.filter((v) => v.request_id === request.id),
       liveVersion: s.versions.find((v) => v.status === "viva" && v.project_id === request.project_id) ?? null,
       quote: s.quotes.find((q) => q.request_id === request.id) ?? null,
+      ...(await withLabels(request.id)),
     };
   }
   const db = supabaseAdmin();
@@ -143,15 +155,16 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
   // Un pedido de otra agencia no existe para quien mira.
   const project = request ? (scope.projects.find((p) => p.id === request.project_id) ?? null) : null;
   if (!request || !project) return null;
-  const [events, messages, approvals, versions, liveVersion, quote] = await Promise.all([
+  const [events, messages, approvals, versions, liveVersion, quote, labels] = await Promise.all([
     db.from("events").select("*").eq("request_id", request.id).order("id").then(must<WaltEvent[]>),
     db.from("messages").select("*").eq("request_id", request.id).order("at").then(must<Message[]>),
     db.from("approvals").select("*").eq("request_id", request.id).order("at").then(must<Approval[]>),
     db.from("content_versions").select("*").eq("request_id", request.id).order("created_at").then(must<ContentVersion[]>),
     db.from("content_versions").select("*").eq("project_id", request.project_id).eq("status", "viva").maybeSingle().then(must<ContentVersion | null>),
     db.from("quotes").select("*").eq("request_id", request.id).maybeSingle().then(must<Quote | null>),
+    withLabels(request.id),
   ]);
-  return { request, project, events, messages, approvals, versions, liveVersion, quote };
+  return { request, project, events, messages, approvals, versions, liveVersion, quote, ...labels };
 }
 
 /** Lo que el agente quiere cambiar en el código: el diff guardado con el evento del PR. */

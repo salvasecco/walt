@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SlidersHorizontal } from "lucide-react";
 import { NotConfigured } from "@/components/not-configured";
+import { RuleSuggestions } from "@/components/rule-suggestions";
 import { EmptyState, PageHeader, SampleBadge } from "@/components/ui-walt";
 import { getProjects, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { can, ROLE_LABEL } from "@/lib/roles";
+import { getLearningData, suggestionsFrom } from "@/lib/learning";
 import { getRulesView } from "@/lib/rules";
 import { getScope } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -31,7 +33,9 @@ export default async function ReglasPage({ searchParams }: PageProps<"/reglas">)
       </EmptyState>
     );
   const project = projects.find((p) => p.id === sp.proyecto) ?? projects[0];
-  const [view, { viewer }] = await Promise.all([getRulesView(project.id), getScope()]);
+  const [view, { viewer }, learning] = await Promise.all([getRulesView(project.id), getScope(), getLearningData([project.id])]);
+  const suggestions = suggestionsFrom(learning);
+  const canEdit = can(viewer.role, "configurar");
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -67,8 +71,15 @@ export default async function ReglasPage({ searchParams }: PageProps<"/reglas">)
         templates={view.templates}
         alwaysDelicate={view.alwaysDelicate}
         structured={view.structured}
-        canEdit={can(viewer.role, "configurar")}
+        canEdit={canEdit}
         roleLabel={ROLE_LABEL[viewer.role]}
+        aside={
+          <RuleSuggestions
+            items={suggestions.map(({ id, projectId, kind, text, count, requests }) => ({ id, projectId, kind, text, count, requests }))}
+            canApply={canEdit}
+            ready={learning.ready}
+          />
+        }
       />
     </div>
   );

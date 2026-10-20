@@ -789,6 +789,38 @@ export function buildSample(now = Date.now()): SampleData {
     });
   }
 
+  // Un «No era eso» y su corrección: para «Aprobados al primer intento» y la tasa de «No era eso» en Calidad.
+  {
+    const first = uuid(720);
+    const retry = uuid(721);
+    const created = now - 86_400_000 * 4;
+    const base = { ...requests[0], lane: "contenido" as const, category: "simple" as const, draft_version_id: null, live_version_id: null, cost_usd: 0.014 };
+    requests.push({
+      ...base,
+      id: first,
+      short_id: "R6N1",
+      raw_text: "cambiá el subtítulo por «Pan casero»",
+      status: "descartado",
+      interpretation: { kind: "simple", summary: "Cambio el subtítulo del encabezado de productos", confidence: 0.71, ops: [], needsCode: false, unexpressedParts: [] },
+      created_at: new Date(created).toISOString(),
+      updated_at: new Date(created + 90_000).toISOString(),
+    });
+    requests.push({
+      ...base,
+      id: retry,
+      short_id: "R6N2",
+      raw_text: "no, el subtítulo de arriba de todo",
+      status: "publicado",
+      parent_request_id: first,
+      interpretation: { kind: "simple", summary: "Cambio el subtítulo principal por «Pan casero»", confidence: 0.95, ops: [], needsCode: false, unexpressedParts: [] },
+      created_at: new Date(created + 120_000).toISOString(),
+      updated_at: new Date(created + 160_000).toISOString(),
+    });
+    approvals.push({ id: uuid(720, "ffffffff"), request_id: first, actor: "cliente", decision: "rechazado", via: "telegram", at: new Date(created + 80_000).toISOString() });
+    approvals.push({ id: uuid(721, "ffffffff"), request_id: retry, actor: "cliente", decision: "aprobado", via: "telegram", at: new Date(created + 150_000).toISOString() });
+    events.push({ id: evId++, request_id: retry, step: "publicado", status: "ok", detail: null, duration_ms: 240, at: new Date(created + 152_000).toISOString() });
+  }
+
   versions.push({
     id: uuid(999, "eeeeeeee"),
     project_id: SEED_PROJECT_ID,
