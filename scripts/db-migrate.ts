@@ -41,7 +41,7 @@ runMain('db:migrate', async () => {
   const closed = s.anonClosed === true;
   console.log(
     `${closed ? '✅' : '⏳'} 0005_r1_cierre_anon.sql${s.anonClosed === null ? '  (sin clave anon para comprobarla)' : ''}` +
-      (closed ? '' : '  (aplicala cuando el panel use Supabase Auth para el realtime)'),
+      (closed ? '' : '  (la última: después de publicar el panel con Supabase Auth y crear el dueño de la agencia en Equipo)'),
   );
 
   console.log(`${s.previews ? '✅' : '⏳'} 0006_r1_vistas_previas.sql${s.previews ? '' : '  (la anon deja de leer borradores; el sitio ya está listo)'}`);
@@ -51,14 +51,18 @@ runMain('db:migrate', async () => {
     ...(revoke ? [] : ['0002']),
     ...(s.clients ? [] : ['0003']),
     ...(s.r1.ok ? [] : ['0004']),
-    ...(closed || s.anonClosed === null ? [] : ['0005']),
+    // 0006 before 0005: 0005 closes anon and goes last, once the panel uses Supabase Auth.
     ...(s.previews ? [] : ['0006']),
+    ...(closed || s.anonClosed === null ? [] : ['0005']),
   ];
   if (pending.length === 0) {
     console.log('La base está al día.');
     return;
   }
   console.log('\nAplicalas en orden en Supabase → SQL Editor:');
-  for (const p of pending) console.log(`  pnpm db:migrate --copy ${p}   → pegar y Run`);
+  for (const p of pending) {
+    const note = p === '0004' ? '   (después reiniciá el worker: pasa solo a la cola durable)' : p === '0005' ? '   (recién con el panel de Supabase Auth en uso)' : '';
+    console.log(`  pnpm db:migrate --copy ${p}   → pegar y Run${note}`);
+  }
   process.exitCode = 2;
 });
