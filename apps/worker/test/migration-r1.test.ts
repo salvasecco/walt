@@ -42,7 +42,9 @@ describe('migraciones 0004 y 0005 sobre una base con datos (PGlite)', () => {
     await q(`insert into processed_updates (update_id) values (1), (2)`);
     await q(`insert into content_versions (project_id, status, content, published_at) values ($1, 'viva', '{}', now()), ($1, 'reemplazada', '{}', now())`, [P]);
     // Applied twice each: both are idempotent.
-    for (const f of ['0004_r1.sql', '0004_r1.sql', '0005_r1_cierre_anon.sql', '0005_r1_cierre_anon.sql']) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+    for (const f of ['0004_r1.sql', '0004_r1.sql', '0005_r1_cierre_anon.sql', '0005_r1_cierre_anon.sql', '0006_r1_vistas_previas.sql', '0006_r1_vistas_previas.sql']) {
+      await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+    }
     await q(`insert into auth.users (id) values ($1), ($2), ($3)`, [MEMBER, OWNER2, ADMIN]);
     await q(`insert into memberships (user_id, factory_id, role) values ($1, $3, 'member'), ($2, $4, 'owner'), ($5, $3, 'admin')`, [MEMBER, OWNER2, F, F2, ADMIN]);
   });
@@ -108,9 +110,18 @@ describe('migraciones 0004 y 0005 sobre una base con datos (PGlite)', () => {
     expect(await q(`select assistant_name from factories where id = $1`, [id])).toEqual([{ assistant_name: 'el asistente de Estudio Nuevo' }]);
   });
 
-  it('después de 0005 la anon solo lee content_versions', async () => {
+  it('0006: config_path nuevo por defecto y en las filas viejas', async () => {
+    expect(await q(`select distinct config_path from projects`)).toEqual([{ config_path: 'walt.config.json' }]);
+    const [p] = await q<{ config_path: string }>(`insert into projects (factory_id, name, client_name, repo_owner, repo_name) values ($1, 'N', 'C', 'o', 'n') returning config_path`, [F]);
+    expect(p!.config_path).toBe('walt.config.json');
+  });
+
+  it('después de 0005 y 0006 la anon solo lee la versión viva, y un borrador por su id con la RPC', async () => {
+    const [draft] = await q<{ id: string }>(`select id from content_versions where status <> 'viva' order by version desc limit 1`);
     await as(pg, { role: 'anon' }, async () => {
-      expect((await q<{ n: number }>('select count(*)::int as n from content_versions'))[0]!.n).toBe(3);
+      expect(await q('select status from content_versions')).toEqual([{ status: 'viva' }]);
+      expect(await q(`select id, status from get_preview_version($1)`, [draft!.id])).toEqual([{ id: draft!.id, status: expect.any(String) }]);
+      expect(await q(`select * from get_preview_version('00000000-0000-4000-8000-000000000000')`)).toEqual([]);
       for (const t of ['requests', 'messages', 'events', 'clients', 'projects', 'quotes', 'jobs', 'memberships']) {
         await expect(q(`select * from ${t} limit 1`)).rejects.toThrow(/permission denied/);
       }

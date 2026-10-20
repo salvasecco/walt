@@ -71,7 +71,8 @@ async function checkSchema(env: WaltEnv): Promise<Row> {
   if (s.anonBlocked === false) return { name, ok: false, detail: '0001 aplicada, falta 0002 (pnpm db:migrate --copy 0002)' };
   if (!s.clients) return { name, ok: false, detail: 'falta 0003 (pnpm db:migrate --copy 0003)' };
   if (!s.r1.ok) return { name, ok: false, detail: `falta 0004, la del R1 (pnpm db:migrate --copy 0004): ${s.r1.missing.slice(0, 3).join(', ')}` };
-  return { name, ok: true, detail: `0001 a 0004 aplicadas${s.anonClosed ? ' y la anon cerrada (0005)' : '; 0005 (cerrar la anon) pendiente'}` };
+  const extra = [s.anonClosed ? 'anon cerrada (0005)' : '0005 pendiente', s.previews ? 'vistas previas por RPC (0006)' : '0006 pendiente'];
+  return { name, ok: true, detail: `0001 a 0004 aplicadas; ${extra.join(', ')}` };
 }
 
 async function checkGithub(env: WaltEnv): Promise<Row> {
