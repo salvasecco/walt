@@ -6,6 +6,7 @@ import { copy, loadEnv, SEED_IDS, type Usage } from '@walt/core';
 import { bakeryContent } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import { buildApp, type App, type BuildOptions } from '../src/app.js';
+import { currentWork, type WorkContext } from '../src/context.js';
 import { ConsoleChannel } from '../src/channel/console.js';
 import { JOB, reapStuck, UpdateIntake } from '../src/durable.js';
 import { loadExtraEnv } from '../src/extra-env.js';
@@ -91,6 +92,33 @@ describe('cola durable de punta a punta (memoria)', () => {
     expect(agent.calls.some((c) => c.startsWith('run:'))).toBe(true);
     // Simple code change: the client gets the preview; a delicate one waits for the agency.
     expect(['esperando_cliente', 'agente_listo']).toContain(store.requests.at(-1)!.status);
+    await app.close();
+  });
+
+  it('el merge del código corre adentro de un trabajo de la cola, con el lock del proyecto', async () => {
+    const agent = okAgent();
+    const seen: (WorkContext | undefined)[] = [];
+    const merge = agent.mergeChange;
+    agent.mergeChange = async (input) => {
+      seen.push(currentWork());
+      return merge(input);
+    };
+    const { app, store } = await durableApp({ agent });
+    store.projects[0]!.mode = 'codigo';
+    await app.intake(text('agregá una sección de testimonios con tres opiniones', 1));
+    await app.idle();
+    const req = store.requests.at(-1)!;
+    // Simple code change: the client sees the preview and says "Dale"; a delicate one gets the agency's OK first.
+    if (req.status === 'agente_listo') {
+      await app.intake(press(`gok:${req.short_id}`, 2, AGENCY_CHAT));
+      await app.idle();
+    }
+    await app.intake(press(`ok:${req.short_id}`, 3));
+    await app.idle();
+    expect(agent.calls).toContain('merge:7');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ kind: JOB.incoming, projectId: SEED_IDS.project });
+    expect(store.jobs.find((j) => j.id === seen[0]!.jobId)).toMatchObject({ queue: 'default', status: 'done' });
     await app.close();
   });
 

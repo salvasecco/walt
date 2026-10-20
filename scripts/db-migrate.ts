@@ -44,12 +44,15 @@ runMain('db:migrate', async () => {
       (closed ? '' : '  (aplicala cuando el panel use Supabase Auth para el realtime)'),
   );
 
+  console.log(`${s.previews ? '✅' : '⏳'} 0006_r1_vistas_previas.sql${s.previews ? '' : '  (la anon deja de leer borradores; el sitio ya está listo)'}`);
+
   const pending = [
     ...(init ? [] : ['0001']),
     ...(revoke ? [] : ['0002']),
     ...(s.clients ? [] : ['0003']),
     ...(s.r1.ok ? [] : ['0004']),
     ...(closed || s.anonClosed === null ? [] : ['0005']),
+    ...(s.previews ? [] : ['0006']),
   ];
   if (pending.length === 0) {
     console.log('La base está al día.');
