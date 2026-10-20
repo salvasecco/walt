@@ -3,7 +3,7 @@ import { dataMode } from "./env";
 import { computeQuality, type QApproval, type QRequest, type Quality } from "./quality";
 import { getLabelsFor } from "./relabel";
 import { buildSample } from "./sample";
-import { getScope, inScope } from "./session";
+import { getScope, inScope, realRows } from "./session";
 import { supabaseAdmin } from "./supabase/server";
 import type { Approval, Project, WaltEvent } from "./types";
 
@@ -41,11 +41,12 @@ export async function getQualityView(days: number): Promise<QualityView> {
     published = s.events.filter((e) => ids.has(e.request_id) && e.step === "publicado" && e.status === "ok");
   } else {
     const db = supabaseAdmin();
-    const { data, error } = await inScope(db.from("requests").select("id, project_id, category, status, parent_request_id, cost_usd, created_at").gte("created_at", since), scope)
-      .order("created_at", { ascending: false })
-      .limit(5000);
-    if (error) throw new Error(error.message);
-    requests = data as QRequest[];
+    // Sin los pedidos de ejemplo de la 0003: nada de números inventados.
+    requests = await realRows<QRequest>("id, project_id, category, status, parent_request_id, cost_usd, created_at", (cols) =>
+      inScope(db.from("requests").select(cols).gte("created_at", since), scope)
+        .order("created_at", { ascending: false })
+        .limit(5000),
+    );
     const ids = requests.map((r) => r.id);
     [approvals, published] = await Promise.all([
       chunked<Approval>(ids, (part) => db.from("approvals").select("request_id, actor, decision, at").in("request_id", part)),

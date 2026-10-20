@@ -1,7 +1,7 @@
 import "server-only";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
-import { getScope, inScope, isMissingRelation } from "./session";
+import { getScope, inScope, isMissingRelation, realRows } from "./session";
 import { supabaseAdmin } from "./supabase/server";
 import { SEED_FACTORY_ID, type Project, type StoredCategory } from "./types";
 
@@ -157,14 +157,13 @@ export async function getAiView(): Promise<AiView> {
 
   const db = supabaseAdmin();
   const projectIds = [...ids];
+  // Sin los pedidos de ejemplo de la 0003: el costo es el real.
   const reqsP = projectIds.length
-    ? inScope(db.from("requests").select("id, short_id, project_id, raw_text, category, cost_usd, usage, created_at").gte("created_at", since).in("project_id", projectIds), scope)
-        .order("created_at", { ascending: false })
-        .limit(5000)
-        .then((r) => {
-          if (r.error) throw new Error(r.error.message);
-          return r.data as (Omit<CostRequest, "model"> & { usage: unknown })[];
-        })
+    ? realRows<Omit<CostRequest, "model"> & { usage: unknown }>("id, short_id, project_id, raw_text, category, cost_usd, usage, created_at", (cols) =>
+        inScope(db.from("requests").select(cols).gte("created_at", since).in("project_id", projectIds), scope)
+          .order("created_at", { ascending: false })
+          .limit(5000),
+      )
     : Promise.resolve([]);
   const [settingsRes, walletRes, ledgerRes, reqs] = await Promise.all([
     factoryId ? db.from("ai_settings").select("*").eq("factory_id", factoryId) : Promise.resolve({ data: [], error: null }),

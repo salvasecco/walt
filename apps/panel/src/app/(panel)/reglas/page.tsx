@@ -32,7 +32,8 @@ export default async function ReglasPage({ searchParams }: PageProps<"/reglas">)
         Conectá un repo en Proyectos y después definí sus reglas acá.
       </EmptyState>
     );
-  const project = projects.find((p) => p.id === sp.proyecto) ?? projects[0];
+  // Sin elegir, el primer proyecto real (los de ejemplo de la 0003 van después).
+  const project = projects.find((p) => p.id === sp.proyecto) ?? projects.find((p) => !p.is_sample) ?? projects[0];
   const [view, { viewer }, learning] = await Promise.all([getRulesView(project.id), getScope(), getLearningData([project.id])]);
   const suggestions = suggestionsFrom(learning);
   const canEdit = can(viewer.role, "configurar");

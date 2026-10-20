@@ -190,6 +190,17 @@ export const getScope = cache(async (): Promise<Scope> => {
   return loadScope(viewer);
 });
 
+/**
+ * Pedidos sin los de ejemplo (`is_sample`, migración 0003): las métricas salen solo de datos reales.
+ * Si la columna no existe, ninguno es de ejemplo y se consulta sin ella.
+ */
+export async function realRows<T>(cols: string, run: (cols: string) => PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>): Promise<T[]> {
+  let res = await run(`${cols}, is_sample`);
+  if (res.error && isMissingColumn(res.error)) res = await run(cols);
+  if (res.error) throw new Error(res.error.message);
+  return ((res.data ?? []) as (T & { is_sample?: boolean })[]).filter((r) => !r.is_sample);
+}
+
 /** Agrega el filtro por proyecto a una consulta, salvo con el acceso de la instancia. */
 export function inScope<Q>(q: Q, scope: Scope, column = "project_id"): Q {
   if (scope.all) return q;

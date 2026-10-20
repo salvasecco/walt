@@ -4,7 +4,7 @@ import { OP_LABEL } from "./labels";
 import { getFactoryLabels } from "./relabel";
 import { toEditable } from "./rules";
 import { buildSample } from "./sample";
-import { getScope, inScope } from "./session";
+import { getScope, inScope, realRows } from "./session";
 import { suggestRules, type RequestLite, type RuleSuggestion } from "./suggestions";
 import { supabaseAdmin } from "./supabase/server";
 import type { EditableRules, OpType, Project, RequestLabel, Rules, WaltEvent, WaltRequest } from "./types";
@@ -63,13 +63,12 @@ export async function getLearningData(projectIds?: string[]): Promise<LearningDa
   const db = supabaseAdmin();
   const [labelsRes, requests, rulesRows] = await Promise.all([
     getFactoryLabels(scope.all ? null : scope.factoryId, since),
-    inScope(db.from("requests").select("id, short_id, project_id, raw_text, lane, category, ops").gte("created_at", since).in("project_id", ids), scope)
-      .order("created_at", { ascending: false })
-      .limit(3000)
-      .then((r) => {
-        if (r.error) throw new Error(r.error.message);
-        return r.data as Pick<WaltRequest, "id" | "short_id" | "project_id" | "raw_text" | "lane" | "category" | "ops">[];
-      }),
+    // Los pedidos de ejemplo (0003) no enseñan nada: quedan afuera.
+    realRows<Pick<WaltRequest, "id" | "short_id" | "project_id" | "raw_text" | "lane" | "category" | "ops">>("id, short_id, project_id, raw_text, lane, category, ops", (cols) =>
+      inScope(db.from("requests").select(cols).gte("created_at", since).in("project_id", ids), scope)
+        .order("created_at", { ascending: false })
+        .limit(3000),
+    ),
     db
       .from("rules")
       .select("*")
@@ -85,9 +84,10 @@ export async function getLearningData(projectIds?: string[]): Promise<LearningDa
   const known = new Set(requests.map((r) => r.id));
   const missing = [...new Set(labelsRes.labels.map((l) => l.request_id).filter((id) => !known.has(id)))];
   if (missing.length) {
-    const { data, error } = await inScope(db.from("requests").select("id, short_id, project_id, raw_text, lane, category, ops").in("id", missing.slice(0, 500)), scope);
-    if (error) throw new Error(error.message);
-    requests.push(...((data ?? []) as typeof requests).filter((r) => ids.includes(r.project_id)));
+    const extra = await realRows<(typeof requests)[number]>("id, short_id, project_id, raw_text, lane, category, ops", (cols) =>
+      inScope(db.from("requests").select(cols).in("id", missing.slice(0, 500)), scope),
+    );
+    requests.push(...extra.filter((r) => ids.includes(r.project_id)));
   }
   const codeIds = requests.filter((r) => r.lane === "codigo").map((r) => r.id);
   const events: WaltEvent[] = [];
