@@ -1,6 +1,6 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { autoRetry } from '@grammyjs/auto-retry';
-import { Bot, InlineKeyboard, InputFile, webhookCallback, type Context } from 'grammy';
+import { Bot, InlineKeyboard, InputFile, webhookCallback, type Api, type Context } from 'grammy';
 import type { Channel, Incoming, OutMessage } from './types.js';
 
 const CAPTION_MAX = 1024;
@@ -17,6 +17,17 @@ export function keyboard(rows: OutMessage['buttons']): InlineKeyboard | undefine
     if (i < rows.length - 1) kb.row();
   });
   return kb;
+}
+
+/** Downloads a voice note by its file id (works later too: the durable queue keeps only the id). */
+export function voiceDownload(api: Pick<Api, 'getFile'>, token: string, fileId: string, mime: string): () => Promise<{ data: Buffer; mime: string }> {
+  return async () => {
+    const file = await api.getFile(fileId);
+    // The URL carries the bot token: never log it.
+    const res = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) throw new Error(`No pude bajar el audio (HTTP ${res.status})`);
+    return { data: Buffer.from(await res.arrayBuffer()), mime };
+  };
 }
 
 /** Maps a grammY context to a normalized incoming update (or null to ignore). */
@@ -38,19 +49,7 @@ export function toIncoming(ctx: Context, token: string): Incoming | null {
   if (voice) {
     const fileId = voice.file_id;
     const mime = voice.mime_type ?? 'audio/ogg';
-    return {
-      kind: 'voice',
-      updateId,
-      chatId,
-      fromName,
-      download: async () => {
-        const file = await ctx.api.getFile(fileId);
-        // The URL carries the bot token: never log it.
-        const res = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(20_000) });
-        if (!res.ok) throw new Error(`No pude bajar el audio (HTTP ${res.status})`);
-        return { data: Buffer.from(await res.arrayBuffer()), mime };
-      },
-    };
+    return { kind: 'voice', updateId, chatId, fromName, fileId, mime, download: voiceDownload(ctx.api, token, fileId, mime) };
   }
   if (msg.caption) return { kind: 'text', updateId, chatId, fromName, text: msg.caption };
   return { kind: 'other', updateId, chatId, fromName };
@@ -69,8 +68,15 @@ export class TelegramChannel implements Channel {
   private server: Server | null = null;
 
   constructor(private readonly token: string, private readonly log: (l: string) => void = (l) => console.log(l)) {
-    this.bot = new Bot(token);
+    // 75 s per Bot API call: more than the 30 s long poll, far less than grammY's default of 500 s.
+    this.bot = new Bot(token, { client: { timeoutSeconds: 75 } });
+    // 429: waits what Telegram asks (retry_after) up to 10 s, twice; longer waits fail and the breaker counts them.
     this.bot.api.config.use(autoRetry({ maxRetryAttempts: 2, maxDelaySeconds: 10 }));
+  }
+
+  /** Rebuilds the download of a voice note that came through the durable queue. */
+  voice(fileId: string, mime: string): () => Promise<{ data: Buffer; mime: string }> {
+    return voiceDownload(this.bot.api, this.token, fileId, mime);
   }
 
   async send(chatId: number, msg: OutMessage): Promise<void> {
@@ -106,11 +112,30 @@ export class TelegramChannel implements Channel {
     void this.bot.start({ allowed_updates: ['message', 'callback_query'], onStart: (me) => this.log(`[telegram] polling como @${me.username}`) });
   }
 
-  /** Webhook on `${publicUrl}/telegram`, validating `X-Telegram-Bot-Api-Secret-Token`. */
+  /**
+   * Request handler for `POST /telegram`, validating `X-Telegram-Bot-Api-Secret-Token`. The worker's HTTP
+   * server (with the health checks) mounts it; the update is acknowledged as soon as it is enqueued.
+   */
+  webhookHandler(secret: string): (req: IncomingMessage, res: ServerResponse) => void {
+    const handler = webhookCallback(this.bot, 'http', { secretToken: secret, onTimeout: 'return', timeoutMilliseconds: 9_000 });
+    return (req, res) => void handler(req, res);
+  }
+
+  /** Points Telegram at `${publicUrl}/telegram` (idempotent: every instance can call it). */
+  async setWebhook(publicUrl: string, secret: string): Promise<void> {
+    await this.bot.init();
+    await this.bot.api.setWebhook(`${publicUrl.replace(/\/$/, '')}/telegram`, {
+      secret_token: secret,
+      allowed_updates: ['message', 'callback_query'],
+    });
+    this.log(`[telegram] webhook como @${this.bot.botInfo.username}`);
+  }
+
+  /** Webhook with its own server (without the worker's health server). */
   async startWebhook(publicUrl: string, secret: string, port: number): Promise<void> {
-    const handler = webhookCallback(this.bot, 'http', { secretToken: secret });
+    const handler = this.webhookHandler(secret);
     this.server = createServer((req, res) => {
-      if (req.method === 'POST' && req.url === '/telegram') return void handler(req, res);
+      if (req.method === 'POST' && req.url === '/telegram') return handler(req, res);
       if (req.url === '/health') {
         res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
         return;
@@ -118,12 +143,7 @@ export class TelegramChannel implements Channel {
       res.writeHead(404).end();
     });
     await new Promise<void>((r) => this.server!.listen(port, r));
-    await this.bot.init();
-    await this.bot.api.setWebhook(`${publicUrl.replace(/\/$/, '')}/telegram`, {
-      secret_token: secret,
-      allowed_updates: ['message', 'callback_query'],
-    });
-    this.log(`[telegram] webhook como @${this.bot.botInfo.username} en el puerto ${port}`);
+    await this.setWebhook(publicUrl, secret);
   }
 
   async stop(): Promise<void> {
