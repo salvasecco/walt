@@ -1,7 +1,7 @@
 import "server-only";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
-import { isMissingRelation } from "./session";
+import { getScope, isMissingRelation } from "./session";
 import { supabaseAdmin } from "./supabase/server";
 import type { RequestLabel } from "./types";
 
@@ -19,7 +19,8 @@ export async function getLabelsFor(requestIds: string[]): Promise<LabelsResult> 
   }
   if (dataMode() !== "supabase") return { ready: false, labels: [] };
   if (!requestIds.length) return { ready: await labelsReady(), labels: [] };
-  const db = supabaseAdmin();
+  // Con la sesión de quien mira (RLS de la 0004); los ids ya salen de pedidos de su agencia.
+  const { db } = await getScope();
   const labels: RequestLabel[] = [];
   // De a 200 ids por consulta, para no pasarse del largo de la URL.
   for (let i = 0; i < requestIds.length; i += 200) {
@@ -37,7 +38,8 @@ export async function getLabelsFor(requestIds: string[]): Promise<LabelsResult> 
 export async function getFactoryLabels(factoryId: string | null, sinceIso: string): Promise<LabelsResult> {
   if (dataMode() === "ejemplo") return { ready: true, labels: buildSample().labels.filter((l) => l.created_at >= sinceIso) };
   if (dataMode() !== "supabase") return { ready: false, labels: [] };
-  let q = supabaseAdmin().from("request_labels").select("*").gte("created_at", sinceIso);
+  const { db } = await getScope();
+  let q = db.from("request_labels").select("*").gte("created_at", sinceIso);
   if (factoryId) q = q.eq("factory_id", factoryId);
   const { data, error } = await q.order("created_at").limit(5000);
   if (error) {
@@ -47,13 +49,17 @@ export async function getFactoryLabels(factoryId: string | null, sinceIso: strin
   return { ready: true, labels: data as RequestLabel[] };
 }
 
+/** ¿Está la tabla? Consulta de esquema, sin leer filas: service role con `limit(0)`. */
 async function labelsReady(): Promise<boolean> {
-  const { error } = await supabaseAdmin().from("request_labels").select("id").limit(1);
+  const { error } = await supabaseAdmin().from("request_labels").select("id").limit(0);
   if (error && !isMissingRelation(error)) throw new Error(error.message);
   return !error;
 }
 
-/** Mails de quienes reetiquetaron (Supabase Auth). */
+/**
+ * Mails de quienes reetiquetaron. La API de administración de Supabase Auth solo anda con service role; los
+ * ids salen de etiquetas ya leídas con la sesión de quien mira (de su agencia).
+ */
 export async function actorEmails(userIds: (string | null)[]): Promise<Record<string, string>> {
   const ids = [...new Set(userIds.filter((x): x is string => !!x))];
   if (!ids.length || dataMode() !== "supabase") return {};

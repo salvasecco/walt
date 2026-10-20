@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAi } from "@walt/ai";
 import {
   buildInventory,
@@ -23,7 +24,6 @@ import { loadContract, liveContent } from "./contract";
 import { dataMode } from "./env";
 import { describeChange, describeOp } from "./labels";
 import { isMissingFunction } from "./session";
-import { supabaseAdmin } from "./supabase/server";
 import type { Project, SiteContent } from "./types";
 
 const EMPTY_INVENTORY: Inventory = { currency: "", texts: [], colors: [], products: [], categories: [], banner: null, hours: null, sections: null };
@@ -71,10 +71,13 @@ function aiEnv() {
   return { ...env, LLM_PROVIDER: provider as typeof env.LLM_PROVIDER };
 }
 
-/** Reetiquetados de la misma agencia, del más parecido al menos (RPC de la 0004). Sin la 0004, ninguno. */
-async function similarExamples(factoryId: string, text: string): Promise<LabeledExample[]> {
+/**
+ * Reetiquetados de la misma agencia, del más parecido al menos (RPC de la 0004, security invoker: con la sesión
+ * de quien mira, la RLS solo le deja ver los de su agencia). Sin la 0004, ninguno.
+ */
+async function similarExamples(db: SupabaseClient, factoryId: string, text: string): Promise<LabeledExample[]> {
   if (dataMode() !== "supabase") return [];
-  const { data, error } = await supabaseAdmin().rpc("similar_labeled_requests", { p_factory: factoryId, p_text: text, p_k: 8 });
+  const { data, error } = await db.rpc("similar_labeled_requests", { p_factory: factoryId, p_text: text, p_k: 8 });
   if (error) {
     if (isMissingFunction(error)) return [];
     throw new Error(error.message);
@@ -90,15 +93,15 @@ async function similarExamples(factoryId: string, text: string): Promise<Labeled
  * worker (contrato del sitio, versión viva, gate), sin guardar nada ni mandar mensajes. Si se pasan rutas,
  * aplica también la mitad determinística de la doble clasificación (`delicatePaths`).
  */
-export async function simulate(input: { project: Project; agencyName: string; text: string; rules: Rules; paths: string[] }): Promise<SimulationResult> {
+export async function simulate(input: { db: SupabaseClient; project: Project; agencyName: string; text: string; rules: Rules; paths: string[] }): Promise<SimulationResult> {
   const { project, text, rules, paths } = input;
   const started = Date.now();
   const env = aiEnv();
   const notes: string[] = [];
   const [{ contract, source, note }, content, examples] = await Promise.all([
     loadContract(project),
-    project.mode === "contenido" ? liveContent(project) : Promise.resolve(null),
-    similarExamples(project.factory_id, text).catch(() => [] as LabeledExample[]),
+    project.mode === "contenido" ? liveContent(input.db, project) : Promise.resolve(null),
+    similarExamples(input.db, project.factory_id, text).catch(() => [] as LabeledExample[]),
   ]);
   if (note) notes.push(note);
   if (project.mode === "contenido" && !content) notes.push("El proyecto no tiene versión viva: interpreto sin el inventario del sitio.");

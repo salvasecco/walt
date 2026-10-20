@@ -2,7 +2,6 @@ import "server-only";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
 import { getScope, inScope, isMissingRelation, realRows } from "./session";
-import { supabaseAdmin } from "./supabase/server";
 import { SEED_FACTORY_ID, type Project, type StoredCategory } from "./types";
 
 /**
@@ -155,7 +154,8 @@ export async function getAiView(): Promise<AiView> {
     };
   }
 
-  const db = supabaseAdmin();
+  // Con la sesión de quien mira: ai_settings, wallets y usage_ledger tienen RLS de lectura por agencia (0004).
+  const db = scope.db;
   const projectIds = [...ids];
   // Sin los pedidos de ejemplo de la 0003: el costo es el real.
   const reqsP = projectIds.length

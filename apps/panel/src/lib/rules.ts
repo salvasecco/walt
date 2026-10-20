@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { ALWAYS_DELICATE_GLOBS, RULE_TEMPLATES, RulesConfigSchema, RulesSchema, rulesFromRow, type RuleTemplate } from "@walt/core";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
@@ -20,12 +21,12 @@ export type RulesView = {
 
 let probe: { at: number; ok: boolean } | null = null;
 
-/** ¿Tiene `rules` las columnas de la 0004? Se mira cada 30 s. */
+/** ¿Tiene `rules` las columnas de la 0004? Se mira cada 30 s. Consulta de esquema: `limit(0)`, ninguna fila. */
 export async function rulesStructured(): Promise<boolean> {
   if (dataMode() === "ejemplo") return true;
   if (dataMode() !== "supabase") return false;
   if (probe && Date.now() - probe.at < 30_000) return probe.ok;
-  const { error } = await supabaseAdmin().from("rules").select("policy_text, config").limit(1);
+  const { error } = await supabaseAdmin().from("rules").select("policy_text, config").limit(0);
   if (error && !isMissingColumn(error)) throw new Error(error.message);
   probe = { at: Date.now(), ok: !error };
   return probe.ok;
@@ -51,7 +52,7 @@ export async function getRulesView(projectId: string): Promise<RulesView> {
   let rows: Rules[];
   if (dataMode() === "ejemplo") rows = buildSample().rules.filter((r) => r.project_id === projectId).sort((a, b) => b.version - a.version);
   else {
-    const { data, error } = await supabaseAdmin().from("rules").select("*").eq("project_id", projectId).order("version", { ascending: false }).limit(20);
+    const { data, error } = await scope.db.from("rules").select("*").eq("project_id", projectId).order("version", { ascending: false }).limit(20);
     if (error) throw new Error(error.message);
     rows = data as Rules[];
   }
@@ -99,10 +100,12 @@ export async function cleanRules(input: EditableRules): Promise<EditableRules> {
   return rules;
 }
 
-/** Inserta una versión nueva (última + 1); reintenta si otra pestaña guardó la misma versión al mismo tiempo. */
-export async function insertRulesVersion(projectId: string, rules: EditableRules, createdBy: string): Promise<{ version: number; at: string; structured: boolean }> {
+/**
+ * Inserta una versión nueva (última + 1); reintenta si otra pestaña guardó la misma versión al mismo tiempo.
+ * `db` es el cliente de quien actúa (`dbFor`): con usuarios, la RLS de la 0004 exige que sea admin o dueño.
+ */
+export async function insertRulesVersion(db: SupabaseClient, projectId: string, rules: EditableRules, createdBy: string): Promise<{ version: number; at: string; structured: boolean }> {
   const structured = await rulesStructured();
-  const db = supabaseAdmin();
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: last, error: e1 } = await db.from("rules").select("version").eq("project_id", projectId).order("version", { ascending: false }).limit(1).maybeSingle();
     if (e1) throw new Error(e1.message);

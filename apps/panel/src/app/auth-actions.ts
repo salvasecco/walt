@@ -11,6 +11,7 @@ import {
   AccessError,
   createAgency,
   currentUser,
+  dbFor,
   FACTORY_COOKIE,
   forgetTenancyProbe,
   getTenancy,
@@ -176,11 +177,11 @@ export async function addMember(input: { email: string; role: Role }): Promise<R
     const email = input.email.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return { ok: false, error: "Revisá el mail." };
     if (!isRole(input.role) || (input.role !== "member" && v.role !== "owner")) return { ok: false, error: "Solo el dueño puede sumar admins o dueños." };
-    const db = supabaseAdmin();
+    // Buscar e invitar usuarios es de la API de administración de Supabase Auth: solo con service role.
     let userId = await findUserIdByEmail(email);
     let message = `${email} ya puede entrar a ${v.factory.name}.`;
     if (!userId) {
-      const { data, error } = await db.auth.admin.inviteUserByEmail(email, {
+      const { data, error } = await supabaseAdmin().auth.admin.inviteUserByEmail(email, {
         redirectTo: `${await origin()}/auth/confirm?next=/atencion`,
         data: { invited_to: v.factory.name },
       });
@@ -188,7 +189,8 @@ export async function addMember(input: { email: string; role: Role }): Promise<R
       userId = data.user.id;
       message = `Le mandamos una invitación a ${email}.`;
     }
-    const { error } = await db.from("memberships").insert({ user_id: userId, factory_id: v.factory.id, role: input.role });
+    // La membership, con la sesión de quien suma: la RLS de la 0004 exige admin o dueño (y un admin no toca dueños).
+    const { error } = await (await dbFor(v)).from("memberships").insert({ user_id: userId, factory_id: v.factory.id, role: input.role });
     if (error) return { ok: false, error: error.code === "23505" ? "Ya es parte del equipo." : error.message };
     forgetTenancyProbe();
     revalidatePath("/equipo");
@@ -203,18 +205,20 @@ export async function changeMemberRole(userId: string, role: Role | null): Promi
     const v = await requireViewer("equipo");
     if (!v.factory) return { ok: false, error: "Elegí una agencia." };
     if (role !== null && !isRole(role)) return { ok: false, error: "Rol inválido." };
-    const team = await getTeam(v.factory.id);
+    const team = await getTeam(await dbFor(v), v.factory.id);
     const target = team.find((m) => m.userId === userId);
     if (!target) return { ok: false, error: "No es parte del equipo." };
     const why = memberChangeError(v.role, target.role, role, team.filter((m) => m.role === "owner").length, userId === v.userId);
     if (why) return { ok: false, error: why };
-    const db = supabaseAdmin();
+    // Con la sesión de quien cambia: si la RLS no lo deja, no se toca ninguna fila (y se avisa).
+    const db = await dbFor(v);
     const q =
       role === null
         ? db.from("memberships").delete().eq("factory_id", v.factory.id).eq("user_id", userId)
         : db.from("memberships").update({ role }).eq("factory_id", v.factory.id).eq("user_id", userId);
-    const { error } = await q;
+    const { data, error } = await q.select("user_id");
     if (error) return { ok: false, error: error.message };
+    if (!data?.length) return { ok: false, error: "No tenés permiso para cambiar a esa persona." };
     forgetTenancyProbe();
     revalidatePath("/equipo");
     return { ok: true, message: role === null ? "Listo, ya no es parte del equipo." : "Rol actualizado." };

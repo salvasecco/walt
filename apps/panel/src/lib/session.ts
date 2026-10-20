@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { assistantName } from "@walt/core/copy";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -44,10 +45,14 @@ export function isMissingFunction(error: { code?: string; message?: string } | n
 type Probe = { at: number; tenancy: "legacy" | "multi"; members: number };
 let probe: Probe | null = null;
 
-/** ¿Está la 0004? Se mira una vez cada 30 s por instancia (5 s mientras no haya usuarios). */
+/**
+ * ¿Está la 0004? Se mira una vez cada 30 s por instancia (5 s mientras no haya usuarios). Es una consulta de
+ * esquema, no de datos de una agencia: va con service role, con `limit(0)` (solo el conteo, ninguna fila) y GET
+ * (con HEAD, supabase-js convierte el 404 de una tabla que no existe en un 204 sin error).
+ */
 async function probeTenancy(): Promise<Probe> {
   if (probe && Date.now() - probe.at < (probe.members > 0 ? 30_000 : 5_000)) return probe;
-  const { count, error } = await supabaseAdmin().from("memberships").select("user_id", { count: "exact" }).limit(1);
+  const { count, error } = await supabaseAdmin().from("memberships").select("user_id", { count: "exact" }).limit(0);
   if (error && !isMissingRelation(error)) throw new Error(error.message);
   probe = error ? { at: Date.now(), tenancy: "legacy", members: 0 } : { at: Date.now(), tenancy: "multi", members: count ?? 0 };
   return probe;
@@ -85,12 +90,15 @@ export type Viewer = {
 
 export type AuthUser = { id: string; email: string | null; meta: Record<string, unknown> };
 
+/** El cliente de Supabase con la sesión del usuario de este pedido (uno por pedido, como pide @supabase/ssr). */
+const userClient = cache(() => supabaseUser());
+
 /** Usuario de Supabase Auth de este pedido, o null. Sin cookie de sesión no consulta nada. */
 export const currentUser = cache(async (): Promise<AuthUser | null> => {
   if (!env.supabaseUrl || !env.supabaseAnonKey) return null;
   const jar = await cookies();
   if (!jar.getAll().some((c) => isSupabaseAuthCookie(c.name))) return null;
-  const { data, error } = await (await supabaseUser()).auth.getClaims();
+  const { data, error } = await (await userClient()).auth.getClaims();
   const claims = data?.claims;
   if (error || !claims?.sub) return null;
   return {
@@ -100,8 +108,12 @@ export const currentUser = cache(async (): Promise<AuthUser | null> => {
   };
 });
 
-export async function membershipsOf(userId: string): Promise<MembershipWithFactory[]> {
-  const db = supabaseAdmin();
+/**
+ * Agencias del usuario. Se leen con su propia sesión (RLS de la 0004: ve sus memberships y sus agencias);
+ * `db` permite pasar el cliente que acaba de iniciar la sesión (por ejemplo, en /auth/confirm).
+ */
+export async function membershipsOf(userId: string, db?: SupabaseClient): Promise<MembershipWithFactory[]> {
+  db ??= await userClient();
   const { data, error } = await db.from("memberships").select("user_id, factory_id, role").eq("user_id", userId);
   if (error) throw new Error(error.message);
   const rows = (data ?? []).filter((m): m is { user_id: string; factory_id: string; role: Role } => isRole(m.role));
@@ -153,8 +165,22 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   return null;
 });
 
+/**
+ * Con qué cliente se lee (y se escribe lo que la RLS deja) para quien mira:
+ * - un usuario de Supabase Auth (con la 0004): su sesión, `authenticated` con la RLS por agencia;
+ * - el acceso de la instancia (antes de la 0004, o el de emergencia): la service role, que ve todo. No hay
+ *   usuarios ni agencias por usuario: es el dueño de la instancia (docs/DECISIONES.md, R1 panel).
+ * Igual, cada consulta filtra explícitamente por los proyectos de la agencia activa (`inScope`).
+ */
+export async function dbFor(viewer: Viewer | null): Promise<SupabaseClient> {
+  if (viewer?.kind === "user" && viewer.tenancy === "multi") return userClient();
+  return supabaseAdmin();
+}
+
 export type Scope = {
   viewer: Viewer;
+  /** El cliente de quien mira (`dbFor`). */
+  db: SupabaseClient;
   /** Agencia activa; null = todas (acceso de la instancia). */
   factoryId: string | null;
   all: boolean;
@@ -166,17 +192,19 @@ export type Scope = {
 const loadScope = cache(async (viewer: Viewer): Promise<Scope> => {
   const factoryId = viewer.factory?.id ?? null;
   const all = viewer.kind !== "user";
+  const configured = dataMode() === "supabase";
+  const db = configured ? await dbFor(viewer) : (null as unknown as SupabaseClient);
   let projects: Project[];
   if (dataMode() === "ejemplo") projects = buildSample().projects;
-  else if (dataMode() === "sin_configurar" || (!all && !factoryId)) projects = [];
+  else if (!configured || (!all && !factoryId)) projects = [];
   else {
-    let q = supabaseAdmin().from("projects").select("*").order("created_at");
+    let q = db.from("projects").select("*").order("created_at");
     if (!all) q = q.eq("factory_id", factoryId!);
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     projects = data as Project[];
   }
-  return { viewer, factoryId, all, projects, projectIds: projects.map((p) => p.id) };
+  return { viewer, db, factoryId, all, projects, projectIds: projects.map((p) => p.id) };
 });
 
 /**
@@ -219,32 +247,32 @@ export async function requireViewer(permission: Permission = "operar"): Promise<
 }
 
 /** El proyecto tiene que ser de la agencia de quien actúa. */
-export async function requireProject(projectId: string, permission: Permission = "operar"): Promise<{ viewer: Viewer; project: Project }> {
+export async function requireProject(projectId: string, permission: Permission = "operar"): Promise<{ viewer: Viewer; project: Project; db: SupabaseClient }> {
   const viewer = await requireViewer(permission);
   const scope = await loadScope(viewer);
   const project = scope.projects.find((p) => p.id === projectId);
   if (!project) throw new AccessError("Ese proyecto no es de tu agencia.");
-  return { viewer, project };
+  return { viewer, project, db: scope.db };
 }
 
 /** El pedido tiene que ser de un proyecto de la agencia de quien actúa. */
 export async function requireRequest(
   requestId: string,
   permission: Permission = "operar",
-): Promise<{ viewer: Viewer; project: Project; request: WaltRequest }> {
+): Promise<{ viewer: Viewer; project: Project; request: WaltRequest; db: SupabaseClient }> {
   const viewer = await requireViewer(permission);
   const scope = await loadScope(viewer);
   if (dataMode() === "ejemplo") {
     const r = buildSample().requests.find((x) => x.id === requestId);
     const project = r && scope.projects.find((p) => p.id === r.project_id);
     if (!r || !project) throw new AccessError("Ese pedido no es de tu agencia.");
-    return { viewer, project, request: r };
+    return { viewer, project, request: r, db: scope.db };
   }
-  const { data, error } = await supabaseAdmin().from("requests").select("*").eq("id", requestId).maybeSingle();
+  const { data, error } = await scope.db.from("requests").select("*").eq("id", requestId).maybeSingle();
   if (error) throw new Error(error.message);
   const project = data && scope.projects.find((p) => p.id === data.project_id);
   if (!data || !project) throw new AccessError("Ese pedido no es de tu agencia.");
-  return { viewer, project, request: data as WaltRequest };
+  return { viewer, project, request: data as WaltRequest, db: scope.db };
 }
 
 /** Crea la agencia y deja al usuario como dueño, en una transacción (RPC `create_factory` de la 0004). */

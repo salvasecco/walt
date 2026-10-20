@@ -3,7 +3,6 @@ import { dataMode, env } from "./env";
 import { buildSample } from "./sample";
 import { actorEmails, getLabelsFor } from "./relabel";
 import { agencyNameOf, getScope, inScope } from "./session";
-import { supabaseAdmin } from "./supabase/server";
 import { AGENCY_WAIT_STATUSES, categoryVariants, isPendingAgency, normalizeCategory } from "./taxonomy";
 import type {
   Approval,
@@ -63,7 +62,7 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
       agencyName: env.agencyName,
     };
   }
-  const db = supabaseAdmin();
+  const db = scope.db;
   const since = new Date(Date.now() - 36 * 3_600_000).toISOString();
   const [allRequests, liveVersions] = await Promise.all([
     inScope(db.from("requests").select("*").gte("created_at", since), scope).order("created_at", { ascending: false }).limit(60).then(must<WaltRequest[]>),
@@ -96,7 +95,7 @@ export async function getRequests(filter: { category?: Category; status?: Reques
     if (filter.category) rows = rows.filter((r) => normalizeCategory(r.category) === filter.category);
     if (filter.status) rows = rows.filter((r) => r.status === filter.status);
   } else {
-    let q = inScope(supabaseAdmin().from("requests").select("*"), scope);
+    let q = inScope(scope.db.from("requests").select("*"), scope);
     // Hasta la migración de datos conviven los nombres viejos: se buscan los dos.
     if (filter.category) q = q.in("category", categoryVariants(filter.category));
     if (filter.status) q = q.eq("status", filter.status);
@@ -150,7 +149,7 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
       ...(await withLabels(request.id)),
     };
   }
-  const db = supabaseAdmin();
+  const db = scope.db;
   const request = await db.from("requests").select("*").eq("short_id", shortId).maybeSingle().then(must<WaltRequest | null>);
   // Un pedido de otra agencia no existe para quien mira.
   const project = request ? (scope.projects.find((p) => p.id === request.project_id) ?? null) : null;
@@ -194,7 +193,7 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
     prEvents = s.events.filter((e) => e.step === "agente_pr" && e.status === "ok");
     versions = s.versions.filter((v) => v.status === "viva");
   } else {
-    const db = supabaseAdmin();
+    const db = scope.db;
     [requests, versions] = await Promise.all([
       inScope(db.from("requests").select("*").in("status", statuses).in("category", categoryVariants("delicado")), scope)
         .order("created_at")
@@ -239,7 +238,7 @@ export async function getRules(projectId: string): Promise<Rules[]> {
   const scope = await getScope();
   if (!scope.projectIds.includes(projectId)) return [];
   if (m === "ejemplo") return buildSample().rules.filter((r) => r.project_id === projectId).sort((a, b) => b.version - a.version);
-  return supabaseAdmin()
+  return scope.db
     .from("rules")
     .select("*")
     .eq("project_id", projectId)
@@ -258,7 +257,7 @@ export async function getQuotes(): Promise<QuoteRow[]> {
   if (m === "ejemplo") {
     ({ quotes, requests } = buildSample());
   } else {
-    const db = supabaseAdmin();
+    const db = scope.db;
     // Solo los presupuestos de pedidos de proyectos de la agencia (join por quotes.request_id).
     let q = db.from("quotes").select("*, request:requests!quotes_request_id_fkey!inner(project_id)");
     if (!scope.all) q = q.in("request.project_id", scope.projectIds);
@@ -285,7 +284,7 @@ export async function getInsightsData(days = 30) {
     return { requests: s.requests, projects: s.projects };
   }
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  const requests = await inScope(supabaseAdmin().from("requests").select("*").gte("created_at", since), scope)
+  const requests = await inScope(scope.db.from("requests").select("*").gte("created_at", since), scope)
     .order("created_at", { ascending: false })
     .limit(2000)
     .then(must<WaltRequest[]>);

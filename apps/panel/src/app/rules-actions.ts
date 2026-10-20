@@ -19,10 +19,10 @@ function errorText(e: unknown) {
 /** Guardar inserta una versión nueva de las reglas del proyecto (SPEC §8). El worker lee la última. */
 export async function saveRules(projectId: string, input: EditableRules): Promise<ActionResult<{ version: number; at: string }>> {
   try {
-    const { viewer } = await requireProject(projectId, "configurar");
+    const { viewer, db } = await requireProject(projectId, "configurar");
     const rules = await cleanRules(input);
     if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG, data: { version: 4, at: new Date().toISOString() } };
-    const r = await insertRulesVersion(projectId, rules, viewer.email ?? "panel");
+    const r = await insertRulesVersion(db, projectId, rules, viewer.email ?? "panel");
     revalidatePath("/reglas");
     return {
       ok: true,
@@ -51,13 +51,13 @@ function allow(key: string, max = 10, windowMs = 60_000): boolean {
  */
 export async function simulateRules(input: { projectId: string; text: string; rules: EditableRules; paths?: string[] }): Promise<ActionResult<SimulationResult>> {
   try {
-    const { viewer, project } = await requireProject(input.projectId, "operar");
+    const { viewer, project, db } = await requireProject(input.projectId, "operar");
     const text = String(input.text ?? "").trim().slice(0, 1000);
     if (!text) return { ok: false, error: "Escribí un pedido para probar." };
     if (!allow(viewer.userId ?? `instancia:${viewer.kind}`)) return { ok: false, error: "Probaste muchos pedidos seguidos: esperá un minuto." };
     const rules = await cleanRules(input.rules);
     const paths = lines(input.paths, 50).map((p) => p.slice(0, 300));
-    const result = await simulate({ project, agencyName: agencyNameOf(viewer), text, rules, paths });
+    const result = await simulate({ db, project, agencyName: agencyNameOf(viewer), text, rules, paths });
     return { ok: true, data: result };
   } catch (e) {
     return { ok: false, error: errorText(e) };
