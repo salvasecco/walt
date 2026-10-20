@@ -23,16 +23,44 @@ export const REQUEST_STATUSES = [
 ] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
-export const CATEGORIES = [
-  'permitido',
-  'riesgoso',
-  'fuera_de_alcance',
-  'consulta',
-  'bloqueado',
-  'charla',
-  'derivado',
-] as const;
+/**
+ * Request taxonomy (R1, docs/R1-CONTRATO.md). The lane (contenido | codigo) does not define the category.
+ * - consulta: a question about the software or the business; Walt answers.
+ * - simple: visible or UI change that touches no delicate zone; preview, the client's "Dale" and it is
+ *   published, without the agency. By content (typed ops) or by code (PR).
+ * - delicado: touches the database, auth or permissions, backend or API, existing payments, secrets,
+ *   infrastructure or CI, dependencies, or deletes data; the agency approves the diff first.
+ * - nuevo: a new agentic workflow, a payment gateway, integrations that need credentials or contracts,
+ *   big modules; a quote with scope, deadline, price and a deposit link.
+ * - bloqueado: injection, malicious or out of policy; nothing is applied.
+ * - charla, derivado: internal (chat without a request; a technical failure without an automatic answer).
+ */
+export const CATEGORIES = ['consulta', 'simple', 'delicado', 'nuevo', 'bloqueado', 'charla', 'derivado'] as const;
 export type Category = (typeof CATEGORIES)[number];
+
+/** Pre-R1 names. Rows keep them until the data migration runs (Salva applies it by hand). */
+export const LEGACY_CATEGORIES = ['permitido', 'riesgoso', 'fuera_de_alcance'] as const;
+export type LegacyCategory = (typeof LEGACY_CATEGORIES)[number];
+/** What `requests.category` may hold when read: the new names, or an old one until the migration. */
+export type StoredCategory = Category | LegacyCategory;
+
+/** Same mapping as the data migration: permitido→simple, riesgoso→delicado, fuera_de_alcance→nuevo. */
+export const LEGACY_CATEGORY_MAP: Record<LegacyCategory, Category> = {
+  permitido: 'simple',
+  riesgoso: 'delicado',
+  fuera_de_alcance: 'nuevo',
+};
+
+export function isCategory(value: unknown): value is Category {
+  return typeof value === 'string' && (CATEGORIES as readonly string[]).includes(value);
+}
+
+/** Reads a category from storage: new names pass, old ones are mapped, anything else is null. */
+export function normalizeCategory(value: unknown): Category | null {
+  if (isCategory(value)) return value;
+  if (typeof value === 'string' && value in LEGACY_CATEGORY_MAP) return LEGACY_CATEGORY_MAP[value as LegacyCategory];
+  return null;
+}
 
 export const LANES = ['contenido', 'codigo'] as const;
 export type Lane = (typeof LANES)[number];
@@ -72,6 +100,10 @@ export const EVENT_STEPS = [
   'en_la_web',
   'presupuesto',
   'respondido',
+  /** Double classification: the agent's diff checked against the delicate globs (may raise to delicado). */
+  'revision_diff',
+  /** Deposit payment link sent after the client accepts a quote. */
+  'link_pago',
 ] as const;
 export type EventStep = (typeof EVENT_STEPS)[number];
 
@@ -172,7 +204,24 @@ export interface RulesRow {
   version: number;
   policies: Record<string, 'auto' | 'agencia' | 'bloqueado'>;
   limits: Record<string, number>;
+  /** R1 (migration of the infra session): the agency's policy in natural language, for the decision prompt. */
+  policy_text?: string;
+  /** R1: `RulesConfig` as jsonb (globs, alwaysNew, template, priceWarnPct). Parse it with `parseRulesConfig`. */
+  config?: unknown;
   created_by: string;
+  created_at: Timestamp;
+}
+
+/** R1: the agency relabels a request ("¿Estuvo bien clasificado?"). The most valuable signal. */
+export interface RequestLabelRow {
+  id: Uuid;
+  request_id: Uuid;
+  factory_id: Uuid;
+  /** What Walt had decided (may be an old name until the data migration). */
+  from_category: StoredCategory | null;
+  to_category: Category;
+  reason: string | null;
+  actor_user_id: Uuid | null;
   created_at: Timestamp;
 }
 
@@ -183,7 +232,8 @@ export interface RequestRow {
   contact_id: Uuid | null;
   raw_text: string;
   status: RequestStatus;
-  category: Category | null;
+  /** Read it with `normalizeCategory`: old rows may carry a pre-R1 name until the data migration. */
+  category: StoredCategory | null;
   lane: Lane | null;
   confidence: number | null;
   interpretation: unknown;

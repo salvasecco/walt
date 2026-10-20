@@ -1,13 +1,36 @@
 import { z } from 'zod';
 import { OpSchema } from './ops.ts';
 
-export const INTERPRETATION_KINDS = ['cambio', 'consulta', 'funcion_nueva', 'charla', 'aprobacion', 'revertir'] as const;
+/**
+ * What the model says the request is, by intention (R1 taxonomy, first half of the double classification):
+ * - simple / delicado: a change (typed `ops`, or `needsCode` with a brief for the agent). delicado when it
+ *   touches the database, auth or permissions, backend or API, existing payments, secrets, infrastructure
+ *   or CI, dependencies, or deletes data.
+ * - nuevo: a new agentic workflow, a payment gateway, integrations that need credentials or contracts, big modules.
+ * - consulta, bloqueado (injection, malicious, out of policy), charla, aprobacion and revertir.
+ */
+export const INTERPRETATION_KINDS = ['simple', 'delicado', 'nuevo', 'consulta', 'bloqueado', 'charla', 'aprobacion', 'revertir'] as const;
 export type InterpretationKind = (typeof INTERPRETATION_KINDS)[number];
 
-/** What the model returns for a client message (SPEC §10). Shared by worker and eval. */
+/** Kinds that are a change to the software (they carry `ops` or a brief for the agent). */
+export const CHANGE_KINDS = ['simple', 'delicado'] as const;
+export type ChangeKind = (typeof CHANGE_KINDS)[number];
+export function isChangeKind(kind: unknown): kind is ChangeKind {
+  return kind === 'simple' || kind === 'delicado';
+}
+
+/** Pre-R1 kinds still found in stored interpretations. */
+export const LEGACY_KINDS: Record<string, InterpretationKind> = { cambio: 'simple', funcion_nueva: 'nuevo' };
+const legacyKind = (v: unknown) => (typeof v === 'string' && v in LEGACY_KINDS ? LEGACY_KINDS[v] : v);
+
+/** Languages the interpreter understands; replies follow the client's language. */
+export const LANGUAGES = ['es', 'pt'] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+/** What the model returns for a client message (SPEC §10, R1). Shared by worker and eval. */
 export const InterpretationSchema = z.object({
-  kind: z.enum(INTERPRETATION_KINDS),
-  /** One line in rioplatense Spanish: "Subo el pan flauta de $80 a $95". */
+  kind: z.preprocess(legacyKind, z.enum(INTERPRETATION_KINDS)),
+  /** One line in the client's language: "Subo el pan flauta de $80 a $95". */
   summary: z.string(),
   confidence: z.number().min(0).max(1),
   ops: z.array(OpSchema),
@@ -15,6 +38,12 @@ export const InterpretationSchema = z.object({
   codeInstruction: z.string().optional(),
   unexpressedParts: z.array(z.string()),
   options: z.array(z.object({ label: z.string(), ops: z.array(OpSchema) })).optional(),
+  /** Why it is this kind, in one short line (for the agency, the panel and the rules simulator). */
+  why: z.string().optional(),
+  /** When nothing concrete can be built: one short question for the client (ambiguity goes to the client). */
+  question: z.string().optional(),
+  /** Language of the client's message. */
+  language: z.enum(LANGUAGES).optional(),
 });
 export type Interpretation = z.infer<typeof InterpretationSchema>;
 
@@ -31,8 +60,10 @@ const closed = (properties: Record<string, JsonSchema>): JsonSchema => ({
 
 /**
  * One flat object for every op on the wire: `type` plus every field any op can carry, all required
- * and nullable. The exact union (8 variants, optional fields, nested twice) compiles to a grammar the
+ * and nullable. The exact union (9 variants, optional fields, nested twice) compiles to a grammar the
  * API rejects as too large; this flat shape is small, and `fromWire` turns it back into the union.
+ * `add_product` reuses `text` (its name) and `value` (its price): with its own `name` and `price` the
+ * R1 schema (why, question, language) went over the API's grammar limit again.
  */
 const WIRE_OP: JsonSchema = closed({
   type: { type: 'string', enum: ['set_text', 'set_price', 'adjust_prices', 'set_availability', 'set_color', 'set_banner', 'set_hours', 'toggle_section', 'add_product'] },
@@ -55,9 +86,7 @@ const WIRE_OP: JsonSchema = closed({
   close: nullable(str),
   section: nullable(str),
   visible: nullable({ type: 'boolean' }),
-  name: nullable(str),
   category: nullable(str),
-  price: nullable({ type: 'number' }),
 });
 
 /**
@@ -66,15 +95,19 @@ const WIRE_OP: JsonSchema = closed({
  * `fromWire` and validate with `InterpretationSchema`.
  */
 export const interpretationJsonSchema: JsonSchema = {
+  // Order matters: the model writes the language, the summary and the reason before it commits to a kind.
   ...closed({
-    kind: { type: 'string', enum: [...INTERPRETATION_KINDS] },
+    language: { type: 'string', enum: [...LANGUAGES] },
     summary: str,
+    why: str,
+    kind: { type: 'string', enum: [...INTERPRETATION_KINDS] },
     confidence: { type: 'number' },
     ops: { type: 'array', items: { $ref: '#/$defs/op' } },
     needsCode: { type: 'boolean' },
     codeInstruction: nullable(str),
     unexpressedParts: { type: 'array', items: str },
     options: nullable({ type: 'array', items: closed({ label: str, ops: { type: 'array', items: { $ref: '#/$defs/op' } } }) }),
+    question: nullable(str),
   }),
   $defs: { op: WIRE_OP },
 };
@@ -92,6 +125,11 @@ const OP_FIELDS: Record<string, Record<string, boolean>> = {
   add_product: { name: false, category: false, price: false },
 };
 
+/** Op fields that travel under another wire name (see WIRE_OP). */
+const WIRE_ALIASES: Record<string, Record<string, string>> = {
+  add_product: { name: 'text', price: 'value' },
+};
+
 function dropNulls(o: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined));
 }
@@ -102,8 +140,10 @@ function opFromWire(raw: unknown): unknown {
   const fields = OP_FIELDS[o.type as string];
   if (!fields) return raw;
   const out: Record<string, unknown> = { type: o.type };
+  const aliases = WIRE_ALIASES[o.type as string] ?? {};
   for (const [k, keepNull] of Object.entries(fields)) {
-    const v = o[k];
+    const alias = aliases[k];
+    const v = alias && (o[k] === null || o[k] === undefined) ? o[alias] : o[k];
     if (v === null || v === undefined) {
       if (keepNull && v === null) out[k] = null;
       continue;
@@ -118,7 +158,7 @@ export function fromWire(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const o = { ...(raw as Record<string, unknown>) };
   if (Array.isArray(o.ops)) o.ops = o.ops.map(opFromWire);
-  if (o.codeInstruction === null) delete o.codeInstruction;
+  for (const k of ['codeInstruction', 'question', 'why'] as const) if (o[k] === null || o[k] === '') delete o[k];
   if (o.options === null) delete o.options;
   else if (Array.isArray(o.options)) {
     o.options = o.options.map((opt) =>

@@ -1,6 +1,6 @@
 import { createFakeProvider, type AiProvider } from '@walt/ai';
-import type { RunCodeChangeResult } from '@walt/agent';
-import { SEED_IDS, type ContactRow, type Interpretation } from '@walt/core';
+import type { RunCodeChangeInput, RunCodeChangeResult } from '@walt/agent';
+import { SEED_IDS, type ContactRow, type Interpretation, type Rules } from '@walt/core';
 import { bakeryContent } from '@walt/core/fixtures';
 import { noScreenshots } from '../src/capture.js';
 import { ConsoleChannel } from '../src/channel/console.js';
@@ -25,13 +25,28 @@ export const notImplementedAgent: AgentLane = {
   },
 };
 
-export function okAgent(): AgentLane & { calls: string[] } {
+/** A code lane that always works. `over` changes the result (files touched, diff, preview). */
+export function okAgent(over: Partial<RunCodeChangeResult> = {}): AgentLane & { calls: string[]; inputs: RunCodeChangeInput[] } {
   const calls: string[] = [];
+  const inputs: RunCodeChangeInput[] = [];
   return {
     calls,
+    inputs,
     runCodeChange: async (i): Promise<RunCodeChangeResult> => {
-      calls.push(`run:${i.instruction}`);
-      return { branch: `walt/${i.shortId}`, commitSha: 'abc', prNumber: 7, prUrl: 'https://github.com/x/y/pull/7', diff: '', changedFiles: ['app/page.tsx'], previewUrl: 'https://preview.example', logs: [] };
+      // The first line is the brief; a simple request also carries the "keep it in the interface" hint.
+      calls.push(`run:${i.instruction.split('\n')[0]}`);
+      inputs.push(i);
+      return {
+        branch: `walt/${i.shortId}`,
+        commitSha: 'abc',
+        prNumber: 7,
+        prUrl: 'https://github.com/x/y/pull/7',
+        diff: '',
+        changedFiles: ['app/page.tsx'],
+        previewUrl: 'https://preview.example',
+        logs: [],
+        ...over,
+      };
     },
     mergeChange: async (i) => {
       calls.push(`merge:${i.prNumber}`);
@@ -117,6 +132,14 @@ export async function harness(
     },
   };
   return h;
+}
+
+/** Saves a new version of the bakery project's rules, changed by `edit`. */
+export function setRules(store: MemoryStore, edit: (rules: Rules) => void): void {
+  const latest = store.rules.filter((r) => r.project_id === SEED_IDS.project).sort((a, b) => b.version - a.version)[0]!;
+  const next = structuredClone(latest.rules);
+  edit(next);
+  store.rules.push({ project_id: SEED_IDS.project, version: latest.version + 1, rules: next });
 }
 
 export function livePrice(store: MemoryStore, id: string): number {

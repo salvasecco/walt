@@ -3,7 +3,7 @@ import { anthropicTransport, bedrockTransport, createClaudeProvider } from './cl
 import { createFakeProvider } from './fake.js';
 import type { AiProvider } from './types.js';
 
-export type { AiProvider, InterpretInput, ConsultaInput } from './types.js';
+export type { AiProvider, InterpretInput, ConsultaInput, QuoteInput } from './types.js';
 export { createFakeProvider, fakeInterpret, fakeAnswer, normalize, nextWeekdayEnd } from './fake.js';
 export {
   AiOutputError,
@@ -14,6 +14,7 @@ export {
   createClaudeProvider,
   INTERPRET_TIMEOUT_MS,
   sumUsage,
+  supportsServerFallback,
   transcribeWithOpenAi,
   createTranscriber,
   audioExtension,
@@ -24,7 +25,7 @@ export {
   type ModelResponse,
   type ModelTransport,
 } from './claude.js';
-export { formatHistory, formatInventory, loadPrompt } from './prompts.js';
+export { formatExamples, formatHistory, formatInventory, formatPolicy, loadPrompt, neutralize } from './prompts.js';
 
 type AiEnv = Pick<WaltEnvValues, 'LLM_PROVIDER'> & Partial<WaltEnvValues>;
 
