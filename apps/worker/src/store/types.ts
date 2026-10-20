@@ -11,16 +11,15 @@ import type {
   GithubInstallationRow,
   JobRow,
   LabelCategory,
-  SimilarLabeledRow,
   LedgerMode,
   MessageDirection,
   ProjectRow,
   QuoteRow,
-  RequestLabelRow,
   RequestRow,
   RequestStatus,
   Role,
   Rules,
+  SimilarLabelRow,
   Via,
   WalletRow,
 } from '@walt/core';
@@ -48,6 +47,71 @@ export interface NewMessage {
   direction: MessageDirection;
   text: string | null;
   media?: unknown;
+}
+
+/** A row of `request_labels` (core gets its own `RequestLabelRow` with the taxonomy session). */
+export interface LabelRow {
+  id: string;
+  request_id: string;
+  factory_id: string;
+  from_category: string | null;
+  to_category: LabelCategory;
+  reason: string | null;
+  actor_user_id: string | null;
+  created_at: string;
+}
+
+/** What the decision prompt gets: same shape as `LabeledExample` of `@walt/core` (taxonomy session). */
+export interface PromptExample {
+  text: string;
+  category: LabelCategory;
+  previous: string | null;
+  reason: string | null;
+}
+
+/** Query of `similarExamples` (same shape as `ExampleQuery` of the taxonomy session). */
+export interface ExamplesQuery {
+  factoryId: string;
+  projectId?: string;
+  text: string;
+  limit: number;
+}
+
+/** Below this pg_trgm similarity a relabeled request says nothing about the new one. */
+export const MIN_EXAMPLE_SIMILARITY = 0.1;
+
+const NEW_TO_LEGACY: Record<string, string> = { simple: 'permitido', delicado: 'riesgoso', nuevo: 'fuera_de_alcance' };
+const LEGACY_TO_NEW: Record<string, string> = { permitido: 'simple', riesgoso: 'delicado', fuera_de_alcance: 'nuevo' };
+
+/**
+ * Without 0004 the `requests.category` check of 0001 only takes the old names: a new name is written as
+ * its old one (simple→permitido, delicado→riesgoso, nuevo→fuera_de_alcance). The pipeline reads them back
+ * with `normalizeCategory`. With 0004 it is not needed (and a trigger maps the old ones).
+ */
+export function legacyCategoryPatch<T extends { category?: unknown }>(patch: T): T {
+  const c = patch.category;
+  return typeof c === 'string' && c in NEW_TO_LEGACY ? { ...patch, category: NEW_TO_LEGACY[c] } : patch;
+}
+
+/** An old category name as the new one (for examples read from rows labeled before 0004). */
+export function newCategoryName(c: string | null): string | null {
+  return c && c in LEGACY_TO_NEW ? LEGACY_TO_NEW[c]! : c;
+}
+
+/** Personal data out of an example before it goes to a prompt: e-mails and phone numbers. */
+export function redactPersonal(text: string): string {
+  return text
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]')
+    // 8 digits or more, with spaces, dots or dashes in between: a phone, not a price like 1.250.000.
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, (m) => (m.replace(/\D/g, '').length >= 8 ? '[teléfono]' : m));
+}
+
+/** Relabeled rows → the prompt's examples: similar enough, latest label, old names mapped, personal data out. */
+export function toPromptExamples(rows: SimilarLabelRow[], limit: number): PromptExample[] {
+  return rows
+    .filter((r) => r.similarity >= MIN_EXAMPLE_SIMILARITY)
+    .slice(0, limit)
+    .map((r) => ({ text: redactPersonal(r.raw_text), category: r.to_category, previous: newCategoryName(r.from_category), reason: r.reason }));
 }
 
 export interface NewJob {
@@ -156,8 +220,8 @@ export interface Store {
   /** Validates expiry and uses, links the chat with the invite's project and role, and counts the use. */
   redeemInvite(token: string, chatId: number, displayName: string): Promise<RedeemResult>;
 
-  /** Latest rules version. `policyText` and `config` are '' and {} before 0004. */
-  latestRules(projectId: string): Promise<{ version: number; rules: Rules; policyText: string; config: unknown } | null>;
+  /** Latest rules version. With 0004, `rules.policy_text` and `rules.config` come inside `rules` (R1). */
+  latestRules(projectId: string): Promise<{ version: number; rules: Rules } | null>;
 
   createRequest(r: NewRequest): Promise<RequestRow>;
   updateRequest(id: string, patch: RequestPatch): Promise<RequestRow>;
@@ -222,9 +286,11 @@ export interface Store {
   purgeOldRows(): Promise<Record<string, number>>;
 
   /** Relabels: the agency says what the request really was. */
-  labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null): Promise<RequestLabelRow>;
+  labelRequest(requestId: string, to: LabelCategory, reason?: string | null, actorUserId?: string | null): Promise<LabelRow>;
   /** Relabeled requests of the agency, most similar to `text` first (pg_trgm). */
-  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<SimilarLabeledRow[]>;
+  similarLabeledRequests(factoryId: string, text: string, k?: number): Promise<SimilarLabelRow[]>;
+  /** The same as examples for the decision prompt: `ExampleSource` of the taxonomy session. Empty before 0004. */
+  similarExamples(q: ExamplesQuery): Promise<PromptExample[]>;
   /** Requests of the agency's projects created since a date (rate limit per agency). */
   countFactoryRequestsSince(factoryId: string, sinceIso: string): Promise<number>;
 

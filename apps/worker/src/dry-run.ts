@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import { loadEnv, SEED_IDS, describeEnv, redact, type Interpretation } from '@walt/core';
+import { loadEnv, SEED_IDS, describeEnv, normalizeCategory, redact, type Interpretation } from '@walt/core';
 import { buildApp, memoryStore } from './app.js';
 import { ConsoleChannel } from './channel/console.js';
 import { CONSOLE_CHATS, ensureConsoleContacts } from './console-contacts.js';
@@ -109,7 +109,7 @@ async function main() {
     console.log('\nResultado');
     console.log(`  pedido     #${req.short_id} (${req.id})`);
     console.log(`  estado     ${req.status}`);
-    console.log(`  categoría  ${req.category ?? '—'}${req.lane ? ` · carril ${req.lane}` : ''}`);
+    console.log(`  categoría  ${normalizeCategory(req.category) ?? '—'}${req.lane ? ` · carril ${req.lane}` : ''}`);
     if (it) console.log(`  resumen    ${it.summary} (confianza ${Math.round(it.confidence * 100)}%)`);
     if (it?.ops.length) console.log(`  ops        ${JSON.stringify(it.ops)}`);
     const reasons = (req.gate as { reasons?: string[] } | null)?.reasons ?? [];

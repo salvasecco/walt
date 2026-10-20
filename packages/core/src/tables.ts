@@ -11,11 +11,10 @@ export const LABEL_CATEGORIES = ['consulta', 'simple', 'delicado', 'nuevo', 'blo
 export type LabelCategory = (typeof LABEL_CATEGORIES)[number];
 
 /**
- * A relabeled request returned by `similar_labeled_requests`, most similar first. The row as stored;
- * `exampleSourceOf()` turns it into the prompt's `LabeledExample` (examples.ts).
- * `RequestLabelRow` lives in types.ts.
+ * A row of `similar_labeled_requests` (most similar first). The prompt's shape is `LabeledExample` of the
+ * taxonomy session; the store maps one to the other (`similarExamples`).
  */
-export interface SimilarLabeledRow {
+export interface SimilarLabelRow {
   request_id: Uuid;
   raw_text: string;
   from_category: string | null;

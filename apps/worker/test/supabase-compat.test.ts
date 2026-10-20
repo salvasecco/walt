@@ -1,10 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normalizeCategory } from '@walt/core';
 import { describe, expect, it } from 'vitest';
 import { SupabaseStore } from '../src/store/supabase.js';
 
 /**
- * The R1 worker against a base without 0004: the old `requests.category` check only takes the pre-R1
- * names, so the store writes those and reads everything back with the R1 names.
+ * The R1 worker against a base without 0004, over the Supabase store (the one in production): the old
+ * `requests.category` check only takes the pre-R1 names, so the store writes those. Rows come back as
+ * stored; the pipeline reads them with `normalizeCategory`. (PgStore has the same test on PGlite.)
  */
 type Row = Record<string, unknown>;
 
@@ -48,13 +50,13 @@ function storeWith(db: SupabaseClient, r1: boolean): SupabaseStore {
 const base: Row = { id: 'req-1', short_id: 'ABC234', status: 'recibido', category: null, cost_usd: '0' };
 
 describe('SupabaseStore con la base sin 0004', () => {
-  it('escribe las categorías con los nombres viejos y las lee con los del R1', async () => {
+  it('escribe las categorías del R1 con los nombres viejos', async () => {
     const { db, writes } = fakeDb(base);
     const store = storeWith(db, false);
     for (const [r1Name, old] of [['simple', 'permitido'], ['delicado', 'riesgoso'], ['nuevo', 'fuera_de_alcance']] as const) {
       const row = await store.updateRequest('req-1', { category: r1Name, status: 'esperando_cliente' });
       expect(writes.at(-1)!.values).toMatchObject({ category: old, status: 'esperando_cliente' });
-      expect(row.category).toBe(r1Name);
+      expect(normalizeCategory(row.category)).toBe(r1Name);
     }
     // The names that did not change are written as they are.
     await store.updateRequest('req-1', { category: 'consulta' });
@@ -62,13 +64,6 @@ describe('SupabaseStore con la base sin 0004', () => {
     // A patch without category is not touched.
     await store.updateRequest('req-1', { status: 'publicado' });
     expect(writes.at(-1)!.values).toEqual({ status: 'publicado' });
-  });
-
-  it('lee una fila vieja con el nombre del R1', async () => {
-    const { db } = fakeDb({ ...base, category: 'riesgoso' });
-    const store = storeWith(db, false);
-    expect((await store.getRequest('req-1'))!.category).toBe('delicado');
-    expect((await store.getRequestByShortId('ABC234'))!.category).toBe('delicado');
   });
 
   it('con 0004 escribe los nombres del R1 tal cual', async () => {
