@@ -4,11 +4,11 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import QRCode from "qrcode";
 import { dataMode, env } from "@/lib/env";
-import { DEFAULT_RULES } from "@/lib/sample";
+import { insertRulesVersion, toEditable } from "@/lib/rules";
 import { AccessError, requireProject, requireRequest, requireViewer } from "@/lib/session";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import type { CommandType, OpType, Policy, Rules } from "@/lib/types";
-import { OP_TYPES, SEED_FACTORY_ID } from "@/lib/types";
+import type { CommandType } from "@/lib/types";
+import { SEED_FACTORY_ID } from "@/lib/types";
 
 export type ActionResult<T = undefined> =
   | { ok: true; demo?: boolean; message?: string; data?: T }
@@ -37,52 +37,6 @@ export async function sendCommand(
     if (error) throw new Error(error.message);
     revalidatePath("/", "layout");
     return { ok: true, message: "Enviado al worker." };
-  } catch (e) {
-    return { ok: false, error: errorText(e) };
-  }
-}
-
-// ── Reglas (SPEC §8): guardar inserta una versión nueva ───────────────────
-
-export async function saveRules(
-  projectId: string,
-  policies: Record<OpType, Policy>,
-  limits: Rules["limits"],
-): Promise<ActionResult<{ version: number; at: string }>> {
-  try {
-    await requireProject(projectId, "configurar");
-    for (const t of OP_TYPES) if (!["auto", "agencia", "bloqueado"].includes(policies[t])) throw new Error(`Política inválida en ${t}`);
-    const clean = {
-      maxPriceChangePct: clampNum(limits.maxPriceChangePct, 1, 100),
-      monthlyQuota: Math.round(clampNum(limits.monthlyQuota, 0, 100_000)),
-      minConfidence: clampNum(limits.minConfidence, 0, 1),
-      maxOpsPerRequest: Math.round(clampNum(limits.maxOpsPerRequest, 1, 500)),
-    };
-    if (dataMode() === "ejemplo") return { ok: true, demo: true, message: DEMO_MSG, data: { version: 4, at: new Date().toISOString() } };
-    const db = supabaseAdmin();
-    // Reintenta si otra pestaña guardó la misma versión al mismo tiempo (unique project_id, version).
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data: last, error: e1 } = await db
-        .from("rules")
-        .select("version")
-        .eq("project_id", projectId)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (e1) throw new Error(e1.message);
-      const version = (last?.version ?? 0) + 1;
-      const { data, error } = await db
-        .from("rules")
-        .insert({ project_id: projectId, version, policies, limits: clean, created_by: "panel" })
-        .select("version, created_at")
-        .single();
-      if (!error) {
-        revalidatePath("/reglas");
-        return { ok: true, data: { version: data.version, at: data.created_at } };
-      }
-      if (error.code !== "23505") throw new Error(error.message);
-    }
-    throw new Error("No se pudo guardar: otra versión se guardó al mismo tiempo. Probá de nuevo.");
   } catch (e) {
     return { ok: false, error: errorText(e) };
   }
@@ -216,10 +170,8 @@ export async function connectProject(input: {
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    const { error: e2 } = await db
-      .from("rules")
-      .insert({ project_id: data.id, version: 1, ...DEFAULT_RULES, created_by: "panel" });
-    if (e2) throw new Error(e2.message);
+    // Reglas v1: las de por defecto del R1 (plantilla genérica; la agencia elige la de su stack en Reglas).
+    await insertRulesVersion(data.id, toEditable(null), viewer.email ?? "panel");
     revalidatePath("/proyectos");
     return { ok: true, data: { id: data.id } };
   } catch (e) {
@@ -298,12 +250,6 @@ export async function saveQuote(
   } catch (e) {
     return { ok: false, error: errorText(e) };
   }
-}
-
-function clampNum(n: number, min: number, max: number) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) throw new Error("Número inválido");
-  return Math.min(max, Math.max(min, v));
 }
 
 function errorText(e: unknown) {

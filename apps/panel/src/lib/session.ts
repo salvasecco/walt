@@ -236,19 +236,16 @@ export async function requireRequest(
   return { viewer, project, request: data as WaltRequest };
 }
 
-/** Crea la agencia y deja al usuario como dueño. */
+/** Crea la agencia y deja al usuario como dueño, en una transacción (RPC `create_factory` de la 0004). */
 export async function createAgency(userId: string, name: string): Promise<Factory> {
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);
   if (clean.length < 2) throw new Error("Poné el nombre de la agencia.");
   const db = supabaseAdmin();
-  const { data: factory, error } = await db.from("factories").insert({ name: clean, assistant_name: assistantName(clean) }).select("*").single();
-  if (error) throw new Error(error.message);
-  const { error: e2 } = await db.from("memberships").insert({ user_id: userId, factory_id: factory.id, role: "owner" });
-  if (e2) {
-    await db.from("factories").delete().eq("id", factory.id);
-    throw new Error(e2.message);
-  }
+  const { data: id, error } = await db.rpc("create_factory", { p_name: clean, p_assistant_name: assistantName(clean), p_owner: userId });
+  if (error) throw new Error(isMissingFunction(error) ? "Falta aplicar la migración 0004." : error.message);
   forgetTenancyProbe();
+  const { data: factory, error: e2 } = await db.from("factories").select("*").eq("id", id as string).single();
+  if (e2) throw new Error(e2.message);
   return factory as Factory;
 }
 

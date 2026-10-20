@@ -1,5 +1,6 @@
 // Datos de ejemplo: SOLO en desarrollo y sin Supabase. Se muestran con la etiqueta "datos de ejemplo".
 // Reproducen los casos de la demo (SPEC §1) sobre la Panadería Mabel (SPEC §14).
+import { DEFAULT_RULES as CORE_DEFAULT_RULES, ruleTemplate } from "@walt/core";
 import { buildSampleClientRows, MABEL_CLIENT } from "./sample-clients.mts";
 import type {
   Approval,
@@ -58,19 +59,38 @@ export const BAKERY: SiteContent = {
   sections: { about: true, hours: true, contact: true },
 };
 
+/** Reglas por defecto del R1 (@walt/core): carteles y secciones ya no pasan por la agencia. */
 export const DEFAULT_RULES: Pick<Rules, "policies" | "limits"> = {
-  policies: {
-    set_text: "auto",
-    set_price: "auto",
-    adjust_prices: "auto",
-    set_availability: "auto",
-    set_color: "auto",
-    set_hours: "auto",
-    set_banner: "agencia",
-    toggle_section: "agencia",
-    add_product: "auto",
-  },
+  policies: structuredClone(CORE_DEFAULT_RULES.policies) as Rules["policies"],
+  limits: structuredClone(CORE_DEFAULT_RULES.limits),
+};
+
+/** Reglas de antes del R1 (versiones 1 y 2 de ejemplo): carteles y secciones los aprobaba la agencia. */
+const PRE_R1_RULES: Pick<Rules, "policies" | "limits"> = {
+  policies: { ...DEFAULT_RULES.policies, set_banner: "agencia", toggle_section: "agencia" },
   limits: { maxPriceChangePct: 30, monthlyQuota: 200, minConfidence: 0.6, maxOpsPerRequest: 40 },
+};
+
+/**
+ * Versión 3 de ejemplo: la plantilla genérica sin `**\/api/**` (la agencia lo sacó porque el formulario de
+ * contacto manda mails por app/api). Después reetiquetó tres pedidos de app/api como delicados: Calidad y
+ * Reglas proponen volver a agregarlo.
+ */
+const generic = ruleTemplate("generic");
+const SAMPLE_RULES_R1: Pick<Rules, "policies" | "limits" | "policy_text" | "config"> = {
+  ...DEFAULT_RULES,
+  policy_text: [
+    "Es simple todo lo que se ve en la web de la panadería: textos, precios, horarios, fotos, colores, avisos y secciones.",
+    "Es delicado lo que toca la base de datos, los pagos o el login.",
+    "Es algo nuevo cobrar online, reservas con seña o cualquier integración con un sistema de terceros.",
+  ].join("\n"),
+  config: {
+    ...generic.config,
+    delicateGlobs: generic.config.delicateGlobs.filter((g) => g !== "**/api/**"),
+    alwaysNew: ["cobrar online o integrar Mercado Pago", "reservas con seña", "un sistema de pedidos para mayoristas"],
+    priceWarnPct: 30,
+    depositPct: 50,
+  },
 };
 
 type Spec = {
@@ -542,8 +562,8 @@ export function buildSample(now = Date.now()): SampleData {
     id: uuid(v, "cccccccc"),
     project_id: SEED_PROJECT_ID,
     version: v,
-    ...structuredClone(DEFAULT_RULES),
-    created_by: v === 1 ? "seed" : "panel",
+    ...structuredClone(v === 3 ? SAMPLE_RULES_R1 : PRE_R1_RULES),
+    created_by: v === 1 ? "seed" : v === 2 ? "panel" : "sofia@estudiofaro.uy",
     created_at: new Date(now - 86_400_000 * (3 - v) - 3_600_000).toISOString(),
   }));
 

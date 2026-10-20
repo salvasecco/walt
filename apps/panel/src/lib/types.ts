@@ -2,7 +2,7 @@
 // las filas se refinan acá con los jsonb tipados que el panel muestra.
 // Solo se importan TIPOS de @walt/core: su código usa imports con extensión .js que Turbopack no resuelve
 // a .ts, así que las constantes se repiten acá y `satisfies` las ata a los tipos de core.
-import type { Change, CommandType, Op, OpType, Policy, RequestStatus } from "@walt/core/browser";
+import type { Change, CommandType, Op, OpType, Policy, RequestStatus, RulesConfig } from "@walt/core/browser";
 import type { Category, StoredCategory } from "./taxonomy";
 
 export type { Category, Change, CommandType, Op, OpType, Policy, RequestStatus, StoredCategory };
@@ -11,7 +11,8 @@ export type EventStatus = "inicio" | "ok" | "falla";
 export type Day = "lun" | "mar" | "mie" | "jue" | "vie" | "sab" | "dom";
 
 export type Interpretation = {
-  kind: "cambio" | "consulta" | "funcion_nueva" | "charla" | "aprobacion" | "revertir";
+  /** R1: simple, delicado, nuevo, consulta, bloqueado, charla, aprobacion o revertir; antes: cambio y funcion_nueva. */
+  kind: string;
   summary: string;
   confidence: number;
   ops: Op[];
@@ -19,6 +20,10 @@ export type Interpretation = {
   codeInstruction?: string;
   unexpressedParts: string[];
   options?: { label: string; ops: Op[] }[];
+  /** R1: por qué es de ese tipo, para la agencia. */
+  why?: string;
+  /** R1: la pregunta al cliente cuando no se pudo armar nada concreto. */
+  question?: string;
 };
 
 export type GateResult = {
@@ -67,19 +72,33 @@ export type Contact = {
   created_at: string;
 };
 
+export type RulesLimits = {
+  maxPriceChangePct: number;
+  monthlyQuota: number;
+  minConfidence: number;
+  maxOpsPerRequest: number;
+};
+
 export type Rules = {
   id: string;
   project_id: string;
   version: number;
   policies: Record<OpType, Policy>;
-  limits: {
-    maxPriceChangePct: number;
-    monthlyQuota: number;
-    minConfidence: number;
-    maxOpsPerRequest: number;
-  };
+  limits: RulesLimits;
+  /** Migración 0004: la política en lenguaje natural. Falta en filas de antes. */
+  policy_text?: string;
+  /** Migración 0004: `RulesConfig` de @walt/core. Falta (o es `{}`) en filas de antes. */
+  config?: Partial<RulesConfig>;
   created_by: string | null;
   created_at: string;
+};
+
+/** Lo que se edita en la pantalla Reglas: una versión completa, con config ya completada con su plantilla. */
+export type EditableRules = {
+  policies: Record<OpType, Policy>;
+  limits: RulesLimits;
+  policy_text: string;
+  config: RulesConfig;
 };
 
 export type WaltRequest = {

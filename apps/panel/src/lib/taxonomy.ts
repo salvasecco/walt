@@ -1,12 +1,23 @@
 // Taxonomía de pedidos del R1 (docs/R1-CONTRATO.md). Funciones puras, sin Supabase ni React.
 // Mientras la migración de datos no esté aplicada, la base puede traer los valores viejos:
 // permitido → simple, riesgoso → delicado, fuera_de_alcance → nuevo. El panel muestra siempre los nuevos.
+// Es la misma lógica que `normalizeCategory` de @walt/core, repetida acá (atada por tipos) para no meter
+// zod y todo core en el bundle del navegador.
+import type { Category as CoreCategory, LegacyCategory as CoreLegacy } from "@walt/core/browser";
 
-export const CATEGORIES = ["simple", "delicado", "nuevo", "consulta", "bloqueado", "charla", "derivado"] as const;
+/** En el orden en que el panel los muestra. */
+export const CATEGORIES = ["simple", "delicado", "nuevo", "consulta", "bloqueado", "charla", "derivado"] as const satisfies readonly CoreCategory[];
 export type Category = (typeof CATEGORIES)[number];
 
-export const LEGACY_CATEGORIES = ["permitido", "riesgoso", "fuera_de_alcance"] as const;
+export const LEGACY_CATEGORIES = ["permitido", "riesgoso", "fuera_de_alcance"] as const satisfies readonly CoreLegacy[];
 export type LegacyCategory = (typeof LEGACY_CATEGORIES)[number];
+
+// Si core suma una categoría, esto deja de compilar hasta que el panel la conozca.
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const _sameCategories: Same<Category, CoreCategory> = true;
+const _sameLegacy: Same<LegacyCategory, CoreLegacy> = true;
+void _sameCategories;
+void _sameLegacy;
 
 /** Lo que puede venir en `requests.category`, antes o después de la migración. */
 export type StoredCategory = Category | LegacyCategory;
