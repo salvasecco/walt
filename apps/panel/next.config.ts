@@ -31,6 +31,13 @@ const nextConfig: NextConfig = {
         loaders: ["@tailwindcss/turbopack"],
         as: "*.css",
       },
+      // @walt/ai se importa como fuente TS con imports './x.js' y prompts leídos del disco: el loader los
+      // adapta para Turbopack (loaders/walt-ai.cjs). Ver docs/DECISIONES.md, "R1 panel".
+      "*.ts": {
+        condition: { path: /packages\/ai\/src\// },
+        loaders: [join(__dirname, "loaders", "walt-ai.cjs")],
+        as: "*.ts",
+      },
     },
   },
 };
