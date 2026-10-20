@@ -26,6 +26,7 @@ export {
   type ModelTransport,
 } from './claude.js';
 export { formatExamples, formatHistory, formatInventory, formatPolicy, loadPrompt, neutralize } from './prompts.js';
+export { simulateRequest, type SimulateInput, type SimulateResult } from './simulate.js';
 
 type AiEnv = Pick<WaltEnvValues, 'LLM_PROVIDER'> & Partial<WaltEnvValues>;
 

@@ -1,4 +1,4 @@
-import { buildInventory, decide, defaultRules, isChangeKind, loadEnv, runGate, type Category } from '@walt/core';
+import { buildInventory, decide, defaultRules, isChangeKind, loadEnv, runGate, type Category, type LabeledExample } from '@walt/core';
 import { bakeryConfig, bakeryContent, bakerySchema } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import { createAi } from '../src/index.js';
@@ -45,4 +45,30 @@ describe.skipIf(!hasCreds)(`modelo real (${provider}): casos de la demo`, () => 
     },
     90_000,
   );
+});
+
+describe.skipIf(!hasCreds)(`modelo real (${provider}): una reetiqueta cambia la próxima decisión`, () => {
+  const ai = hasCreds ? createAi({ ...env, LLM_PROVIDER: provider }) : null;
+  const config = bakeryConfig();
+  const content = bakeryContent();
+  const inventory = buildInventory(config, content);
+  const text = 'poné un cartel con 40% de descuento en todo hasta el domingo';
+  const classify = async (examples: LabeledExample[]) => {
+    const { interpretation } = await ai!.interpret({
+      inventory, history: [], text, agencyName: 'Estudio Faro', clientName: 'Mabel', now: '2026-10-14T12:00:00-03:00', examples,
+    });
+    const gate = isChangeKind(interpretation.kind) && interpretation.ops.length > 0
+      ? runGate({ config, content, schema: bakerySchema(), ops: interpretation.ops, rules: defaultRules(), secrets: env.secrets })
+      : null;
+    return { interpretation, decision: decide(interpretation, gate, defaultRules(), { rawText: text, projectMode: 'contenido' }) };
+  };
+
+  it.concurrent('sin ejemplos, un cartel es simple; con la reetiqueta de la agencia, delicado', async () => {
+    const [before, after] = await Promise.all([
+      classify([]),
+      classify([{ text: 'poné un cartel de 50% de descuento en todo', category: 'delicado', previous: 'simple', reason: 'los descuentos grandes los aprueba la agencia' }]),
+    ]);
+    expect(before.decision.category, JSON.stringify(before.interpretation)).toBe('simple');
+    expect(after.decision.category, JSON.stringify(after.interpretation)).toBe('delicado');
+  }, 90_000);
 });
