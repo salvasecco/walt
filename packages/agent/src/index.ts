@@ -29,6 +29,7 @@ export {
   currentDeployState,
   isVercelAppUrl,
   vercelPreviewFromComment,
+  GitHubAccessError,
   GitHubAppTokens,
   githubAppJwt,
   githubTokenSource,

@@ -102,7 +102,8 @@ export class GitHubSiteRepo implements SiteRepo {
    * refreshed in the background, so only the very first request pays the two GitHub reads.
    */
   async loadContract(project: ProjectRow): Promise<Contract> {
-    const key = `${project.repo_owner}/${project.repo_name}@${project.default_branch}`;
+    // Per agency too: two agencies pointing at the same repo never share what one of them could read.
+    const key = `${project.factory_id}:${project.repo_owner}/${project.repo_name}@${project.default_branch}`;
     const hit = this.cache.get(key);
     if (hit) {
       if (Date.now() - hit.at >= 60_000 && !this.refreshing.has(key)) {

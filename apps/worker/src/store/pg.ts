@@ -126,6 +126,9 @@ export class PgStore implements Store {
   getFactory(id: string) {
     return this.one<FactoryRow>('select * from factories where id = $1', [id]);
   }
+  projectsByRepo(owner: string, name: string) {
+    return this.many<ProjectRow>('select * from projects where lower(repo_owner) = lower($1) and lower(repo_name) = lower($2)', [owner, name]);
+  }
   getContactByChat(chatId: number) {
     return this.one<ContactRow>('select * from contacts where telegram_chat_id = $1', [chatId]);
   }

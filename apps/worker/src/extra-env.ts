@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
-import { HOME_ENV_FILE } from '@walt/core';
+import { HOME_ENV_FILE, SEED_IDS } from '@walt/core';
 import type { GitHubAppCredentials } from '@walt/agent';
 
 /**
@@ -22,6 +22,11 @@ export interface ExtraEnv {
   concurrency: { default: number; agent: number };
   /** Requests per agency every 10 minutes. */
   agencyRateLimit: number;
+  /**
+   * Agencies that may use the instance's GITHUB_TOKEN (GITHUB_TOKEN_FACTORIES, comma-separated; default the
+   * seed's agency). Every other agency only works on repos where it installed Walt's GitHub App.
+   */
+  tokenFactories: string[];
   /** Secret values to redact (the App's private key). */
   secrets: string[];
 }
@@ -35,6 +40,7 @@ export const EXTRA_KEYS = [
   'WORKER_CONCURRENCY',
   'AGENT_CONCURRENCY',
   'AGENCY_RATE_LIMIT',
+  'GITHUB_TOKEN_FACTORIES',
   'LOG_FORMAT',
   'FLY_MACHINE_ID',
 ] as const;
@@ -75,6 +81,10 @@ export function loadExtraEnv(opts: Parameters<typeof readExtra>[0] = {}): ExtraE
     workerId: v.WORKER_ID ?? `${v.FLY_MACHINE_ID ?? hostname()}:${process.pid}:${randomBytes(2).toString('hex')}`,
     concurrency: { default: int(v.WORKER_CONCURRENCY, 1, 1), agent: int(v.AGENT_CONCURRENCY, 1, 1) },
     agencyRateLimit: int(v.AGENCY_RATE_LIMIT, 120, 1),
+    tokenFactories: (v.GITHUB_TOKEN_FACTORIES ?? SEED_IDS.agency)
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean),
     secrets: app ? [app.privateKey] : [],
   };
 }

@@ -80,27 +80,35 @@ export interface App {
 export function agentFromEnv(env: WaltEnv, deps: { store?: Store; tokens?: GitHubTokenSource | null; tenant?: TenantAi | null; onSecret?: (s: string) => void } = {}): AgentLane {
   const { store, tokens, tenant } = deps;
 
-  /** Project of the operation: the job's, or the request's. */
-  const projectOf = async (requestId?: string): Promise<{ id: string; factoryId: string } | null> => {
+  /**
+   * Project of the operation: the job's, the request's, or (outside a job: console, dry-run) the only agency
+   * with that repo. Unknown or ambiguous → null, and then only an App installation can serve it.
+   */
+  const projectOf = async (repo: { owner: string; name: string }, requestId?: string): Promise<{ id: string; factoryId: string } | null> => {
     if (!store) return null;
     let projectId = currentWork()?.projectId ?? null;
     if (!projectId && requestId) projectId = (await store.getRequest(requestId))?.project_id ?? null;
-    if (!projectId) return null;
-    const project = await store.getProject(projectId);
-    return project ? { id: project.id, factoryId: project.factory_id } : null;
+    if (projectId) {
+      const project = await store.getProject(projectId);
+      return project ? { id: project.id, factoryId: project.factory_id } : null;
+    }
+    const byRepo = await store.projectsByRepo(repo.owner, repo.name);
+    const factories = new Set(byRepo.map((p) => p.factory_id));
+    return byRepo.length > 0 && factories.size === 1 ? { id: byRepo[0]!.id, factoryId: byRepo[0]!.factory_id } : null;
   };
 
-  const hostFor = async (owner: string, requestId?: string): Promise<{ host: agentLane.CodeHost; secrets: string[] }> => {
+  const hostFor = async (repo: { owner: string; name: string }, requestId?: string): Promise<{ host: agentLane.CodeHost; secrets: string[] }> => {
     if (env.GITHUB_MODE !== 'real' || !tokens) return { host: agentLane.createHost(env), secrets: [] };
-    const project = await projectOf(requestId);
-    const t = await tokens.tokenFor({ factoryId: project?.factoryId ?? null, owner });
+    const project = await projectOf(repo, requestId);
+    // Throws GitHubAccessError (before touching GitHub) when the agency has neither an installation nor the right to the instance's token.
+    const t = await tokens.tokenFor({ factoryId: project?.factoryId ?? null, owner: repo.owner });
     return { host: new agentLane.GitHubHost(t.token), secrets: [t.token] };
   };
 
   return {
     async runCodeChange(input) {
-      const { host, secrets } = await hostFor(input.repo.owner, input.requestId);
-      const project = await projectOf(input.requestId);
+      const { host, secrets } = await hostFor(input.repo, input.requestId);
+      const project = await projectOf(input.repo, input.requestId);
       const res = tenant ? await tenant.resolve(project?.id ?? null, input.requestId) : null;
       // BYOK: the agent runs with the agency's key (and it is redacted like the other secrets).
       const keyEnv = res?.key ? { LLM_PROVIDER: 'anthropic' as const, ANTHROPIC_API_KEY: res.key } : {};
@@ -120,16 +128,16 @@ export function agentFromEnv(env: WaltEnv, deps: { store?: Store; tokens?: GitHu
       }
     },
     async mergeChange(input) {
-      return agentLane.mergeChange(input, (await hostFor(input.repo.owner)).host);
+      return agentLane.mergeChange(input, (await hostFor(input.repo)).host);
     },
     async revertChange(input) {
-      return agentLane.revertChange(input, (await hostFor(input.repo.owner)).host);
+      return agentLane.revertChange(input, (await hostFor(input.repo)).host);
     },
     async closeChange(input) {
-      return agentLane.closeChange(input, (await hostFor(input.repo.owner)).host);
+      return agentLane.closeChange(input, (await hostFor(input.repo)).host);
     },
     async waitForDeploy(input) {
-      return agentLane.waitForDeploy(input, (await hostFor(input.repo.owner)).host);
+      return agentLane.waitForDeploy(input, (await hostFor(input.repo)).host);
     },
   };
 }
@@ -197,6 +205,8 @@ export async function buildApp(env: WaltEnv, opts: BuildOptions = {}): Promise<A
           fallbackToken: env.GITHUB_TOKEN ?? null,
           findInstallation: (factoryId, owner) => store.githubInstallation(factoryId, owner),
           onToken: (t) => logger.addSecrets([t]),
+          // GITHUB_TOKEN only for the instance's own agencies; the rest, only with their App installation.
+          fallbackFactories: extra.tokenFactories,
         })
       : null;
   const repo = guardSiteRepo(

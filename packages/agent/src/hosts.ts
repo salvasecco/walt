@@ -284,6 +284,17 @@ export class GitHubAppTokens {
   }
 }
 
+/**
+ * The repo cannot be touched: the agency has no installation of Walt's App for that owner, and GITHUB_TOKEN
+ * only serves the instance's own agencies. Thrown before any call to GitHub; the worker derives the request.
+ */
+export class GitHubAccessError extends Error {
+  constructor(readonly owner: string) {
+    super(`La GitHub App de Walt no está instalada en ${owner} para esta agencia: instalala para que Walt pueda trabajar en ese repo`);
+    this.name = 'GitHubAccessError';
+  }
+}
+
 export interface RepoToken {
   token: string;
   /** `app`: an installation token of the agency; `token`: the GITHUB_TOKEN fallback. */
@@ -306,12 +317,19 @@ export interface TokenSourceOptions {
   /** Each new token, to add it to the values that are redacted. */
   onToken?: (token: string) => void;
   fetchImpl?: typeof fetch;
+  /**
+   * Agencies that may use `fallbackToken`. Null or absent: any (scripts, tests). The worker passes only the
+   * instance's own agencies: another agency's project can point at any owner/repo, and the instance token
+   * must never reach a repo that agency does not control. Without its own installation, no token.
+   */
+  fallbackFactories?: readonly string[] | null;
 }
 
 /**
- * The agency's App installation for the repo's owner if there is one; otherwise GITHUB_TOKEN. An
- * installation is only used for its own agency's projects (the factory comes from the project), so an
- * agency can never act on another agency's repos through the App.
+ * The agency's App installation for the repo's owner if there is one; otherwise GITHUB_TOKEN, only for the
+ * agencies in `fallbackFactories`. An installation is only used for its own agency's projects (the factory
+ * comes from the project), so an agency can never act on another agency's repos through the App, nor
+ * through the instance's token.
  */
 export function githubTokenSource(opts: TokenSourceOptions): GitHubTokenSource {
   const tokens = opts.app ? new GitHubAppTokens(opts.app, opts.fetchImpl) : null;
@@ -325,6 +343,8 @@ export function githubTokenSource(opts: TokenSourceOptions): GitHubTokenSource {
           return { token: t.token, source: 'app', installationId: Number(inst.installation_id) };
         }
       }
+      const allowed = !opts.fallbackFactories || (factoryId !== null && opts.fallbackFactories.includes(factoryId));
+      if (!allowed) throw new GitHubAccessError(owner);
       if (!opts.fallbackToken) {
         throw new Error(`No hay credenciales de GitHub para ${owner}: falta instalar la GitHub App en esa cuenta (o GITHUB_TOKEN)`);
       }
