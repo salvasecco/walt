@@ -5,6 +5,7 @@ import { clientHealth, countsAsChange, lastMonths, monthKey, usageByMonth, type 
 import { NotConfiguredError } from "./data";
 import { dataMode } from "./env";
 import { buildSample } from "./sample";
+import { getScope, inScope } from "./session";
 import { supabaseAdmin } from "./supabase/server";
 import type { Client, Contact, WaltRequest, Message, Project, Quote, RequestStatus } from "./types";
 
@@ -45,17 +46,18 @@ type Base = { projects: Project[]; clients: Client[]; clientsReady: boolean };
 
 /** Proyectos y clientes. Sin la migración 0003, `clientsReady` es false y no hay clientes. */
 const getBase = cache(async (): Promise<Base> => {
-  if (mode() === "ejemplo") {
+  const m = mode();
+  const scope = await getScope();
+  if (m === "ejemplo") {
     const s = buildSample();
     return { projects: s.projects, clients: s.clients, clientsReady: true };
   }
-  const db = supabaseAdmin();
-  const [projects, clientsRes] = await Promise.all([
-    db.from("projects").select("*").order("created_at").then(must<Project[]>),
-    db.from("clients").select("*").order("name"),
-  ]);
-  if (clientsRes.error) return { projects, clients: [], clientsReady: false };
-  return { projects, clients: clientsRes.data as Client[], clientsReady: true };
+  // Clientes de la agencia de quien mira (o todos con el acceso de la instancia).
+  let q = supabaseAdmin().from("clients").select("*");
+  if (!scope.all) q = q.eq("factory_id", scope.factoryId ?? "");
+  const clientsRes = await q.order("name");
+  if (clientsRes.error) return { projects: scope.projects, clients: [], clientsReady: false };
+  return { projects: scope.projects, clients: clientsRes.data as Client[], clientsReady: true };
 });
 
 const OPEN: RequestStatus[] = ["esperando_agencia", "agente_listo", "esperando_cliente", "recibido", "interpretando", "cotizando", "agente_trabajando", "publicando"];
@@ -84,27 +86,32 @@ export const getAttention = cache(async (): Promise<AttentionData> => {
     versions = s.versions.map((v) => ({ ...v, request_short_id: shortOf.get(v.request_id ?? "")?.short_id ?? null }));
   } else {
     const db = supabaseAdmin();
+    const scope = await getScope();
     const since = new Date(now - 7 * DAY).toISOString();
+    let quotesQ = db
+      .from("quotes")
+      .select("id, status, title, created_at, request_id, request:requests!quotes_request_id_fkey!inner(project_id)")
+      .in("status", ["borrador", "enviado"]);
+    if (!scope.all) quotesQ = quotesQ.in("request.project_id", scope.projectIds);
     const [reqs, qs, vs] = await Promise.all([
-      db
-        .from("requests")
-        .select(LIGHT_REQUEST)
-        .or(`status.in.(${OPEN.join(",")}),created_at.gte.${since}`)
+      inScope(db.from("requests").select(LIGHT_REQUEST).or(`status.in.(${OPEN.join(",")}),created_at.gte.${since}`), scope)
         .order("created_at", { ascending: false })
         .limit(1000)
         .then(must<LightRequest[]>),
-      db.from("quotes").select("id, status, title, created_at, request_id").in("status", ["borrador", "enviado"]).then(must<{ id: string; status: AttQuote["status"]; title: string; created_at: string; request_id: string }[]>),
-      db
-        .from("content_versions")
-        .select("id, project_id, request_id, status, git_error, git_commit_sha, created_at")
-        .eq("status", "viva")
-        .not("git_error", "is", null)
-        .then(must<(Omit<AttVersion, "request_short_id"> & { request_id: string | null })[]>),
+      quotesQ.then(must<{ id: string; status: AttQuote["status"]; title: string; created_at: string; request_id: string }[]>),
+      inScope(
+        db
+          .from("content_versions")
+          .select("id, project_id, request_id, status, git_error, git_commit_sha, created_at")
+          .eq("status", "viva")
+          .not("git_error", "is", null),
+        scope,
+      ).then(must<(Omit<AttVersion, "request_short_id"> & { request_id: string | null })[]>),
     ]);
     const known = new Map(reqs.map((r) => [r.id, { project_id: r.project_id, short_id: r.short_id }]));
     const missing = [...new Set([...qs.map((q) => q.request_id), ...vs.map((v) => v.request_id)].filter((id): id is string => !!id && !known.has(id)))];
     if (missing.length) {
-      const extra = await db.from("requests").select("id, project_id, short_id").in("id", missing).then(must<{ id: string; project_id: string; short_id: string }[]>);
+      const extra = await inScope(db.from("requests").select("id, project_id, short_id").in("id", missing), scope).then(must<{ id: string; project_id: string; short_id: string }[]>);
       for (const r of extra) known.set(r.id, r);
     }
     requests = reqs;
@@ -176,7 +183,8 @@ async function requestsSince(projectIds: string[] | null, since: string): Promis
       .requests.filter((r) => r.created_at >= since && (!projectIds || projectIds.includes(r.project_id)))
       .map(toLight);
   }
-  let q = supabaseAdmin().from("requests").select(LIGHT_REQUEST).gte("created_at", since);
+  const scope = await getScope();
+  let q = inScope(supabaseAdmin().from("requests").select(LIGHT_REQUEST).gte("created_at", since), scope);
   if (projectIds) q = q.in("project_id", projectIds);
   return q.order("created_at", { ascending: false }).limit(5000).then(must<LightRequest[]>);
 }

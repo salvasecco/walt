@@ -15,13 +15,13 @@ import type { LiveSnapshot } from "@/lib/data";
 import { buildJourney, timeToPublish } from "@/lib/journey";
 import { OPEN_STATUSES, TZ, clock, ms, relative } from "@/lib/labels";
 import { normalizeCategory, resolvedWithoutAgency } from "@/lib/taxonomy";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { authRealtime, supabaseBrowser, type RealtimeConfig } from "@/lib/supabase/browser";
 import { SEED_PROJECT_ID, type ContentVersion, type WaltEvent, type WaltRequest, type Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
   initial: LiveSnapshot;
-  supabase: { url: string; anonKey: string } | null;
+  supabase: RealtimeConfig | null;
   sample: boolean;
   siteUrl: string;
 };
@@ -56,7 +56,8 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
   // ── Realtime: requests, events, messages y content_versions ──────────────
   useEffect(() => {
     if (!supabase || sample) return;
-    const db = supabaseBrowser(supabase.url, supabase.anonKey);
+    const db = supabaseBrowser(supabase);
+    let cancelled = false;
     const ch = db
       .channel("panel-en-vivo")
       .on("postgres_changes", { event: "*", schema: "public", table: "requests" }, (p) => {
@@ -77,11 +78,15 @@ export function LiveBoard({ initial, supabase, sample, siteUrl }: Props) {
           return v.status === "viva" ? [v, ...others] : others;
         });
         setSiteNonce((n) => n + 1);
-      })
-      .subscribe((status) => {
+      });
+    void authRealtime(db, supabase).then(() => {
+      if (cancelled) return;
+      ch.subscribe((status) => {
         setConn(status === "SUBSCRIBED" ? "en_vivo" : status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" ? "sin_conexion" : "conectando");
       });
+    });
     return () => {
+      cancelled = true;
       void db.removeChannel(ch);
     };
   }, [supabase, sample]);

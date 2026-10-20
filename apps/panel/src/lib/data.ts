@@ -1,6 +1,7 @@
 import "server-only";
 import { dataMode, env } from "./env";
 import { buildSample } from "./sample";
+import { agencyNameOf, getScope, inScope } from "./session";
 import { supabaseAdmin } from "./supabase/server";
 import { AGENCY_WAIT_STATUSES, categoryVariants, isPendingAgency, normalizeCategory } from "./taxonomy";
 import type {
@@ -42,8 +43,13 @@ export type LiveSnapshot = {
   agencyName: string;
 };
 
+// Todas las lecturas pasan por el alcance de quien mira (lib/session.ts): los proyectos de su agencia, o todos
+// con el acceso de la instancia. Se lee con service role y se filtra acá; el navegador usa su propia sesión.
+
 export async function getLiveSnapshot(): Promise<LiveSnapshot> {
-  if (mode() === "ejemplo") {
+  const m = mode();
+  const scope = await getScope();
+  if (m === "ejemplo") {
     const s = buildSample();
     const sampleIds = new Set(s.projects.filter((p) => p.is_sample).map((p) => p.id));
     return {
@@ -57,10 +63,9 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
   }
   const db = supabaseAdmin();
   const since = new Date(Date.now() - 36 * 3_600_000).toISOString();
-  const [projects, allRequests, liveVersions] = await Promise.all([
-    db.from("projects").select("*").order("created_at").then(must<Project[]>),
-    db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(60).then(must<WaltRequest[]>),
-    db.from("content_versions").select("*").eq("status", "viva").then(must<ContentVersion[]>),
+  const [allRequests, liveVersions] = await Promise.all([
+    inScope(db.from("requests").select("*").gte("created_at", since), scope).order("created_at", { ascending: false }).limit(60).then(must<WaltRequest[]>),
+    inScope(db.from("content_versions").select("*").eq("status", "viva"), scope).then(must<ContentVersion[]>),
   ]);
   // En vivo es la pantalla de la demo: sin los clientes de ejemplo (migración 0003).
   const requests = allRequests.filter((r) => !r.is_sample);
@@ -71,30 +76,29 @@ export async function getLiveSnapshot(): Promise<LiveSnapshot> {
         db.from("messages").select("*").in("request_id", ids).order("at").then(must<Message[]>),
       ])
     : [[], []];
-  return { projects, requests, events, messages, liveVersions, agencyName: env.agencyName };
+  return { projects: scope.projects, requests, events, messages, liveVersions, agencyName: agencyNameOf(scope.viewer) };
 }
 
 export async function getProjects(): Promise<Project[]> {
-  if (mode() === "ejemplo") return buildSample().projects;
-  return supabaseAdmin().from("projects").select("*").order("created_at").then(must<Project[]>);
+  mode();
+  return (await getScope()).projects;
 }
 
 export async function getRequests(filter: { category?: Category; status?: RequestStatus; q?: string } = {}) {
+  const m = mode();
+  const scope = await getScope();
+  const projects = scope.projects;
   let rows: WaltRequest[];
-  let projects: Project[];
-  if (mode() === "ejemplo") {
-    const s = buildSample();
-    rows = s.requests;
-    projects = s.projects;
+  if (m === "ejemplo") {
+    rows = buildSample().requests;
     if (filter.category) rows = rows.filter((r) => normalizeCategory(r.category) === filter.category);
     if (filter.status) rows = rows.filter((r) => r.status === filter.status);
   } else {
-    const db = supabaseAdmin();
-    let q = db.from("requests").select("*").order("created_at", { ascending: false }).limit(300);
+    let q = inScope(supabaseAdmin().from("requests").select("*"), scope);
     // Hasta la migración de datos conviven los nombres viejos: se buscan los dos.
     if (filter.category) q = q.in("category", categoryVariants(filter.category));
     if (filter.status) q = q.eq("status", filter.status);
-    [rows, projects] = await Promise.all([q.then(must<WaltRequest[]>), getProjects()]);
+    rows = await q.order("created_at", { ascending: false }).limit(300).then(must<WaltRequest[]>);
   }
   if (filter.q) {
     const needle = filter.q.toLowerCase();
@@ -117,7 +121,9 @@ export type RequestDetail = {
 };
 
 export async function getRequestDetail(shortId: string): Promise<RequestDetail | null> {
-  if (mode() === "ejemplo") {
+  const m = mode();
+  const scope = await getScope();
+  if (m === "ejemplo") {
     const s = buildSample();
     const request = s.requests.find((r) => r.short_id === shortId);
     if (!request) return null;
@@ -134,9 +140,10 @@ export async function getRequestDetail(shortId: string): Promise<RequestDetail |
   }
   const db = supabaseAdmin();
   const request = await db.from("requests").select("*").eq("short_id", shortId).maybeSingle().then(must<WaltRequest | null>);
-  if (!request) return null;
-  const [project, events, messages, approvals, versions, liveVersion, quote] = await Promise.all([
-    db.from("projects").select("*").eq("id", request.project_id).maybeSingle().then(must<Project | null>),
+  // Un pedido de otra agencia no existe para quien mira.
+  const project = request ? (scope.projects.find((p) => p.id === request.project_id) ?? null) : null;
+  if (!request || !project) return null;
+  const [events, messages, approvals, versions, liveVersion, quote] = await Promise.all([
     db.from("events").select("*").eq("request_id", request.id).order("id").then(must<WaltEvent[]>),
     db.from("messages").select("*").eq("request_id", request.id).order("at").then(must<Message[]>),
     db.from("approvals").select("*").eq("request_id", request.id).order("at").then(must<Approval[]>),
@@ -161,29 +168,25 @@ export type PendingApproval = {
 /** Lo que espera la aprobación de la agencia: solo lo delicado (brief §1). */
 export async function getPendingApprovals(): Promise<PendingApproval[]> {
   const statuses: RequestStatus[] = [...AGENCY_WAIT_STATUSES];
+  const m = mode();
+  const scope = await getScope();
+  const projects = scope.projects;
   let requests: WaltRequest[];
-  let projects: Project[];
   let versions: ContentVersion[];
   let messages: Message[] = [];
   let prEvents: WaltEvent[] = [];
-  if (mode() === "ejemplo") {
+  if (m === "ejemplo") {
     const s = buildSample();
     requests = s.requests.filter(isPendingAgency);
     prEvents = s.events.filter((e) => e.step === "agente_pr" && e.status === "ok");
-    projects = s.projects;
     versions = s.versions.filter((v) => v.status === "viva");
   } else {
     const db = supabaseAdmin();
-    [requests, projects, versions] = await Promise.all([
-      db
-        .from("requests")
-        .select("*")
-        .in("status", statuses)
-        .in("category", categoryVariants("delicado"))
+    [requests, versions] = await Promise.all([
+      inScope(db.from("requests").select("*").in("status", statuses).in("category", categoryVariants("delicado")), scope)
         .order("created_at")
         .then(must<WaltRequest[]>),
-      getProjects(),
-      db.from("content_versions").select("*").eq("status", "viva").then(must<ContentVersion[]>),
+      inScope(db.from("content_versions").select("*").eq("status", "viva"), scope).then(must<ContentVersion[]>),
     ]);
     if (requests.length)
       messages = await db
@@ -219,7 +222,10 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
 }
 
 export async function getRules(projectId: string): Promise<Rules[]> {
-  if (mode() === "ejemplo") return buildSample().rules.filter((r) => r.project_id === projectId).sort((a, b) => b.version - a.version);
+  const m = mode();
+  const scope = await getScope();
+  if (!scope.projectIds.includes(projectId)) return [];
+  if (m === "ejemplo") return buildSample().rules.filter((r) => r.project_id === projectId).sort((a, b) => b.version - a.version);
   return supabaseAdmin()
     .from("rules")
     .select("*")
@@ -232,37 +238,43 @@ export async function getRules(projectId: string): Promise<Rules[]> {
 export type QuoteRow = { quote: Quote; request: WaltRequest | null; project: Project | null };
 
 export async function getQuotes(): Promise<QuoteRow[]> {
+  const m = mode();
+  const scope = await getScope();
   let quotes: Quote[];
   let requests: WaltRequest[];
-  let projects: Project[];
-  if (mode() === "ejemplo") {
-    const s = buildSample();
-    ({ quotes, requests, projects } = s);
+  if (m === "ejemplo") {
+    ({ quotes, requests } = buildSample());
   } else {
     const db = supabaseAdmin();
-    quotes = await db.from("quotes").select("*").order("created_at", { ascending: false }).then(must<Quote[]>);
-    const ids = quotes.map((q) => q.request_id).filter((x): x is string => !!x);
-    [requests, projects] = await Promise.all([
-      ids.length ? db.from("requests").select("*").in("id", ids).then(must<WaltRequest[]>) : Promise.resolve([]),
-      getProjects(),
-    ]);
+    // Solo los presupuestos de pedidos de proyectos de la agencia (join por quotes.request_id).
+    let q = db.from("quotes").select("*, request:requests!quotes_request_id_fkey!inner(project_id)");
+    if (!scope.all) q = q.in("request.project_id", scope.projectIds);
+    const rows = await q.order("created_at", { ascending: false }).then(must<(Quote & { request?: unknown })[]>);
+    quotes = rows.map((row) => {
+      const quote = { ...row };
+      delete quote.request;
+      return quote;
+    });
+    const ids = quotes.map((x) => x.request_id).filter((x): x is string => !!x);
+    requests = ids.length ? await db.from("requests").select("*").in("id", ids).then(must<WaltRequest[]>) : [];
   }
   return quotes.map((quote) => {
     const request = requests.find((r) => r.id === quote.request_id) ?? null;
-    return { quote, request, project: projects.find((p) => p.id === request?.project_id) ?? null };
+    return { quote, request, project: scope.projects.find((p) => p.id === request?.project_id) ?? null };
   });
 }
 
 export async function getInsightsData(days = 30) {
-  if (mode() === "ejemplo") {
+  const m = mode();
+  const scope = await getScope();
+  if (m === "ejemplo") {
     const s = buildSample();
     return { requests: s.requests, projects: s.projects };
   }
-  const db = supabaseAdmin();
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  const [requests, projects] = await Promise.all([
-    db.from("requests").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(2000).then(must<WaltRequest[]>),
-    getProjects(),
-  ]);
-  return { requests, projects };
+  const requests = await inScope(supabaseAdmin().from("requests").select("*").gte("created_at", since), scope)
+    .order("created_at", { ascending: false })
+    .limit(2000)
+    .then(must<WaltRequest[]>);
+  return { requests, projects: scope.projects };
 }
