@@ -10,3 +10,4 @@ export * from './copy.ts';
 export * from './pricing.ts';
 export * from './ids.ts';
 export * from './env.ts';
+export * from './tables.ts';
