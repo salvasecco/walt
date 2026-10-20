@@ -1,6 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { PGlite } from '@electric-sql/pglite';
+import type { PGlite } from '@electric-sql/pglite';
 import { createFakeProvider } from '@walt/ai';
 import { assistantName, copy, DEFAULT_RULES, SEED_IDS } from '@walt/core';
 import { bakeryContent } from '@walt/core/fixtures';
@@ -10,20 +8,9 @@ import { ConsoleChannel } from '../src/channel/console.js';
 import { CommandPoller } from '../src/commands.js';
 import { Worker } from '../src/pipeline.js';
 import { FakeSiteRepo } from '../src/site/repo.js';
-import { PgStore, type Db } from '../src/store/pg.js';
+import { PgStore } from '../src/store/pg.js';
 import { notImplementedAgent } from './helpers.js';
-
-const MIGRATIONS = fileURLToPath(new URL('../../../supabase/migrations/', import.meta.url));
-
-function pgliteDb(pg: PGlite): Db {
-  type Q = { query: PGlite['query'] };
-  const wrap = (q: Q) => ({ query: async <T>(text: string, params: unknown[] = []) => (await q.query<T>(text, params)).rows });
-  return {
-    ...wrap(pg),
-    transaction: (fn) => pg.transaction((tx) => fn({ ...wrap(tx as unknown as Q), transaction: () => Promise.reject(new Error('anidada')), close: async () => {} })),
-    close: () => pg.close(),
-  };
-}
+import { freshPglite, pgliteDb } from './pglite.js';
 
 describe('PgStore sobre la migración real (PGlite)', () => {
   let pg: PGlite;
@@ -33,8 +20,7 @@ describe('PgStore sobre la migración real (PGlite)', () => {
   const repo = new FakeSiteRepo(null);
 
   beforeAll(async () => {
-    pg = new PGlite();
-    for (const f of readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+    pg = await freshPglite();
     await pg.query('insert into factories (id, name, assistant_name) values ($1, $2, $3)', [SEED_IDS.agency, 'Estudio Faro', assistantName('Estudio Faro')]);
     await pg.query(
       `insert into projects (id, factory_id, name, client_name, repo_owner, repo_name, site_url) values ($1, $2, 'Panadería Mabel', 'Mabel', 'salvasecco', 'walt-demo', 'https://sitio.example')`,
@@ -73,7 +59,8 @@ describe('PgStore sobre la migración real (PGlite)', () => {
     await worker.handle({ kind: 'text', chatId: 9_000_000_001, fromName: 'Mabel', text: 'subí el pan flauta a 95', updateId: 3 });
     await worker.idle();
     const req = (await store.latestRequestOfContact(contact.id, ['esperando_cliente']))!;
-    expect(req.category).toBe('permitido');
+    // 0004 renames the categories (a legacy 'permitido' is stored as 'simple').
+    expect(['permitido', 'simple']).toContain(req.category);
     expect(req.confidence).toBe(0.9);
     expect(req.changes).toEqual([{ pointer: '/products/0/price', before: 80, after: 95 }]);
 
