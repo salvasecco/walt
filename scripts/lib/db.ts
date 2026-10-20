@@ -41,11 +41,15 @@ export interface SchemaStatus {
 /** Tables, columns and functions that 0004 adds; each one is probed over REST. */
 const R1_TABLES = ['jobs', 'request_labels', 'memberships', 'ai_settings', 'wallets', 'usage_ledger', 'github_installations'] as const;
 
-/** What 0004 adds that is missing, probed over REST without side effects. */
+/**
+ * What 0004 adds that is missing, probed over REST without side effects.
+ * Every probe is a GET with `limit(0)`, never `head: true`: supabase-js turns the 404 of a HEAD to a
+ * missing table into a 204 without error, so a HEAD probe says every table exists.
+ */
 export async function missingR1(db: SupabaseClient): Promise<string[]> {
   const missing: string[] = [];
   for (const t of R1_TABLES) {
-    const { error } = await db.from(t).select('*', { count: 'exact', head: true });
+    const { error } = await db.from(t).select('*').limit(0);
     if (error) missing.push(t);
   }
   const cols: [string, string][] = [
@@ -54,7 +58,7 @@ export async function missingR1(db: SupabaseClient): Promise<string[]> {
     ['processed_updates', 'key, source'],
   ];
   for (const [t, c] of cols) {
-    const { error } = await db.from(t).select(c, { count: 'exact', head: true });
+    const { error } = await db.from(t).select(c).limit(0);
     if (error) missing.push(`${t}.(${c})`);
   }
   // A nil version: v2 answers with its own "no existe", PostgREST with PGRST202 if the function is missing.
@@ -71,7 +75,7 @@ const NIL = '00000000-0000-4000-8000-000000000000';
 export async function schemaStatus(db: SupabaseClient, env: WaltEnv): Promise<SchemaStatus> {
   const missingTables: string[] = [];
   for (const t of MAIN_TABLES) {
-    const { error } = await db.from(t).select('*', { count: 'exact', head: true });
+    const { error } = await db.from(t).select('*').limit(0);
     if (error) missingTables.push(t);
   }
   // With nil ids the function exists if it raises its own "no existe" error, not PostgREST's PGRST202.
@@ -84,15 +88,15 @@ export async function schemaStatus(db: SupabaseClient, env: WaltEnv): Promise<Sc
     // Only the revoke gives "permission denied for function"; without it anon reaches the body and fails there.
     anonBlocked = !!res.error && /permission denied for function/i.test(res.error.message);
   }
-  const c1 = await db.from('clients').select('id', { head: true, count: 'exact' });
-  const c2 = await db.from('projects').select('client_id, is_sample', { head: true, count: 'exact' });
-  const c3 = await db.from('requests').select('is_sample', { head: true, count: 'exact' });
+  const c1 = await db.from('clients').select('id').limit(0);
+  const c2 = await db.from('projects').select('client_id, is_sample').limit(0);
+  const c3 = await db.from('requests').select('is_sample').limit(0);
   const clients = !c1.error && !c2.error && !c3.error;
   const r1Missing = await missingR1(db);
   let anonClosed: boolean | null = null;
   if (env.SUPABASE_URL && env.SUPABASE_ANON_KEY) {
     const anon = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-    const res = await anon.from('requests').select('id', { head: true, count: 'exact' });
+    const res = await anon.from('requests').select('id').limit(0);
     anonClosed = !!res.error && /permission denied/i.test(res.error.message);
   }
   return { missingTables, publishVersion, anonBlocked, clients, r1: { ok: r1Missing.length === 0, missing: r1Missing }, anonClosed };
