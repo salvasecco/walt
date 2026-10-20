@@ -1,22 +1,17 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAi } from "@walt/ai";
+import { createAi, simulateRequest } from "@walt/ai";
 import {
-  buildInventory,
   costUsd,
-  decide,
   delicatePathReason,
   delicatePaths,
+  exampleFromLabelRow,
   loadEnv,
-  normalizeCategory as coreNormalize,
-  parseInterpretation,
   redact,
   rulesConfig,
-  runGate,
   type Category,
-  type GateResult,
-  type Inventory,
   type LabeledExample,
+  type LabeledRequestRow,
   type Op,
   type Rules,
 } from "@walt/core";
@@ -25,8 +20,6 @@ import { dataMode } from "./env";
 import { describeChange, describeOp } from "./labels";
 import { isMissingFunction } from "./session";
 import type { Project, SiteContent } from "./types";
-
-const EMPTY_INVENTORY: Inventory = { currency: "", texts: [], colors: [], products: [], categories: [], banner: null, hours: null, sections: null };
 
 /** Lo que el simulador muestra: cómo se clasificaría el pedido y por qué. Nada se guarda ni se manda. */
 export type SimulationResult = {
@@ -45,6 +38,8 @@ export type SimulationResult = {
   changes: { label: string; before: string; after: string }[];
   needsCode: boolean;
   codeInstruction: string | null;
+  /** Dos lecturas concretas que el cliente vería como opciones (en vez de una sola vista previa). */
+  options: { label: string; ops: string[]; warnings: string[] }[];
   gate: { outcome: string; reasons: string[] } | null;
   /** Archivos que probó la agencia: cuáles son delicados según las reglas en edición. */
   paths: { path: string; glob: string; zone: string; reason: string }[];
@@ -82,16 +77,17 @@ async function similarExamples(db: SupabaseClient, factoryId: string, text: stri
     if (isMissingFunction(error)) return [];
     throw new Error(error.message);
   }
-  return ((data ?? []) as { raw_text: string; from_category: string | null; to_category: string; reason: string | null }[]).flatMap((r) => {
-    const category = coreNormalize(r.to_category);
-    return category ? [{ text: r.raw_text, category, previous: coreNormalize(r.from_category), reason: r.reason }] : [];
+  return ((data ?? []) as LabeledRequestRow[]).flatMap((r) => {
+    const example = exampleFromLabelRow(r);
+    return example ? [example] : [];
   });
 }
 
 /**
- * Corre la interpretación real de @walt/ai y `decide` de @walt/core con las reglas en edición, igual que el
- * worker (contrato del sitio, versión viva, gate), sin guardar nada ni mandar mensajes. Si se pasan rutas,
- * aplica también la mitad determinística de la doble clasificación (`delicatePaths`).
+ * Corre `simulateRequest` de @walt/ai (interpretación real, gate, opciones y `decide`, los mismos pasos que el
+ * worker) con las reglas en edición, el contrato del sitio, la versión viva y los reetiquetados parecidos de la
+ * agencia, sin guardar nada ni mandar mensajes. Con rutas, suma la mitad determinística de la doble
+ * clasificación (lo que diría la revisión del diff de un cambio de código).
  */
 export async function simulate(input: { db: SupabaseClient; project: Project; agencyName: string; text: string; rules: Rules; paths: string[] }): Promise<SimulationResult> {
   const { project, text, rules, paths } = input;
@@ -105,42 +101,32 @@ export async function simulate(input: { db: SupabaseClient; project: Project; ag
   ]);
   if (note) notes.push(note);
   if (project.mode === "contenido" && !content) notes.push("El proyecto no tiene versión viva: interpreto sin el inventario del sitio.");
-  const inventory = contract && content ? buildInventory(contract.config, content) : EMPTY_INVENTORY;
-  const config = rulesConfig(rules);
 
   const ai = createAi(env);
-  // policyText, alwaysNew y examples son parte de la interpretación R1 (sesión de taxonomía): se pasan siempre.
-  const request = {
-    inventory,
-    history: [],
-    text,
-    agencyName: input.agencyName,
-    clientName: project.client_name,
-    now: montevideoNow(),
-    policyText: rules.policy_text ?? "",
-    alwaysNew: config.alwaysNew,
-    examples,
-  };
-  let raw: Awaited<ReturnType<typeof ai.interpret>>;
+  let sim: Awaited<ReturnType<typeof simulateRequest>>;
   try {
-    raw = await ai.interpret(request);
+    sim = await simulateRequest({
+      ai,
+      text,
+      rules,
+      content: contract && content ? { config: contract.config, content, schema: contract.schema } : undefined,
+      agencyName: input.agencyName,
+      clientName: project.client_name,
+      now: montevideoNow(),
+      examples,
+      secrets: env.secrets,
+      paths,
+    });
   } catch (e) {
     throw new Error(`La IA no respondió: ${redact(e instanceof Error ? e.message : String(e), env.secrets).slice(0, 240)}`);
   }
-  const interpretation = parseInterpretation(raw.interpretation);
+  const { interpretation, gate, decision } = sim;
 
-  let gate: GateResult | null = null;
-  const change = interpretation.kind === "simple" || interpretation.kind === "delicado";
-  if (change && interpretation.ops.length > 0 && contract && content) {
-    gate = runGate({ config: contract.config, content, schema: contract.schema, ops: interpretation.ops, rules, secrets: env.secrets });
-  }
-  const decision = decide(interpretation, gate, rules, { rawText: text, projectMode: project.mode, hasOpenRequest: false });
-
-  // Doble clasificación: si el cambio tocara una zona delicada, sube a delicado. Nunca baja solo.
-  const found = paths.length ? delicatePaths(paths, config) : [];
-  const raisedByPaths = found.length > 0 && decision.category === "simple";
+  // Doble clasificación: si el diff tocara una zona delicada, el pedido sube a delicado. Nunca baja solo.
+  const raisedByPaths = sim.diff?.category === "delicado" && decision.category === "simple";
   const category: Category = raisedByPaths ? "delicado" : decision.category;
-  const reasons = [...decision.reasons, ...(raisedByPaths ? found.map(delicatePathReason) : [])];
+  const reasons = [...decision.reasons, ...(raisedByPaths ? sim.diff!.reasons : [])];
+  const found = paths.length ? delicatePaths(paths, rulesConfig(rules)) : [];
 
   const before = (content ?? null) as SiteContent | null;
   return {
@@ -158,12 +144,13 @@ export async function simulate(input: { db: SupabaseClient; project: Project; ag
     changes: (gate?.changes ?? []).slice(0, 30).map((c) => describeChange(c, before)),
     needsCode: interpretation.needsCode,
     codeInstruction: interpretation.codeInstruction?.trim() || null,
+    options: (sim.options ?? []).map((o) => ({ label: o.label, ops: o.ops.map((op) => describeOp(op, before)), warnings: o.warnings })),
     gate: gate ? { outcome: gate.outcome, reasons: gate.reasons } : null,
     paths: found.map((p) => ({ ...p, reason: delicatePathReason(p) })),
     raisedByPaths,
     provider: ai.name,
-    model: raw.usage.model,
-    costUsd: costUsd(raw.usage),
+    model: sim.usage.model,
+    costUsd: costUsd(sim.usage),
     ms: Date.now() - started,
     examples: examples.length,
     contract: source,
