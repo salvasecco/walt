@@ -31,7 +31,14 @@ begin
 end $$;
 grant select on content_versions to anon;
 
--- Ninguna función de la API es para anon.
+-- Ninguna función de la API es para anon, salvo la vista previa del sitio (0006): sin ella el cliente
+-- vería la versión viva en vez del cambio que tiene que aprobar. 0006 puede ir antes o después de esta.
 revoke execute on all functions in schema public from anon;
+do $$
+begin
+  if to_regprocedure('public.get_preview_version(uuid)') is not null then
+    grant execute on function get_preview_version(uuid) to anon;
+  end if;
+end $$;
 
 notify pgrst, 'reload schema';

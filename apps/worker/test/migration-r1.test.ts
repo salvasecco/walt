@@ -129,3 +129,24 @@ describe('migraciones 0004 y 0005 sobre una base con datos (PGlite)', () => {
     });
   });
 });
+
+describe('orden de Salva: 0004 → 0006 → 0005 (PGlite)', () => {
+  it('la vista previa del sitio sigue andando para la anon después de cerrarla', async () => {
+    const pg = await freshPglite({ upTo: '0003' });
+    try {
+      const q = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) => (await pg.query<T>(sql, params)).rows;
+      await q(`insert into factories (id, name, assistant_name) values ($1, 'Faro', 'a')`, [F]);
+      await q(`insert into projects (id, factory_id, name, client_name, repo_owner, repo_name) values ($1, $2, 'P', 'M', 'o', 'r')`, [P, F]);
+      await q(`insert into content_versions (project_id, status, content, published_at) values ($1, 'viva', '{}', now())`, [P]);
+      const [draft] = await q<{ id: string }>(`insert into content_versions (project_id, status, content) values ($1, 'borrador', '{"x":1}') returning id`, [P]);
+      for (const f of ['0004_r1.sql', '0006_r1_vistas_previas.sql', '0005_r1_cierre_anon.sql']) await pg.exec(readFileSync(MIGRATIONS + f, 'utf8'));
+      await as(pg, { role: 'anon' }, async () => {
+        expect(await q(`select id, status from get_preview_version($1)`, [draft!.id])).toEqual([{ id: draft!.id, status: 'borrador' }]);
+        expect(await q('select status from content_versions')).toEqual([{ status: 'viva' }]);
+        await expect(q(`select * from similar_labeled_requests($1, 'pan')`, [F])).rejects.toThrow(/permission denied/);
+      });
+    } finally {
+      await pg.close();
+    }
+  });
+});
