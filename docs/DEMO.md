@@ -24,7 +24,7 @@ Otros simples que salen igual: «subí el pan flauta a 95», «el domingo abrimo
 
 ## Última corrida (2026-10-20, 90-integracion)
 
-Con el modelo real: `claude-haiku-5-5` clasifica (prompt v9) y `claude-sonnet-5-5` escribe el código. Base **en memoria** (`--memoria` o `pnpm demo:r1`), porque la 0004 no está aplicada; los casos de contenido con `GITHUB_MODE=fake` (para no commitear en el repo del sitio) y los de código con GitHub y Vercel reales. Además, `pnpm e2e --strict` en verde contra la base real sin la 0004 (Supabase, modelo, GitHub y el HTML del sitio).
+Con el modelo real: `claude-haiku-5-5` clasifica (prompt v8) y `claude-sonnet-5-5` escribe el código. Base **en memoria** (`--memoria` o `pnpm demo:r1`), porque la 0004 no está aplicada; los casos de contenido con `GITHUB_MODE=fake` (para no commitear en el repo del sitio) y los de código con GitHub y Vercel reales. Además, `pnpm e2e --strict` en verde contra la base real sin la 0004 (Supabase, modelo, GitHub y el HTML del sitio).
 
 | Caso | Comando | Resultado | Tiempo | Costo de IA |
 |---|---|---|---|---|
@@ -36,7 +36,7 @@ Con el modelo real: `claude-haiku-5-5` clasifica (prompt v9) y `claude-sonnet-5-
 | 2 | `pnpm dry-run "guardá las reservas en la base de datos" --memoria --approve` | delicado/código: PR #14 (migración, endpoint, formulario), `revision_diff` delicado → espera a la agencia con [Aprobar]. PR cerrado después | 63 s | USD 0,0003 + agente USD 0,1136 |
 | 2 | `pnpm demo:r1 delicado` | lo mismo con PR #15; el build de Vercel de ese PR falló, así que esperó la vista previa 4 min (ya arreglado: con el build fallado sigue sin esperar). La agencia lo descartó | 272 s | USD 0,0003 + agente USD 0,0649 |
 | 3 | `pnpm dry-run "quiero cobrar las tortas online con Mercado Pago" --memoria` y `pnpm demo:r1 nuevo` | nuevo → presupuesto USD 450, 6 días → la agencia lo manda → el cliente acepta → link de la seña USD 225 (de prueba) | presupuesto a los 5,3 s | USD 0,0005 |
-| 4 | `pnpm demo:r1 reetiqueta` | 50%: simple → reetiqueta a delicado → 40%: delicado/contenido, espera a la agencia | 9,8 s | USD 0,0010 |
+| 4 | `pnpm demo:r1 reetiqueta` (3 veces) | 50%: simple → reetiqueta a delicado → 40%: delicado/contenido, espera a la agencia; 3 de 3. Antes del arreglo de `decide`, 1 de 3 se iba al agente por código | 11 s | USD 0,0012 |
 
 ## Orden de la demo (4 minutos)
 
