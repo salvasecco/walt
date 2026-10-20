@@ -78,7 +78,7 @@ export interface Store {
   /** Requests in any of the statuses, oldest first (used to recover the ones a restart left mid-way). */
   requestsWithStatus(statuses: RequestStatus[]): Promise<RequestRow[]>;
   countRequestsSince(contactId: string, sinceIso: string): Promise<number>;
-  /** Automatic (permitido) changes published this month for the project. */
+  /** Automatic changes (category simple, or permitido before 0004) published since a date for the project. */
   countAutoPublishedSince(projectId: string, sinceIso: string): Promise<number>;
 
   addEvent(e: NewEvent): Promise<void>;

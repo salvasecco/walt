@@ -16,6 +16,8 @@ import {
 import type { NewEvent, NewMessage, NewQuote, NewRequest, NewVersion, RedeemResult, Store } from './types.js';
 
 const now = () => new Date().toISOString();
+/** Categories published without the agency: 'simple' since 0004, 'permitido' before it. */
+const AUTO_CATEGORIES = ['simple', 'permitido'];
 const uuid = () => globalThis.crypto.randomUUID();
 const clone = <T>(v: T): T => structuredClone(v);
 
@@ -134,7 +136,7 @@ export class MemoryStore implements Store {
   }
   async countAutoPublishedSince(projectId: string, sinceIso: string) {
     return this.requests.filter(
-      (r) => r.project_id === projectId && r.category === 'permitido' && r.live_version_id && r.created_at >= sinceIso,
+      (r) => r.project_id === projectId && AUTO_CATEGORIES.includes(String(r.category)) && r.live_version_id && r.created_at >= sinceIso,
     ).length;
   }
   async addEvent(e: NewEvent) {

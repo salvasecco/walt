@@ -149,7 +149,8 @@ export class SupabaseStore implements Store {
         .from('requests')
         .select('id', { count: 'exact', head: true })
         .eq('project_id', projectId)
-        .eq('category', 'permitido')
+        // 'simple' since 0004; 'permitido' before it.
+        .in('category', ['simple', 'permitido'])
         .not('live_version_id', 'is', null)
         .gte('created_at', sinceIso),
       'requests',

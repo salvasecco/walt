@@ -134,7 +134,7 @@ export class PgStore implements Store {
   async countAutoPublishedSince(projectId: string, sinceIso: string) {
     const r = await this.one<{ n: number }>(
       `select count(*)::int as n from requests
-       where project_id = $1 and category = 'permitido' and live_version_id is not null and created_at >= $2`,
+       where project_id = $1 and category in ('simple', 'permitido') and live_version_id is not null and created_at >= $2`,
       [projectId, sinceIso],
     );
     return Number(r?.n ?? 0);

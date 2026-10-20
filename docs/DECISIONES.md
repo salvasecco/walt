@@ -157,3 +157,21 @@
 - `alwaysNew` (descripciones en lenguaje natural) no se puede aplicar con código: va al prompt de decisión junto con la `policy_text`.
 - Pagos: interfaz `PaymentLinks` con proveedor falso `prueba` que arma `https://pagos.walt.example/sena/<presupuesto>?monto=…&modo=prueba` (`.example` es un dominio reservado: nadie lo confunde con un cobro real). Stripe, Mercado Pago y Pix quedan para R2 con la misma interfaz.
 - `ExampleSource.similarExamples({ factoryId, text, limit })`: la store la implementa (pg_trgm por RPC, solo ejemplos de la misma agencia). Mientras no exista, `exampleSourceOf(store)` devuelve la fuente vacía.
+
+## R1 infra
+
+- La migración del R1 va en dos archivos: `0004_r1.sql` (aditiva para el panel de hoy) y `0005_r1_cierre_anon.sql` (cierra la anon). Separados porque el panel actual escucha el realtime con la anon: 0005 se aplica cuando el panel use sesiones de Supabase Auth.
+- 0004 cambia las categorías y migra los datos sin tocar `updated_at`. Un trigger traduce las categorías viejas al escribir, así el worker de main no falla mientras se integra (con el worker viejo, un cambio riesgoso de contenido aprobado por la agencia puede volver a la agencia: aplicarla junto con el worker nuevo).
+- La migración crea los roles `authenticated` y `service_role` y un esquema `auth` mínimo (`auth.users`, `auth.uid()`) solo si no existen, como 0001 con `anon`: corre igual en Postgres pelado (PGlite). El Vault no se imita en la migración (una base sin Vault tiene que fallar, no guardar claves en claro): las pruebas lo simulan aparte.
+- `request_labels` no cambia `requests.category`: queda la decisión original del sistema para medir la precisión; la corrección vive en la etiqueta.
+- Similitud de pedidos con `pg_trgm` (índice GiST en `requests.raw_text`), como dice el contrato; sin embeddings.
+- Cola durable: tabla `jobs` con dos colas, `default` (pedidos, botones, comandos) y `agent` (el agente de código). Un trabajo a la vez por proyecto y cola: el agente tarda minutos y no frena los cambios simples del mismo proyecto; solo toca su pedido y su rama.
+- Dentro de un proyecto el orden es estricto: si el trabajo más viejo espera su reintento, los de atrás esperan (un "sí" nunca se procesa antes que su pedido).
+- Lease de 120 s renovado con heartbeat en vez de un lock de sesión: por PostgREST cada RPC es una transacción y las conexiones se comparten, así que un advisory lock de sesión no sirve. El advisory lock por proyecto es de transacción y vive adentro de `claim_job`, `publish_version_v2` y la numeración de versiones.
+- Backoff: `5·2^(intento-1)` s con ±25 % de jitter y tope de 10 min; 5 intentos y después dead letter (`dead = true`, `status = failed`), reencolable con `retry_job`.
+- `publish_version_v2` toma como versión esperada el `parent_id` del borrador si no se le pasa otra: publicar algo armado sobre una viva vieja da `40001` en vez de pisar otro cambio. Misma versión o misma `publish_key`: no hace nada. `publish_version` queda igual para el worker de main.
+- `processed_updates`: `update_id` deja de ser la PK (sigue con índice único completo, así el `on conflict (update_id)` del worker viejo anda) y se suma `key` única para WhatsApp y otros webhooks.
+- Sin fila en `ai_settings`, la agencia usa la clave de Walt como hoy (modo `platform` en el ledger, sin cobro). Margen de créditos por defecto 30 % y alerta de saldo bajo en USD 5: provisorios, los decide Salva.
+- `github_installations` y `ai_settings` no se escriben con la sesión del usuario: una agencia podría reclamar la instalación de otra o apuntar a un secreto ajeno. Las escribe el servidor (service role) después de verificar.
+- Roles: `owner` (todo, incluido el equipo), `admin` (proyectos, clientes, reglas, contactos y equipo salvo dueños), `member` (comandos, reetiquetas, presupuestos e invitaciones).
+
