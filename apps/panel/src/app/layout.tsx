@@ -1,12 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { siteUrl } from "@/lib/landing/site";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  // Para que la imagen para compartir (app/opengraph-image.tsx) tenga URL absoluta en todas las páginas.
+  metadataBase: new URL(siteUrl()),
   title: { default: "Walt · Centro de control", template: "%s · Walt" },
   description: "Panel de la agencia: pedidos de los clientes en vivo, aprobaciones, reglas y presupuestos.",
   robots: { index: false, follow: false },
