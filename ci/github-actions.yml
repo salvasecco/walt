@@ -1,14 +1,37 @@
-# Pendiente de activar: mover a .github/workflows/ci.yml (el token de gh no tiene scope `workflow`).
-# Pasos: gh auth refresh -s workflow && mkdir -p .github/workflows && git mv ci/github-actions.yml .github/workflows/ci.yml
+# CI de Walt. Pendiente de activar: el token de gh no tiene scope `workflow`, así que GitHub rechaza
+# .github/workflows/*. Para activarlo:
+#   gh auth refresh -s workflow && mkdir -p .github/workflows && git mv ci/github-actions.yml .github/workflows/ci.yml
+#
+# Secretos (Settings → Secrets and variables → Actions → Secrets):
+#   SUPABASE_ACCESS_TOKEN   token personal de Supabase, limitado al proyecto (Account → Access Tokens)
+#   SUPABASE_DB_PASSWORD    contraseña de la base (Project Settings → Database)
+# Variable (no secreta, pestaña Variables):
+#   SUPABASE_PROJECT_ID     el project ref (lo que va en <ref>.supabase.co)
+# Sin esos tres, el job de migraciones se saltea y lo dice.
+#
+# Antes del primer `db push`, una sola vez: marcar como aplicadas las migraciones que se pegaron a mano en el
+# SQL Editor, o la CLI las vuelve a correr:
+#   supabase link --project-ref <ref> && supabase migration repair --status applied 0001 0002 0003 [0004 …]
+# Ojo: `db push` aplica todas las pendientes, también 0005 (cierra la anon): activarlo con el panel ya en
+# Supabase Auth en producción.
+
 name: CI
 on:
   push:
     branches: [main]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
+    name: typecheck, pruebas y eval
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
+      # Sin credenciales: todo en modo falso (CI nunca toca el modelo, GitHub ni Telegram reales).
       LLM_PROVIDER: fake
       GITHUB_MODE: fake
       TELEGRAM_MODE: console
@@ -23,4 +46,59 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm --filter @walt/panel lint
-      - run: pnpm -r test
+      - run: pnpm test
+      # Proveedor falso: prueba el corredor y las reglas (sale con 3 si se aplicaría algo prohibido y con 4 si
+      # algo delicado sale simple). La calidad del modelo real se mide con `pnpm eval --provider anthropic`.
+      - run: pnpm eval --provider fake --out eval/ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval
+          path: eval/ci/
+
+  image:
+    name: imagen del worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: walt-worker:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrations:
+    name: migraciones (Supabase CLI)
+    needs: [check]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ vars.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: ¿Están las credenciales?
+        id: creds
+        run: |
+          if [ -n "$SUPABASE_ACCESS_TOKEN" ] && [ -n "$SUPABASE_DB_PASSWORD" ] && [ -n "$SUPABASE_PROJECT_ID" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Faltan SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD o SUPABASE_PROJECT_ID: no aplico migraciones."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: supabase/setup-cli@v1
+        if: steps.creds.outputs.ok == 'true'
+        with:
+          version: latest
+      - if: steps.creds.outputs.ok == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+      - if: steps.creds.outputs.ok == 'true'
+        run: supabase migration list
+      - if: steps.creds.outputs.ok == 'true'
+        run: supabase db push
