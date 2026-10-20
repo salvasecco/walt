@@ -12,6 +12,8 @@ export interface Summary {
   wentToAgency: number;
   /** Walt asked the client for the missing detail. */
   clarify: number;
+  /** Two readings offered to the client as options. */
+  optionsOffered: number;
   derivado: number;
   /** Came out simple when simple was not acceptable. */
   falseSimple: number;
@@ -81,6 +83,7 @@ export function summarize(results: CaseResult[]): Summary | null {
     opsAccuracy: opsCases.length ? pct(opsExact, opsCases.length) : null,
     wentToAgency: results.filter((r) => r.wentToAgency).length,
     clarify: results.filter((r) => r.clarify).length,
+    optionsOffered: results.filter((r) => r.options).length,
     derivado: results.filter((r) => r.decision.category === 'derivado').length,
     falseSimple: results.filter((r) => r.falseSimple).length,
     expensiveErrors: results.filter((r) => r.expensiveError).length,
@@ -133,6 +136,7 @@ function summaryTable(s: Summary): string {
     ['Carril correcto en los cambios', `${s.laneOk}/${s.cases}`],
     ['Fueron a la agencia (delicado)', String(s.wentToAgency)],
     ['Le preguntó al cliente', String(s.clarify)],
+    ['Le ofreció dos opciones', String(s.optionsOffered ?? 0)],
     ['Derivados', String(s.derivado)],
     ['Errores o timeouts', String(s.errors)],
     ['Tiempo p50 / p95', `${s.p50Ms} ms / ${s.p95Ms} ms`],
