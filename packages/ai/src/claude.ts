@@ -4,12 +4,13 @@ import {
   fromWire,
   interpretationJsonSchema,
   InterpretationSchema,
+  isChangeKind,
   type Interpretation,
   type QuoteDraft,
   type Usage,
 } from '@walt/core';
 import { z } from 'zod';
-import { formatHistory, formatInventory, loadPrompt } from './prompts.js';
+import { formatExamples, formatHistory, formatInventory, formatPolicy, loadPrompt } from './prompts.js';
 import type { AiProvider, InterpretInput } from './types.js';
 
 /** What a provider-specific transport must do: one Messages API call. */
@@ -96,14 +97,25 @@ function baseParams(model: string, req: ModelRequest) {
   };
 }
 
-/** First-party Claude API, with the server-side refusal fallback. */
+/**
+ * Whether the model takes the server-side refusal fallback. Claude Haiku 5.5 has none: with
+ * `fallbacks: "default"` a decline stays declined, so the parameter is not sent (claude-api skill).
+ */
+export function supportsServerFallback(model: string): boolean {
+  return !/haiku/i.test(model);
+}
+
+/** First-party Claude API, with the server-side refusal fallback where the model has one. */
 export function anthropicTransport(opts: { apiKey: string; model: string }): ModelTransport {
   const client = new Anthropic({ apiKey: opts.apiKey, maxRetries: 1 });
+  const fallback = supportsServerFallback(opts.model);
   return async (req) => {
-    const msg = await client.beta.messages.create(
-      { ...baseParams(opts.model, req), betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' },
-      { timeout: req.timeoutMs },
-    );
+    const msg = fallback
+      ? await client.beta.messages.create(
+          { ...baseParams(opts.model, req), betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' },
+          { timeout: req.timeoutMs },
+        )
+      : await client.beta.messages.create(baseParams(opts.model, req), { timeout: req.timeoutMs });
     return toResponse(msg as unknown as RawMessage, opts.model);
   };
 }
@@ -192,12 +204,16 @@ export function untrusted(tag: string, text: string): string {
 }
 
 export function buildInterpretUser(input: InterpretInput): string {
+  const policy = formatPolicy(input.policyText, input.alwaysNew);
+  const examples = formatExamples(input.examples);
   return [
     `ahora: ${input.now} (zona America/Montevideo)`,
     `cliente: ${input.clientName}`,
     `agencia: ${input.agencyName}`,
     '',
-    'Inventario de la web (lo único que se puede tocar):',
+    ...(policy ? ['Política de la agencia para clasificar los pedidos de este proyecto:', policy, ''] : []),
+    ...(examples ? ['Pedidos parecidos que la agencia ya clasificó:', examples, ''] : []),
+    'Inventario de la web (lo único que se puede tocar con operaciones):',
     formatInventory(input.inventory),
     '',
     untrusted('historial', formatHistory(input.history)),
@@ -232,7 +248,7 @@ export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
         fromWire,
       );
       // Ops only make sense for a change; never trust them elsewhere.
-      const interpretation = value.kind === 'cambio' ? value : { ...value, ops: [], options: undefined };
+      const interpretation = isChangeKind(value.kind) ? value : { ...value, ops: [], options: undefined };
       return { interpretation, usage: sumUsage(usage) };
     },
     async answerConsulta({ inventory, text, assistantName }) {
@@ -246,15 +262,16 @@ export function createClaudeProvider(opts: ClaudeProviderOptions): AiProvider {
       if (res.stopReason === 'refusal' || !res.text.trim()) throw new AiOutputError('El modelo no respondió la consulta');
       return { answer: res.text.trim(), usage: res.usage };
     },
-    async draftQuote({ text, pastQuotes }) {
+    async draftQuote({ text, pastQuotes, summary, why }) {
       const past = pastQuotes.length
         ? pastQuotes.map((q) => `- ${q.title}: USD ${q.amountUsd}, ${q.etaDays} días${q.status ? ` (${q.status})` : ''}. ${q.description}`).join('\n')
         : '(sin presupuestos anteriores)';
+      const understood = [summary ? `Lo que se entendió: ${summary}` : '', why ? `Por qué es algo nuevo: ${why}` : ''].filter(Boolean);
       const { value, usage } = await structured<QuoteDraft>(
         transport,
         {
           system: loadPrompt('presupuesto'),
-          user: [`Presupuestos anteriores del proyecto:\n${past}`, '', untrusted('pedido_cliente', text)].join('\n'),
+          user: [`Presupuestos anteriores del proyecto:\n${past}`, '', ...understood, untrusted('pedido_cliente', text)].join('\n'),
           schema: quoteJsonSchema,
           effort: 'low',
           maxTokens: 4000,

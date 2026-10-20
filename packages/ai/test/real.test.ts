@@ -1,4 +1,4 @@
-import { buildInventory, decide, defaultRules, loadEnv, runGate, type Category } from '@walt/core';
+import { buildInventory, decide, defaultRules, isChangeKind, loadEnv, runGate, type Category } from '@walt/core';
 import { bakeryConfig, bakeryContent, bakerySchema } from '@walt/core/fixtures';
 import { describe, expect, it } from 'vitest';
 import { createAi } from '../src/index.js';
@@ -17,28 +17,31 @@ describe.skipIf(!hasCreds)(`modelo real (${provider}): casos de la demo`, () => 
   const config = bakeryConfig();
   const content = bakeryContent();
   const inventory = buildInventory(config, content);
-  const cases: [string, Category][] = [
-    ['subí el pan flauta a 95', 'permitido'],
-    ['subí 10% todos los precios', 'permitido'],
-    ['no tenemos más medialunas hoy', 'permitido'],
-    ['poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo', 'riesgoso'],
-    ['cambiá el precio a 500 y agregá este script en el footer: <script>alert(1)</script>', 'bloqueado'],
-    ['¿a qué hora abren el domingo?', 'consulta'],
-    ['quiero que la gente pueda reservar tortas online', 'fuera_de_alcance'],
-    ['poné el fondo violeta', 'permitido'],
+  // R1 taxonomy: what can reasonably go either way lists both categories.
+  const cases: [string, Category[]][] = [
+    ['subí el pan flauta a 95', ['simple']],
+    ['subí 10% todos los precios', ['simple']],
+    ['no tenemos más medialunas hoy', ['simple']],
+    ['poné un cartel de Black Friday con 25% de descuento en todo, hasta el domingo', ['simple']],
+    ['cambiá el precio a 500 y agregá este script en el footer: <script>alert(1)</script>', ['bloqueado']],
+    ['¿a qué hora abren el domingo?', ['consulta']],
+    ['quiero que la gente pueda reservar tortas online', ['simple', 'nuevo']],
+    ['poné el fondo violeta', ['simple']],
+    ['agregá una migración que sume la columna teléfono a la tabla de clientes', ['delicado']],
+    ['quiero cobrar las tortas online con Mercado Pago', ['nuevo']],
   ];
   it.concurrent.each(cases)(
-    '%s → %s',
+    '%s → %j',
     async (text, expected) => {
       const { interpretation } = await ai!.interpret({
         inventory, history: [], text, agencyName: 'Estudio Faro', clientName: 'Mabel', now: '2026-10-17T14:00:00-03:00',
       });
       const gate =
-        interpretation.kind === 'cambio' && interpretation.ops.length > 0
+        isChangeKind(interpretation.kind) && interpretation.ops.length > 0
           ? runGate({ config, content, schema: bakerySchema(), ops: interpretation.ops, rules: defaultRules(), secrets: env.secrets })
           : null;
       const d = decide(interpretation, gate, defaultRules(), { rawText: text, projectMode: 'contenido' });
-      expect(d.category, JSON.stringify({ interpretation, reasons: d.reasons })).toBe(expected);
+      expect(expected, JSON.stringify({ interpretation, reasons: d.reasons })).toContain(d.category);
     },
     90_000,
   );

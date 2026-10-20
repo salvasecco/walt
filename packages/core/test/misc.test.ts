@@ -65,6 +65,10 @@ describe('Interpretation', () => {
         { ...nulls, type: 'set_banner', enabled: true, text: 'Black Friday', discountPercent: 25, endsAt: '2026-10-18T23:59:00-03:00' },
       ],
     };
+    // add_product travels with its name in `text` and its price in `value`.
+    expect(parseInterpretation({ ...wire, ops: [{ ...nulls, type: 'add_product', text: 'Brushing', category: 'servicios', value: 2500 }] }).ops).toEqual([
+      { type: 'add_product', name: 'Brushing', category: 'servicios', price: 2500 },
+    ]);
     expect(parseInterpretation(wire).ops).toEqual([
       { type: 'set_price', productId: 'pan-flauta', value: 95 },
       { type: 'set_hours', day: 'dom', open: null, close: null },
