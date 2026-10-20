@@ -33,10 +33,11 @@ export const toneDot: Record<Tone, string> = {
   muted: "bg-faint",
 };
 
+/** Taxonomía del R1 (brief §1). Los valores viejos se leen con `normalizeCategory`. */
 export const CATEGORY_LABEL: Record<Category, string> = {
-  permitido: "Permitido",
-  riesgoso: "Riesgoso",
-  fuera_de_alcance: "Fuera de alcance",
+  simple: "Simple",
+  delicado: "Delicado",
+  nuevo: "Algo nuevo",
   consulta: "Consulta",
   bloqueado: "Bloqueado",
   charla: "Charla",
@@ -44,13 +45,24 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 };
 
 export const CATEGORY_TONE: Record<Category, Tone> = {
-  permitido: "ok",
-  riesgoso: "warn",
-  fuera_de_alcance: "code",
+  simple: "ok",
+  delicado: "warn",
+  nuevo: "code",
   consulta: "info",
   bloqueado: "danger",
   charla: "muted",
   derivado: "danger",
+};
+
+/** Qué es cada tipo y qué flujo sigue, en una línea (brief §1). */
+export const CATEGORY_HELP: Record<Category, string> = {
+  simple: "Visible o de interfaz, sin zonas delicadas. Vista previa, «Dale» del cliente y se publica, sin la agencia.",
+  delicado: "Toca base de datos, auth, backend o API, pagos, secretos, infraestructura o dependencias. La agencia revisa el diff y aprueba.",
+  nuevo: "Algo nuevo desde cero: un workflow, una pasarela de pagos, integraciones o módulos grandes. Va a presupuesto con seña.",
+  consulta: "Una pregunta sobre el software o el negocio. Walt responde con lo que sabe del proyecto.",
+  bloqueado: "Inyección, pedido malicioso o fuera de política. No se aplica nada y se avisa.",
+  charla: "Charla sin pedido.",
+  derivado: "Falla técnica sin respuesta automática: lo ve una persona.",
 };
 
 export const STATUS_LABEL: Record<RequestStatus, string> = {

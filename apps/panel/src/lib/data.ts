@@ -2,6 +2,7 @@ import "server-only";
 import { dataMode, env } from "./env";
 import { buildSample } from "./sample";
 import { supabaseAdmin } from "./supabase/server";
+import { AGENCY_WAIT_STATUSES, categoryVariants, isPendingAgency, normalizeCategory } from "./taxonomy";
 import type {
   Approval,
   Category,
@@ -85,12 +86,13 @@ export async function getRequests(filter: { category?: Category; status?: Reques
     const s = buildSample();
     rows = s.requests;
     projects = s.projects;
-    if (filter.category) rows = rows.filter((r) => r.category === filter.category);
+    if (filter.category) rows = rows.filter((r) => normalizeCategory(r.category) === filter.category);
     if (filter.status) rows = rows.filter((r) => r.status === filter.status);
   } else {
     const db = supabaseAdmin();
     let q = db.from("requests").select("*").order("created_at", { ascending: false }).limit(300);
-    if (filter.category) q = q.eq("category", filter.category);
+    // Hasta la migración de datos conviven los nombres viejos: se buscan los dos.
+    if (filter.category) q = q.in("category", categoryVariants(filter.category));
     if (filter.status) q = q.eq("status", filter.status);
     [rows, projects] = await Promise.all([q.then(must<WaltRequest[]>), getProjects()]);
   }
@@ -156,8 +158,9 @@ export type PendingApproval = {
   code: CodeReview | null;
 };
 
+/** Lo que espera la aprobación de la agencia: solo lo delicado (brief §1). */
 export async function getPendingApprovals(): Promise<PendingApproval[]> {
-  const statuses: RequestStatus[] = ["esperando_agencia", "agente_listo"];
+  const statuses: RequestStatus[] = [...AGENCY_WAIT_STATUSES];
   let requests: WaltRequest[];
   let projects: Project[];
   let versions: ContentVersion[];
@@ -165,14 +168,20 @@ export async function getPendingApprovals(): Promise<PendingApproval[]> {
   let prEvents: WaltEvent[] = [];
   if (mode() === "ejemplo") {
     const s = buildSample();
-    requests = s.requests.filter((r) => statuses.includes(r.status));
+    requests = s.requests.filter(isPendingAgency);
     prEvents = s.events.filter((e) => e.step === "agente_pr" && e.status === "ok");
     projects = s.projects;
     versions = s.versions.filter((v) => v.status === "viva");
   } else {
     const db = supabaseAdmin();
     [requests, projects, versions] = await Promise.all([
-      db.from("requests").select("*").in("status", statuses).order("created_at").then(must<WaltRequest[]>),
+      db
+        .from("requests")
+        .select("*")
+        .in("status", statuses)
+        .in("category", categoryVariants("delicado"))
+        .order("created_at")
+        .then(must<WaltRequest[]>),
       getProjects(),
       db.from("content_versions").select("*").eq("status", "viva").then(must<ContentVersion[]>),
     ]);

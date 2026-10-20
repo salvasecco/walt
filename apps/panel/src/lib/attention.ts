@@ -1,5 +1,6 @@
 // Tablero de Atención: en qué columna va cada proyecto según su pedido más urgente.
 // Funciones puras (sin Supabase ni React) para poder probarlas.
+import { isPendingAgency } from "./taxonomy";
 import type { RequestStatus } from "./types";
 
 export type Column = "te_necesita" | "en_curso" | "esperando_cliente" | "al_dia";
@@ -17,11 +18,15 @@ export const COLUMN_LABEL: Record<Column, string> = {
   al_dia: "Al día",
 };
 
-/** Bloqueados y derivados cuentan solo si son de los últimos 7 días (y no hubo un publicado después). */
+/** Derivados cuentan solo si son de los últimos 7 días (y no hubo un publicado después). */
 export const RECENT_MS = 7 * 86_400_000;
 
 const IN_PROGRESS: RequestStatus[] = ["recibido", "interpretando", "cotizando", "agente_trabajando", "publicando"];
-const HANDED_OFF: RequestStatus[] = ["derivado", "bloqueado"];
+/**
+ * Lo que queda para una persona sin respuesta automática. Un bloqueado no: no se aplica nada y al cliente
+ * ya se le avisó (brief §1), así que no espera a la agencia.
+ */
+const HANDED_OFF: RequestStatus[] = ["derivado"];
 
 export type AttRequest = {
   id: string;
@@ -30,6 +35,8 @@ export type AttRequest = {
   raw_text: string;
   summary?: string | null;
   status: RequestStatus;
+  /** Guardada: puede venir con un nombre viejo. Solo lo delicado espera a la agencia. */
+  category: string | null;
   created_at: string;
 };
 
@@ -57,7 +64,6 @@ export type ItemKind =
   | "agente_listo"
   | "presupuesto_borrador"
   | "derivado"
-  | "bloqueado"
   | "commit_fallido"
   | "en_curso"
   | "esperando_cliente"
@@ -84,7 +90,6 @@ export const KIND_LABEL: Record<ItemKind, string> = {
   agente_listo: "Cambio de código listo para revisar",
   presupuesto_borrador: "Presupuesto en borrador",
   derivado: "Derivado a la agencia",
-  bloqueado: "Bloqueado",
   commit_fallido: "El commit falló",
   en_curso: "En curso",
   esperando_cliente: "Espera la respuesta del cliente",
@@ -107,7 +112,7 @@ function requestItem(r: AttRequest, kind: ItemKind, column: Column, action: Acti
   return { kind, column, since: r.created_at, text: short(r), shortId: r.short_id, requestId: r.id, status: r.status, quoteId: null, action };
 }
 
-/** Un derivado o bloqueado sigue abierto si es reciente y no hubo un pedido publicado después en el proyecto. */
+/** Un derivado sigue abierto si es reciente y no hubo un pedido publicado después en el proyecto. */
 export function isOpenHandoff(r: AttRequest, projectRequests: AttRequest[], now: number): boolean {
   if (!HANDED_OFF.includes(r.status)) return false;
   const t = Date.parse(r.created_at);
@@ -124,9 +129,12 @@ export function projectItems(
   const reqs = data.requests.filter((r) => r.project_id === projectId);
   const items: AttItem[] = [];
   for (const r of reqs) {
-    if (r.status === "esperando_agencia") items.push(requestItem(r, "aprobar", "te_necesita", "aprobar"));
-    else if (r.status === "agente_listo") items.push(requestItem(r, "agente_listo", "te_necesita", "ver"));
-    else if (isOpenHandoff(r, reqs, now)) items.push(requestItem(r, r.status === "bloqueado" ? "bloqueado" : "derivado", "te_necesita", "ver"));
+    // Solo lo delicado espera a la agencia; un pedido simple en esos estados sigue su curso sin ella.
+    if (r.status === "esperando_agencia" || r.status === "agente_listo") {
+      if (!isPendingAgency(r)) items.push(requestItem(r, "en_curso", "en_curso", "ver"));
+      else if (r.status === "esperando_agencia") items.push(requestItem(r, "aprobar", "te_necesita", "aprobar"));
+      else items.push(requestItem(r, "agente_listo", "te_necesita", "ver"));
+    } else if (isOpenHandoff(r, reqs, now)) items.push(requestItem(r, "derivado", "te_necesita", "ver"));
     else if (IN_PROGRESS.includes(r.status)) items.push(requestItem(r, "en_curso", "en_curso", "ver"));
     else if (r.status === "esperando_cliente") items.push(requestItem(r, "esperando_cliente", "esperando_cliente", "ver"));
   }

@@ -7,7 +7,8 @@ import { CategoryChip, EmptyState, Surface, Mono, PageHeader, SampleBadge, Statu
 import { getRequests, NotConfiguredError } from "@/lib/data";
 import { dataMode } from "@/lib/env";
 import { CATEGORY_LABEL, STATUS_LABEL, dateTime } from "@/lib/labels";
-import { CATEGORIES, STATUSES, type Category, type RequestStatus } from "@/lib/types";
+import { normalizeCategory } from "@/lib/taxonomy";
+import { CATEGORIES, STATUSES, type RequestStatus } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Historial" };
 
@@ -15,7 +16,8 @@ const selectCls = "h-9 rounded-lg border border-input bg-surface px-3 text-sm te
 
 export default async function HistorialPage({ searchParams }: PageProps<"/historial">) {
   const sp = await searchParams;
-  const category = typeof sp.categoria === "string" && (CATEGORIES as readonly string[]).includes(sp.categoria) ? (sp.categoria as Category) : undefined;
+  // Acepta también los nombres viejos en el link (?categoria=permitido → simple).
+  const category = typeof sp.categoria === "string" ? (normalizeCategory(sp.categoria) ?? undefined) : undefined;
   const status = typeof sp.estado === "string" && (STATUSES as readonly string[]).includes(sp.estado) ? (sp.estado as RequestStatus) : undefined;
   const q = typeof sp.q === "string" ? sp.q.slice(0, 100) : undefined;
   let data;

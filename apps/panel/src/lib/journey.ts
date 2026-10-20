@@ -1,4 +1,5 @@
 import { OPEN_STATUSES } from "./labels";
+import { normalizeCategory } from "./taxonomy";
 import type { WaltEvent, WaltRequest } from "./types";
 
 export type NodeState = "pendiente" | "activo" | "esperando" | "ok" | "falla" | "omitido";
@@ -14,6 +15,8 @@ export type JourneyNode = {
 const CONTENT_AUTO = ["recibido", "interpretado", "decidido", "gate", "borrador", "captura", "enviado", "aprobado_cliente", "publicado", "commit"];
 const CONTENT_AGENCY = ["recibido", "interpretado", "decidido", "gate", "borrador", "captura", "aprobado_agencia", "enviado", "aprobado_cliente", "publicado", "commit"];
 const CODE = ["recibido", "interpretado", "decidido", "agente_inicio", "agente_pr", "agente_preview", "aprobado_agencia", "enviado", "aprobado_cliente", "publicado", "en_la_web"];
+/** Código simple: el agente arma el PR y la vista previa va directo al cliente, sin la agencia. */
+const CODE_SIMPLE = ["recibido", "interpretado", "decidido", "agente_inicio", "agente_pr", "agente_preview", "enviado", "aprobado_cliente", "publicado", "en_la_web"];
 const QUESTION = ["recibido", "interpretado", "decidido", "respondido"];
 const QUOTE = ["recibido", "interpretado", "decidido", "presupuesto", "enviado"];
 const BLOCKED = ["recibido", "interpretado", "decidido", "enviado"];
@@ -25,14 +28,14 @@ const TRAILING = ["revertido", "derivado"];
 const HIDDEN = new Set(["publicando"]);
 
 export function basePath(req: Pick<WaltRequest, "category" | "lane">): string[] {
-  switch (req.category) {
-    case "permitido":
-      return CONTENT_AUTO;
-    case "riesgoso":
+  switch (normalizeCategory(req.category)) {
+    case "simple":
+      return req.lane === "codigo" ? CODE_SIMPLE : CONTENT_AUTO;
+    case "delicado":
       return req.lane === "codigo" ? CODE : CONTENT_AGENCY;
     case "consulta":
       return QUESTION;
-    case "fuera_de_alcance":
+    case "nuevo":
       return QUOTE;
     case "bloqueado":
       return BLOCKED;

@@ -9,19 +9,21 @@ import { getNeedCount } from "@/lib/agency";
 import { dataMode, env, publicSupabase } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { buildSample } from "@/lib/sample";
+import { AGENCY_WAIT_STATUSES, categoryVariants, isPendingAgency } from "@/lib/taxonomy";
 
 // Datos en vivo: nunca se prerenderiza.
 export const dynamic = "force-dynamic";
 
 async function pendingCount(): Promise<number> {
   const mode = dataMode();
-  if (mode === "ejemplo") return buildSample().requests.filter((r) => r.status === "esperando_agencia" || r.status === "agente_listo").length;
+  if (mode === "ejemplo") return buildSample().requests.filter(isPendingAgency).length;
   if (mode === "sin_configurar") return 0;
   try {
     const { count } = await supabaseAdmin()
       .from("requests")
       .select("id", { count: "exact", head: true })
-      .in("status", ["esperando_agencia", "agente_listo"]);
+      .in("status", [...AGENCY_WAIT_STATUSES])
+      .in("category", categoryVariants("delicado"));
     return count ?? 0;
   } catch {
     return 0;

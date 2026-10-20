@@ -5,9 +5,11 @@ const NOW = Date.parse("2026-10-17T15:00:00Z");
 const ago = (h: number) => new Date(NOW - h * 3_600_000).toISOString();
 
 let n = 0;
-function req(status: AttRequest["status"], hoursAgo: number, project = "p1"): AttRequest {
+/** Lo que espera a la agencia es delicado; el resto, simple, salvo que se diga otra cosa. */
+function req(status: AttRequest["status"], hoursAgo: number, project = "p1", category?: string): AttRequest {
   n++;
-  return { id: `r${n}`, short_id: `S${n}`, project_id: project, raw_text: `pedido ${n}`, summary: null, status, created_at: ago(hoursAgo) };
+  const cat = category ?? (status === "esperando_agencia" || status === "agente_listo" ? "delicado" : "simple");
+  return { id: `r${n}`, short_id: `S${n}`, project_id: project, raw_text: `pedido ${n}`, summary: null, status, category: cat, created_at: ago(hoursAgo) };
 }
 const quote = (status: AttQuote["status"], hoursAgo: number, project = "p1"): AttQuote => ({
   id: `q${hoursAgo}`, status, title: "Tienda online", created_at: ago(hoursAgo), project_id: project, request_short_id: "Q1",
@@ -20,6 +22,13 @@ describe("classifyProject", () => {
     expect(p.column).toBe("te_necesita");
     expect(p.item?.kind).toBe("aprobar");
     expect(p.item?.action).toBe("aprobar");
+  });
+
+  it("solo lo delicado espera a la agencia: un simple en esperando_agencia o agente_listo va a En curso", () => {
+    expect(classifyProject("p1", data([req("agente_listo", 1, "p1", "simple")]), NOW).column).toBe("en_curso");
+    expect(classifyProject("p1", data([req("esperando_agencia", 1, "p1", "permitido")]), NOW).column).toBe("en_curso");
+    // Los valores viejos se leen con el nombre nuevo: riesgoso es delicado.
+    expect(classifyProject("p1", data([req("agente_listo", 1, "p1", "riesgoso")]), NOW).item?.kind).toBe("agente_listo");
   });
 
   it("un presupuesto en borrador va a Te necesita y lleva a Presupuestos", () => {
@@ -66,7 +75,7 @@ describe("classifyProject", () => {
   });
 });
 
-describe("derivados y bloqueados", () => {
+describe("derivados", () => {
   it("cuentan si son de los últimos 7 días y no hubo un publicado después", () => {
     const d = req("derivado", 30);
     expect(isOpenHandoff(d, [d], NOW)).toBe(true);
@@ -74,8 +83,14 @@ describe("derivados y bloqueados", () => {
   });
 
   it("no cuentan si son viejos", () => {
-    const d = req("bloqueado", 24 * 8);
+    const d = req("derivado", 24 * 8);
     expect(classifyProject("p1", data([d]), NOW).column).toBe("al_dia");
+  });
+
+  it("un bloqueado no espera a la agencia: no se aplicó nada y al cliente ya se le avisó", () => {
+    const b = req("bloqueado", 2, "p1", "bloqueado");
+    expect(isOpenHandoff(b, [b], NOW)).toBe(false);
+    expect(classifyProject("p1", data([b]), NOW).column).toBe("al_dia");
   });
 
   it("no cuentan si después se publicó otro pedido del proyecto", () => {
