@@ -1,6 +1,7 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import type { NextRequest } from "next/server";
+import { planIntentFromMeta } from "@/lib/landing/plan-intent";
 import { safeRedirect } from "@/lib/redirect";
 import { createAgency, membershipsOf } from "@/lib/session";
 import { supabaseUser } from "@/lib/supabase/ssr";
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   const agency = user?.user_metadata?.agency_name;
   if (user && typeof agency === "string" && agency.trim() && !(await membershipsOf(user.id, supabase)).length) {
     try {
-      await createAgency(user.id, agency);
+      await createAgency(user.id, agency, planIntentFromMeta(user.user_metadata));
     } catch {
       // Si falla, al entrar se le pide que cree la agencia (/registro/agencia).
     }

@@ -1,4 +1,6 @@
 import "server-only";
+import { recordLandingEvent } from "@/lib/landing/events-server";
+import type { PlanIntent } from "@/lib/landing/plan-intent";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { assistantName } from "@walt/core/copy";
 import { cookies } from "next/headers";
@@ -275,8 +277,11 @@ export async function requireRequest(
   return { viewer, project, request: data as WaltRequest, db: scope.db };
 }
 
-/** Crea la agencia y deja al usuario como dueño, en una transacción (RPC `create_factory` de la 0004). */
-export async function createAgency(userId: string, name: string): Promise<Factory> {
+/**
+ * Crea la agencia y deja al usuario como dueño, en una transacción (RPC `create_factory` de la 0004).
+ * Si eligió un plan en la landing, lo guarda como intención (0007); sin esa migración, la agencia se crea igual.
+ */
+export async function createAgency(userId: string, name: string, intent?: PlanIntent | null): Promise<Factory> {
   const clean = name.trim().replace(/\s+/g, " ").slice(0, 80);
   if (clean.length < 2) throw new Error("Poné el nombre de la agencia.");
   const db = supabaseAdmin();
@@ -285,6 +290,11 @@ export async function createAgency(userId: string, name: string): Promise<Factor
   forgetTenancyProbe();
   const { data: factory, error: e2 } = await db.from("factories").select("*").eq("id", id as string).single();
   if (e2) throw new Error(e2.message);
+  if (intent) {
+    // Sin la 0007 la columna no existe: el plan elegido no se guarda, y no es motivo para fallar el registro.
+    await db.from("factories").update({ plan_intent: intent.plan, plan_cycle: intent.cycle, plan_intent_at: new Date().toISOString() }).eq("id", id as string);
+  }
+  await recordLandingEvent({ event: "signup_completed", props: intent ? { plan: intent.plan, cycle: intent.cycle } : {} });
   return factory as Factory;
 }
 

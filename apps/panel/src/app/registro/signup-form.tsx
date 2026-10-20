@@ -6,7 +6,7 @@ import { signUp } from "@/app/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function SignUpForm() {
+export function SignUpForm({ plan, cycle }: { plan?: string; cycle?: string }) {
   const [state, action, pending] = useActionState(signUp, undefined);
   if (state?.ok)
     return (
@@ -16,6 +16,8 @@ export function SignUpForm() {
     );
   return (
     <form action={action} className="flex flex-col gap-3">
+      {plan && <input type="hidden" name="plan" value={plan} />}
+      {cycle && <input type="hidden" name="ciclo" value={cycle} />}
       <Field id="agency" label="Nombre de la agencia">
         <Input id="agency" name="agency" required minLength={2} maxLength={80} autoComplete="organization" className="h-10 text-base" />
       </Field>

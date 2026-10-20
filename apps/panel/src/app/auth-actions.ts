@@ -1,5 +1,7 @@
 "use server";
 
+import { recordLandingEvent } from "@/lib/landing/events-server";
+import { planIntentFromMeta, readPlanIntent } from "@/lib/landing/plan-intent";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -124,19 +126,24 @@ export async function signUp(_prev: FormState, form: FormData): Promise<FormStat
   const name = String(form.get("name") ?? "").trim().slice(0, 80);
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const password = String(form.get("password") ?? "");
+  const intent = readPlanIntent(form.get("plan"), form.get("ciclo"));
   if (agency.length < 2) return { error: "Poné el nombre de tu agencia." };
   if (!EMAIL_RE.test(email)) return { error: "Revisá el mail." };
   if (password.length < 8) return { error: "La contraseña tiene que tener al menos 8 caracteres." };
   const { data, error } = await (await supabaseUser()).auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${await origin()}/auth/confirm?next=/atencion`, data: { agency_name: agency, full_name: name } },
+    options: {
+      emailRedirectTo: `${await origin()}/auth/confirm?next=/atencion`,
+      data: { agency_name: agency, full_name: name, ...(intent ? { plan_intent: intent.plan, plan_cycle: intent.cycle } : {}) },
+    },
   });
   if (error) return { error: authErrorText(error) };
   // Mail ya registrado: Supabase devuelve un usuario sin identidades para no revelarlo.
   if (data.user && (data.user.identities?.length ?? 0) === 0) return { error: "Ese mail ya tiene cuenta: entrá o pedí un link." };
+  await recordLandingEvent({ event: "signup_started", props: intent ? { plan: intent.plan, cycle: intent.cycle } : {} });
   if (data.session && data.user) {
-    await createAgency(data.user.id, agency);
+    await createAgency(data.user.id, agency, intent);
     redirect("/atencion");
   }
   return { ok: `Te mandamos un mail a ${email} para confirmar la cuenta. Al abrir el link queda creada ${agency}.` };
@@ -148,7 +155,7 @@ export async function createMyAgency(_prev: FormState, form: FormData): Promise<
   if (!user) redirect("/entrar");
   if ((await membershipsOf(user.id)).length) redirect("/atencion");
   try {
-    await createAgency(user.id, String(form.get("agency") ?? ""));
+    await createAgency(user.id, String(form.get("agency") ?? ""), planIntentFromMeta(user.meta));
   } catch (e) {
     return { error: errorText(e) };
   }
